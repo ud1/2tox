@@ -25,22 +25,22 @@
 
 #include "network.hpp"
 
-typedef struct {
+struct Ping_Array_Entry {
     void *data;
     uint32_t length;
     uint64_t time;
     uint64_t ping_id;
-} Ping_Array_Entry;
+};
 
 
-typedef struct {
+struct Ping_Array {
     Ping_Array_Entry *entries;
 
     uint32_t last_deleted; /* number representing the next entry to be deleted. */
     uint32_t last_added; /* number representing the last entry to be added. */
     uint32_t total_size; /* The length of entries */
     uint32_t timeout; /* The timeout after which entries are cleared. */
-} Ping_Array;
+};
 
 
 /* Add a data with length to the Ping_Array list and return a ping_id.

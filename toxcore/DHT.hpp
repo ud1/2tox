@@ -74,12 +74,12 @@ void to_net_family(IP *ip);
 /* return 0 on success, -1 on failure. */
 int to_host_family(IP *ip);
 
-typedef struct {
+struct IPPTs {
     IP_Port     ip_port;
     uint64_t    timestamp;
-} IPPTs;
+};
 
-typedef struct {
+struct Hardening {
     /* Node routes request correctly (true (1) or false/didn't check (0)) */
     uint8_t     routes_requests_ok;                                          //- константа в hardening_correct
     /* Time which we last checked this.*/
@@ -95,9 +95,9 @@ typedef struct {
     /* Time which we last checked this.*/
     uint64_t    testing_timestamp;                                           //- не используется
     uint8_t     testing_pingedid[crypto_box_PUBLICKEYBYTES];                 //- не используется
-} Hardening;
+};
 
-typedef struct {
+struct IPPTsPng {
     IP_Port     ip_port;
     uint64_t    timestamp;
     uint64_t    last_pinged;
@@ -106,17 +106,17 @@ typedef struct {
     /* Returned by this node. Either our friend_ or us. */
     IP_Port     ret_ip_port;
     uint64_t    ret_timestamp;
-} IPPTsPng;
+};
 
-typedef struct {
+struct Client_data {
     uint8_t     public_key[crypto_box_PUBLICKEYBYTES];
     IPPTsPng    assoc4;
     IPPTsPng    assoc6;
-} Client_data;
+};
 
 /*----------------------------------------------------------------------------------*/
 
-typedef struct {
+struct NAT {
     /* 1 if currently hole punching, otherwise 0 */
     uint8_t     hole_punching;                 //- 0 или 1
     uint32_t    punching_index;
@@ -127,17 +127,16 @@ typedef struct {
     uint64_t    recvNATping_timestamp;
     uint64_t    NATping_id;
     uint64_t    NATping_timestamp;
-} NAT;
+};
 
 #define DHT_FRIEND_MAX_LOCKS 32
 
-typedef struct {
+struct Node_format {
     uint8_t     public_key[crypto_box_PUBLICKEYBYTES];
     IP_Port     ip_port;
-}
-Node_format;
+};
 
-typedef struct {
+struct DHT_Friend {
     uint8_t     public_key[crypto_box_PUBLICKEYBYTES];
     Client_data client_list[MAX_FRIEND_CLIENTS];
 
@@ -158,7 +157,7 @@ typedef struct {
 
     Node_format to_bootstrap[MAX_SENT_NODES];
     unsigned int num_to_bootstrap;
-} DHT_Friend;
+};
 
 /* Return packet size of packed node with ip_family on success.
  * Return -1 on failure.
@@ -187,7 +186,7 @@ int unpack_nodes(Node_format *nodes, uint16_t max_num_nodes, uint16_t *processed
 /* struct to store some shared keys so we don't have to regenerate them for each request. */
 #define MAX_KEYS_PER_SLOT 4
 #define KEYS_TIMEOUT 600
-typedef struct {
+struct Shared_Keys {
     struct {
         uint8_t public_key[crypto_box_PUBLICKEYBYTES];
         uint8_t shared_key[crypto_box_BEFORENMBYTES];
@@ -195,19 +194,19 @@ typedef struct {
         uint8_t  stored; /* 0 if not, 1 if is */
         uint64_t time_last_requested;
     } keys[256 * MAX_KEYS_PER_SLOT];
-} Shared_Keys;
+};
 
 /*----------------------------------------------------------------------------------*/
 
 typedef int (*cryptopacket_handler_callback)(void *object, IP_Port ip_port, const uint8_t *source_pubkey,
         const uint8_t *data, uint16_t len);
 
-typedef struct {
+struct Cryptopacket_Handles {
     cryptopacket_handler_callback function;
     void *object;
-} Cryptopacket_Handles;
+};
 
-typedef struct {
+struct DHT {
     Networking_Core *net;
 
     Client_data    close_clientlist[LCLIENT_LIST];
@@ -242,7 +241,7 @@ typedef struct {
 
     Node_format to_bootstrap[MAX_CLOSE_TO_BOOTSTRAP_NODES];
     unsigned int num_to_bootstrap;
-} DHT;
+};
 /*----------------------------------------------------------------------------------*/
 
 /* Shared key generations are costly, it is therefor smart to store commonly used

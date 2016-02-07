@@ -24,7 +24,7 @@
 #ifndef __PING_H__
 #define __PING_H__
 
-typedef struct PING PING;
+struct PING;
 
 /* Add nodes to the to_ping list.
  * All nodes in this list are pinged every TIME_TOPING seconds

@@ -59,7 +59,7 @@ int load_state(load_state_callback_func load_state_callback, void *outer,
 int create_recursive_mutex(pthread_mutex_t *mutex);
 
 /* Ring buffer */
-typedef struct RingBuffer RingBuffer;
+struct RingBuffer;
 bool rb_full(const RingBuffer *b);
 bool rb_empty(const RingBuffer *b);
 void *rb_write(RingBuffer *b, void *p);

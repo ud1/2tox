@@ -112,6 +112,17 @@ struct IP_Port {
     static IP_Port          from_addr(const sockaddr_storage& addr);
 };
 
+/* Does the IP6 struct a contain an IPv4 address in an IPv6 one? */
+#define IPV6_IPV4_IN_V6(a) ((a.uint64[0] == 0) && (a.uint32[2] == htonl (0xffff)))
+
+#define SIZE_IP4 4
+#define SIZE_IP6 16
+#define SIZE_IP (1 + SIZE_IP6)
+#define SIZE_PORT 2
+#define SIZE_IPPORT (SIZE_IP + SIZE_PORT)
+
+#define TOX_ENABLE_IPV6_DEFAULT 1
+
 struct Socket {
     int fd;
 

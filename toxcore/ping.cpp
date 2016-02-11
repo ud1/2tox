@@ -71,7 +71,7 @@ int send_ping_request(PING *ping, IP_Port ipp, const uint8_t *public_key)
     uint8_t shared_key[crypto_box_BEFORENMBYTES];
 
     // generate key to encrypt ping_id with recipient privkey
-    DHT_get_shared_key_sent(ping->dht, shared_key, public_key);
+    ping->dht->get_shared_key_sent(shared_key, public_key);
     // Generate random ping_id.
     uint8_t data[PING_DATA_SIZE];
     id_copy(data, public_key);
@@ -147,7 +147,7 @@ static int handle_ping_request(void *_dht, IP_Port source, const uint8_t *packet
 
     uint8_t ping_plain[PING_PLAIN_SIZE];
     // Decrypt ping_id
-    DHT_get_shared_key_recv(dht, shared_key, packet + 1);
+    dht->get_shared_key_recv(shared_key, packet + 1);
     rc = decrypt_data_symmetric(shared_key,
                                 packet + 1 + crypto_box_PUBLICKEYBYTES,
                                 packet + 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES,
@@ -185,7 +185,7 @@ static int handle_ping_response(void *_dht, IP_Port source, const uint8_t *packe
     uint8_t shared_key[crypto_box_BEFORENMBYTES];
 
     // generate key to encrypt ping_id with recipient privkey
-    DHT_get_shared_key_sent(ping->dht, shared_key, packet + 1);
+    ping->dht->get_shared_key_sent(shared_key, packet + 1);
 
     uint8_t ping_plain[PING_PLAIN_SIZE];
     // Decrypt ping_id
@@ -217,7 +217,7 @@ static int handle_ping_response(void *_dht, IP_Port source, const uint8_t *packe
     if (!ipport_equal(&ipp, &source))
         return 1;
 
-    addto_lists(dht, source, packet + 1);
+    dht->addto_lists(source, packet + 1);
     return 0;
 }
 
@@ -263,7 +263,7 @@ int add_to_ping(PING *ping, const uint8_t *public_key, IP_Port ip_port)
     if (!ip_isset(&ip_port.ip))
         return -1;
 
-    if (!node_addable_to_close_list(ping->dht, public_key, ip_port))
+    if (!ping->dht->node_addable_to_close_list(public_key, ip_port))
         return -1;
 
     if (in_list(ping->dht->close_clientlist, LCLIENT_LIST, public_key, ip_port))
@@ -271,7 +271,7 @@ int add_to_ping(PING *ping, const uint8_t *public_key, IP_Port ip_port)
 
     IP_Port temp;
 
-    if (DHT_getfriendip(ping->dht, public_key, &temp) == 0) {
+    if (ping->dht->getfriendip(public_key, &temp) == 0) {
         send_ping_request(ping, ip_port, public_key);
         return -1;
     }
@@ -314,7 +314,7 @@ void do_to_ping(PING *ping)
         if (!ip_isset(&ping->to_ping[i].ip_port.ip))
             break;
 
-        if (!node_addable_to_close_list(ping->dht, ping->to_ping[i].public_key, ping->to_ping[i].ip_port))
+        if (!ping->dht->node_addable_to_close_list(ping->to_ping[i].public_key, ping->to_ping[i].ip_port))
             continue;
 
         send_ping_request(ping, ping->to_ping[i].ip_port, ping->to_ping[i].public_key);

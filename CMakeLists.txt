@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 2.8.4)
 project(2tox C CXX)
 
 if(CMAKE_COMPILER_IS_GNUCXX)
-    add_definitions(-std=gnu++0x)
+    add_definitions(-std=c++11)
 endif()
 
 enable_testing()

@@ -15,9 +15,14 @@ class OutputBuffer
 public:
 
     template<typename ByteIter>
-    void add_bytes (ByteIter begin, ByteIter end)
+    void write_bytes (ByteIter begin, ByteIter end)
     {
         buffer.insert (buffer.end(), begin, end);
+    }
+    
+    void write_byte(uint8_t b)
+    {
+        buffer.push_back(b);
     }
 
     size_t size() const
@@ -39,12 +44,6 @@ private:
     std::vector<uint8_t> buffer;
 };
 
-inline OutputBuffer &operator << (OutputBuffer &buffer, uint8_t b)
-{
-    buffer.add_bytes (&b, &b + 1);
-    return buffer;
-}
-
 class InputBuffer
 {
 public:
@@ -65,6 +64,11 @@ public:
         fail_bit = false;
         std::copy (buffer.begin() + offset, buffer.begin() + offset + count, out);
         offset += count;
+    }
+    
+    void read_byte(uint8_t &b)
+    {
+        read_bytes(&b, 1);
     }
 
     size_t size() const
@@ -93,12 +97,6 @@ private:
 
     bool fail_bit = false;
 };
-
-inline InputBuffer &operator >> (InputBuffer &buffer, uint8_t &b)
-{
-    buffer.read_bytes (&b, 1);
-    return buffer;
-}
 
 }
 

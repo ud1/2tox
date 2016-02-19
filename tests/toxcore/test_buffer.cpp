@@ -24,7 +24,6 @@ TEST (buffer, test_pub_key_and_nonce)
             return num++;
         });
 
-
         output_buffer << public_key << nonce;
         ASSERT_EQ (32 + 24, output_buffer.size());
 
@@ -45,7 +44,7 @@ TEST (buffer, test_pub_key_and_nonce)
         input_buffer >> public_key2 >> nonce2;
         ASSERT_FALSE (input_buffer.fail());
 
-        uint8_t b;
+        bitox::PacketType b;
         input_buffer >> b;
         ASSERT_TRUE (input_buffer.fail());
         ASSERT_TRUE (input_buffer.eof());

@@ -7,7 +7,7 @@
 namespace bitox
 {
     
-enum PacketType
+enum PacketType : uint8_t
 {
     // Ping request packet ID
     NET_PACKET_PING_REQUEST = 0,
@@ -53,6 +53,20 @@ enum PacketType
     NET_PACKET_ONION_RECV_1 = 142,
 };
 
+inline OutputBuffer &operator << (OutputBuffer &buffer, const PacketType packet_type)
+{
+    buffer.write_byte(packet_type);
+    return buffer;
+}
+
+inline InputBuffer &operator >> (InputBuffer &buffer, PacketType &packet_type)
+{
+    uint8_t b;
+    buffer.read_byte (b);
+    packet_type = (PacketType) b;
+    return buffer;
+}
+
 constexpr size_t PUBLIC_KEY_LEN = 32;
 constexpr size_t SHARED_KEY_LEN = 32;
 constexpr size_t NONCE_LEN = 24;
@@ -65,7 +79,7 @@ struct PublicKey
 
 inline OutputBuffer &operator << (OutputBuffer &buffer, const PublicKey &public_key)
 {
-    buffer.add_bytes (public_key.data.begin(), public_key.data.end());
+    buffer.write_bytes (public_key.data.begin(), public_key.data.end());
     return buffer;
 }
 
@@ -83,7 +97,7 @@ struct Nonce
 
 inline OutputBuffer &operator << (OutputBuffer &buffer, const Nonce &nonce)
 {
-    buffer.add_bytes (nonce.data.begin(), nonce.data.end());
+    buffer.write_bytes (nonce.data.begin(), nonce.data.end());
     return buffer;
 }
 
@@ -111,13 +125,13 @@ struct ToxHeader
 
 inline OutputBuffer &operator << (OutputBuffer &buffer, const ToxHeader &header)
 {
-    buffer << (uint8_t) header.packet_type << header.public_key << header.nonce;
+    buffer << header.packet_type << header.public_key << header.nonce;
     return buffer;
 }
 
 inline InputBuffer &operator >> (InputBuffer &buffer, ToxHeader &header)
 {
-    buffer >> (uint8_t &) header.packet_type >> header.public_key >> header.nonce;
+    buffer >> header.packet_type >> header.public_key >> header.nonce;
     return buffer;
 }
 

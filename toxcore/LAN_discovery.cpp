@@ -31,6 +31,8 @@
 #include <cstring>
 #include <cstdlib>
 
+#include "protocol.hpp"
+
 /* Used for get_broadcast(). */
 #ifdef __linux
 #include <sys/ioctl.h>
@@ -41,6 +43,7 @@
 
 #define MAX_INTERFACES 16
 
+using namespace bitox;
 
 static int     broadcast_count = -1;
 static IP_Port broadcast_ip_port[MAX_INTERFACES];

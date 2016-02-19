@@ -37,6 +37,8 @@
 #include "ping_array.hpp"
 #include <cstring>
 
+#include "protocol.hpp"
+
 #define PING_NUM_MAX 512
 
 /* Maximum newly announced nodes to ping per TIME_TO_PING seconds. */
@@ -45,6 +47,7 @@
 /* Ping newly announced nodes to ping per TIME_TO_PING seconds*/
 #define TIME_TO_PING 2
 
+using namespace bitox;
 
 struct PING {
     DHT *dht;

@@ -45,6 +45,7 @@
 #include "LAN_discovery.hpp"
 #include "misc_tools.hpp"
 #include "util.hpp"
+#include "protocol.hpp"
 
 /* The timeout after which a node is discarded completely. */
 #define KILL_NODE_TIMEOUT (BAD_NODE_TIMEOUT + PING_INTERVAL)
@@ -64,6 +65,8 @@
 
 /* Number of get node requests to send to quickly find close nodes. */
 #define MAX_BOOTSTRAP_TIMES 5
+
+using namespace bitox;
 
 /* Compares pk1 and pk2 with pk.
  *

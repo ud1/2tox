@@ -7,6 +7,10 @@
 #include <string.h>
 #include <limits>
 
+#include "protocol.hpp"
+
+using namespace bitox;
+
 #if !(crypto_box_BEFORENMBYTES >= crypto_secretbox_KEYBYTES)
   #error "crypto_box_beforenm will not work correctly"
 #endif

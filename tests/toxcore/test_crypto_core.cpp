@@ -1,8 +1,11 @@
 #include <gtest/gtest.h>
+#include <toxcore/protocol.hpp>
 #include <toxcore/crypto_core.hpp>
 #include <sodium.h>
 
 #include <algorithm>
+
+using namespace bitox;
 
 std::string nonce_to_string(uint8_t* nonce) {
     char hex[2*crypto_box_NONCEBYTES+1];

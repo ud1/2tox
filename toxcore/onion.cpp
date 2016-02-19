@@ -25,6 +25,7 @@
 
 #include "onion.hpp"
 #include "util.hpp"
+#include "protocol.hpp"
 #include <cstring>
 
 #define RETURN_1 ONION_RETURN_1
@@ -35,6 +36,8 @@
 #define SEND_3 ONION_SEND_3
 #define SEND_2 ONION_SEND_2
 #define SEND_1 ONION_SEND_1
+
+using namespace bitox;
 
 /* Change symmetric keys every 2 hours to make paths expire eventually. */
 #define KEY_REFRESH_INTERVAL (2 * 60 * 60)

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <toxcore/buffer.hpp>
+#include <toxcore/protocol.hpp>
 
 #include <algorithm>
 

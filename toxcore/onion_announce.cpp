@@ -26,6 +26,7 @@
 #include "onion_announce.hpp"
 #include "LAN_discovery.hpp"
 #include "util.hpp"
+#include "protocol.hpp"
 
 #include <cstring>
 
@@ -35,6 +36,8 @@
 
 #define DATA_REQUEST_MIN_SIZE ONION_DATA_REQUEST_MIN_SIZE
 #define DATA_REQUEST_MIN_SIZE_RECV (DATA_REQUEST_MIN_SIZE + ONION_RETURN_3)
+
+using namespace bitox;
 
 /* Create an onion announce request packet in packet of max_packet_length (recommended size ONION_ANNOUNCE_REQUEST_SIZE).
  *

@@ -32,6 +32,10 @@
 #include "math.h"
 #include "logger.hpp"
 
+#include "protocol.hpp"
+
+using namespace bitox;
+
 static uint8_t crypt_connection_id_not_valid(const Net_Crypto *c, int crypt_connection_id)
 {
     if ((uint32_t)crypt_connection_id >= c->crypto_connections_length)

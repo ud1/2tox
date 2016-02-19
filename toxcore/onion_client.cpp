@@ -27,11 +27,14 @@
 #include "onion_client.hpp"
 #include "util.hpp"
 #include "LAN_discovery.hpp"
+#include "protocol.hpp"
 
 /* defines for the array size and
    timeout for onion announce packets. */
 #define ANNOUNCE_ARRAY_SIZE 256
 #define ANNOUNCE_TIMEOUT 10
+
+using namespace bitox;
 
 /* Add a node to the path_nodes bootstrap array.
  *

@@ -4,25 +4,11 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
-#include <array>
 #include <bitset>
 #include <algorithm>
 
 namespace bitox
 {
-
-constexpr size_t PUBLIC_KEY_LEN = 32;
-constexpr size_t NONCE_LEN = 24;
-
-struct PublicKey
-{
-    std::array<uint8_t, PUBLIC_KEY_LEN> data = {};
-};
-
-struct Nonce
-{
-    std::array<uint8_t, NONCE_LEN> data = {};
-};
 
 class OutputBuffer
 {
@@ -52,18 +38,6 @@ public:
 private:
     std::vector<uint8_t> buffer;
 };
-
-inline OutputBuffer &operator << (OutputBuffer &buffer, const PublicKey &public_key)
-{
-    buffer.add_bytes (public_key.data.begin(), public_key.data.end());
-    return buffer;
-}
-
-inline OutputBuffer &operator << (OutputBuffer &buffer, const Nonce &nonce)
-{
-    buffer.add_bytes (nonce.data.begin(), nonce.data.end());
-    return buffer;
-}
 
 inline OutputBuffer &operator << (OutputBuffer &buffer, uint8_t b)
 {
@@ -119,18 +93,6 @@ private:
 
     bool fail_bit = false;
 };
-
-inline InputBuffer &operator >> (InputBuffer &buffer, PublicKey &public_key)
-{
-    buffer.read_bytes (public_key.data.begin(), public_key.data.size());
-    return buffer;
-}
-
-inline InputBuffer &operator >> (InputBuffer &buffer, Nonce &nonce)
-{
-    buffer.read_bytes (nonce.data.begin(), nonce.data.size());
-    return buffer;
-}
 
 inline InputBuffer &operator >> (InputBuffer &buffer, uint8_t &b)
 {

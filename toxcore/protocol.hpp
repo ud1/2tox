@@ -2,6 +2,8 @@
 #define PROTOCOL_HPP
 
 #include <array>
+#include <memory>
+
 #include "buffer.hpp"
 
 namespace bitox
@@ -53,87 +55,59 @@ enum PacketType : uint8_t
     NET_PACKET_ONION_RECV_1 = 142,
 };
 
-inline OutputBuffer &operator << (OutputBuffer &buffer, const PacketType packet_type)
-{
-    buffer.write_byte(packet_type);
-    return buffer;
-}
-
-inline InputBuffer &operator >> (InputBuffer &buffer, PacketType &packet_type)
-{
-    uint8_t b;
-    buffer.read_byte (b);
-    packet_type = (PacketType) b;
-    return buffer;
-}
-
 constexpr size_t PUBLIC_KEY_LEN = 32;
-constexpr size_t SHARED_KEY_LEN = 32;
+constexpr size_t SECRET_KEY_LEN = 32;
 constexpr size_t NONCE_LEN = 24;
 
-// ----- PublicKey
 struct PublicKey
 {
     std::array<uint8_t, PUBLIC_KEY_LEN> data = {};
 };
 
-inline OutputBuffer &operator << (OutputBuffer &buffer, const PublicKey &public_key)
-{
-    buffer.write_bytes (public_key.data.begin(), public_key.data.end());
-    return buffer;
-}
-
-inline InputBuffer &operator >> (InputBuffer &buffer, PublicKey &public_key)
-{
-    buffer.read_bytes (public_key.data.begin(), public_key.data.size());
-    return buffer;
-}
-
-// ----- Nonce
 struct Nonce
 {
-    std::array<uint8_t, NONCE_LEN> data = {};
+    std::array<uint8_t, NONCE_LEN> data;
+    
+    static Nonce create_empty();
+    static Nonce create_random();
+private:
+    Nonce() {}
 };
 
-inline OutputBuffer &operator << (OutputBuffer &buffer, const Nonce &nonce)
+struct SecretKey
 {
-    buffer.write_bytes (nonce.data.begin(), nonce.data.end());
-    return buffer;
-}
-
-inline InputBuffer &operator >> (InputBuffer &buffer, Nonce &nonce)
-{
-    buffer.read_bytes (nonce.data.begin(), nonce.data.size());
-    return buffer;
-}
-
-// ----- SharedKey
-
-struct SharedKey
-{
-    std::array<uint8_t, SHARED_KEY_LEN> data = {};
+    std::array<uint8_t, SECRET_KEY_LEN> data = {};
 };
 
-// ----- ToxHeader
-
-struct ToxHeader
+class CryptoManager
 {
-    PacketType packet_type;
-    PublicKey public_key;
-    Nonce nonce;
+public:
+    CryptoManager(const SecretKey &secret_key, const PublicKey &self_public_key);
+    bool encrypt_buffer(const BufferDataRange &data_to_encrypt, const PublicKey &recipient_public_key, const Nonce &nonce, Buffer &out_encrypted_data) const;
+    bool decrypt_buffer(const BufferDataRange &data_to_decrypt, const PublicKey &sender_public_key, const Nonce &nonce, Buffer &out_decrypted_data) const;
+    const PublicKey &get_self_public_key() const;
+    
+private:
+    class CryptoManagerImpl;
+    std::unique_ptr<CryptoManagerImpl> pimpl;
 };
 
-inline OutputBuffer &operator << (OutputBuffer &buffer, const ToxHeader &header)
-{
-    buffer << header.packet_type << header.public_key << header.nonce;
-    return buffer;
-}
 
-inline InputBuffer &operator >> (InputBuffer &buffer, ToxHeader &header)
+// ------------------------- Packets --------------------------------
+struct PingRequestData
 {
-    buffer >> header.packet_type >> header.public_key >> header.nonce;
-    return buffer;
-}
+    uint64_t ping_id;
+};
+
+class IncomingPacketListener
+{
+public:
+    virtual void onPingRequest(const PublicKey &sender_public_key, const PingRequestData &data) = 0;
+};
+
+
+bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingRequestData &data, OutputBuffer &out_packet);
+bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &packet, IncomingPacketListener &listener);
 
 }
 #endif

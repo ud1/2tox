@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
-#include <toxcore/protocol.hpp>
+#include <toxcore/protocol_impl.hpp>
 
 #include <algorithm>
+
+using namespace bitox::impl;
 
 TEST (buffer, test_pub_key_and_nonce)
 {
@@ -10,7 +12,7 @@ TEST (buffer, test_pub_key_and_nonce)
 
         bitox::OutputBuffer output_buffer;
         bitox::PublicKey public_key;
-        bitox::Nonce nonce;
+        bitox::Nonce nonce = bitox::Nonce::create_empty();
 
         uint8_t num = 0;
         std::generate (public_key.data.begin(), public_key.data.end(), [&num]()
@@ -39,7 +41,7 @@ TEST (buffer, test_pub_key_and_nonce)
 
         bitox::InputBuffer input_buffer (output_buffer.begin(), output_buffer.size());
         bitox::PublicKey public_key2;
-        bitox::Nonce nonce2;
+        bitox::Nonce nonce2 = bitox::Nonce::create_empty();
 
         input_buffer >> public_key2 >> nonce2;
         ASSERT_FALSE (input_buffer.fail());
@@ -66,7 +68,7 @@ TEST (pub_key_and_nonce, test_is_zero_initialized)
     {
         SCOPED_TRACE ("Public key and nonce are zero initialized");
         bitox::PublicKey public_key;
-        bitox::Nonce nonce;
+        bitox::Nonce nonce = bitox::Nonce::create_empty();
 
         for (uint8_t i = 0; i < 32; ++i)
         {

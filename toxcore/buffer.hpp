@@ -10,6 +10,9 @@
 namespace bitox
 {
 
+typedef std::vector<uint8_t> Buffer;
+typedef std::pair<const uint8_t *, const uint8_t *> BufferDataRange;
+    
 class OutputBuffer
 {
 public:
@@ -39,6 +42,11 @@ public:
     {
         return begin() + size();
     }
+    
+    BufferDataRange get_buffer_data() const
+    {
+        return std::make_pair(begin(), end());
+    }
 
 private:
     std::vector<uint8_t> buffer;
@@ -50,6 +58,11 @@ public:
     explicit InputBuffer (const uint8_t *buf, size_t size)
     {
         buffer.insert (buffer.end(), buf, buf + size);
+    }
+    
+    explicit InputBuffer (Buffer &&buf)
+    {
+        buffer = std::move(buf);
     }
 
     template<typename ByteIter>
@@ -89,6 +102,11 @@ public:
     bool fail() const
     {
         return fail_bit;
+    }
+    
+    BufferDataRange get_buffer_data() const
+    {
+        return std::make_pair(buffer.data() + offset, buffer.data() + buffer.size());
     }
 
 private:

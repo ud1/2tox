@@ -67,6 +67,11 @@ constexpr size_t MAX_SENT_NODES = 4;
 struct PublicKey
 {
     std::array<uint8_t, PUBLIC_KEY_LEN> data = {};
+    
+    bool operator == (const PublicKey &o) const
+    {
+        return data == o.data;
+    }
 };
 
 struct Nonce
@@ -88,6 +93,7 @@ class CryptoManager
 {
 public:
     CryptoManager (const SecretKey &secret_key, const PublicKey &self_public_key);
+    ~CryptoManager();
     bool encrypt_buffer (const BufferDataRange &data_to_encrypt, const PublicKey &recipient_public_key, const Nonce &nonce, Buffer &out_encrypted_data) const;
     bool decrypt_buffer (const BufferDataRange &data_to_decrypt, const PublicKey &sender_public_key, const Nonce &nonce, Buffer &out_decrypted_data) const;
     const PublicKey &get_self_public_key() const;
@@ -177,7 +183,7 @@ bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKe
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingResponseData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodesRequestData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const SendNodesData &data, OutputBuffer &out_packet);
-bool processIncomingPacket (const CryptoManager &crypto_manager, InputBuffer &packet, IncomingPacketListener &listener);
+bool processIncomingPacket (const CryptoManager &crypto_manager, InputBuffer &&packet, IncomingPacketListener &listener);
 
 }
 #endif

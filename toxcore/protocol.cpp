@@ -88,13 +88,13 @@ static bool read_node_format (InputBuffer &buffer, dht::NodeFormat &out_node_for
     bitox::impl::network::ToxFamily tox_family;
     buffer.read_byte((uint8_t &) tox_family);
     
-    if (tox_family == bitox::impl::network::TOX_AF_INET6 || bitox::impl::network::TOX_TCP_INET6)
+    if (tox_family == bitox::impl::network::TOX_AF_INET6 || tox_family == bitox::impl::network::TOX_TCP_INET6)
     {
         out_node_format.ip_port.ip.family = bitox::impl::network::from_tox_family(tox_family);
         read_ipv6_address(buffer, out_node_format.ip_port.ip.address);
         buffer >> uint16_adapter(out_node_format.ip_port.port) >> out_node_format.public_key;
     }
-    else if (tox_family == bitox::impl::network::TOX_AF_INET || bitox::impl::network::TOX_TCP_INET)
+    else if (tox_family == bitox::impl::network::TOX_AF_INET || tox_family == bitox::impl::network::TOX_TCP_INET)
     {
         out_node_format.ip_port.ip.family = bitox::impl::network::from_tox_family(tox_family);
         read_ipv4_address(buffer, out_node_format.ip_port.ip.address);
@@ -235,7 +235,7 @@ static bool processSetNodesDataPacket(const ToxHeader header, InputBuffer &decry
     listener.onSendNodes(header.public_key, send_nodes);
 }
 
-bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &packet, IncomingPacketListener &listener)
+bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &&packet, IncomingPacketListener &listener)
 {
     ToxHeader header;
     if ((packet >> header).fail())

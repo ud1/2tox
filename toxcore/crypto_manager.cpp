@@ -57,6 +57,7 @@ namespace bitox
     
     
     CryptoManager::CryptoManager(const SecretKey &secret_key, const PublicKey &self_public_key) : pimpl(new CryptoManagerImpl(secret_key, self_public_key)) {}
+    CryptoManager::~CryptoManager() {}
     
     bool CryptoManager::encrypt_buffer(const BufferDataRange &data_to_encrypt, const PublicKey &recipient_public_key, const Nonce &nonce, Buffer &out_encrypted_data) const
     {

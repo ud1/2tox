@@ -50,6 +50,14 @@ bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey
     return generateOutgoingPacket(crypto_manager, data_to_encrypt, recipient_public_key, out_packet);
 }
 
+bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingResponseData &data, OutputBuffer &out_packet)
+{
+    OutputBuffer data_to_encrypt;
+    data_to_encrypt << NET_PACKET_PING_RESPONSE << const_uint64_adapter(data.ping_id);
+    
+    return generateOutgoingPacket(crypto_manager, data_to_encrypt, recipient_public_key, out_packet);
+}
+
 static bool processIncomingPingRequestDataPacket(const ToxHeader header, InputBuffer &decrypted_buffer, IncomingPacketListener &listener)
 {
     PacketType packet_type;
@@ -62,6 +70,20 @@ static bool processIncomingPingRequestDataPacket(const ToxHeader header, InputBu
         return false;
     
     listener.onPingRequest(header.public_key, ping_request);
+}
+
+static bool processIncomingPingResponseDataPacket(const ToxHeader header, InputBuffer &decrypted_buffer, IncomingPacketListener &listener)
+{
+    PacketType packet_type;
+    PingResponseData ping_response;
+    
+    if ((decrypted_buffer >> packet_type >> uint64_adapter(ping_response.ping_id)).fail())
+        return false;
+    
+    if (packet_type != NET_PACKET_PING_RESPONSE)
+        return false;
+    
+    listener.onPingResponse(header.public_key, ping_response);
 }
 
 bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &packet, IncomingPacketListener &listener)
@@ -80,6 +102,9 @@ bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &pac
     {
         case NET_PACKET_PING_REQUEST:
             return processIncomingPingRequestDataPacket(header, decrypted_buffer, listener);
+            
+        case NET_PACKET_PING_RESPONSE:
+            return processIncomingPingResponseDataPacket(header, decrypted_buffer, listener);
     }
     
     return false;

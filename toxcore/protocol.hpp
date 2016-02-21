@@ -99,14 +99,21 @@ struct PingRequestData
     uint64_t ping_id;
 };
 
+struct PingResponseData
+{
+    uint64_t ping_id;
+};
+
 class IncomingPacketListener
 {
 public:
-    virtual void onPingRequest(const PublicKey &sender_public_key, const PingRequestData &data) = 0;
+    virtual void onPingRequest(const PublicKey &sender_public_key, const PingRequestData &data) {}
+    virtual void onPingResponse(const PublicKey &sender_public_key, const PingResponseData &data) {}
 };
 
 
 bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingRequestData &data, OutputBuffer &out_packet);
+bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingResponseData &data, OutputBuffer &out_packet);
 bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &packet, IncomingPacketListener &listener);
 
 }

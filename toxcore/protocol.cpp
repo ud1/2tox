@@ -28,7 +28,7 @@ Nonce Nonce::create_random()
     return result;
 }
 
-static bool generateOutgoingPacket(const CryptoManager &crypto_manager, OutputBuffer data_to_encrypt, const PublicKey &recipient_public_key, OutputBuffer &out_packet)
+static bool generateOutgoingPacket(const CryptoManager &crypto_manager, PacketType packetType, OutputBuffer data_to_encrypt, const PublicKey &recipient_public_key, OutputBuffer &out_packet)
 {
     Nonce nonce = Nonce::create_random();
     
@@ -37,7 +37,7 @@ static bool generateOutgoingPacket(const CryptoManager &crypto_manager, OutputBu
         return false;
         
     out_packet = OutputBuffer();
-    out_packet << NET_PACKET_PING_REQUEST << crypto_manager.get_self_public_key() << nonce;
+    out_packet << packetType << crypto_manager.get_self_public_key() << nonce;
     out_packet << encrypted_data;
     return true;
 }
@@ -47,7 +47,7 @@ bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey
     OutputBuffer data_to_encrypt;
     data_to_encrypt << NET_PACKET_PING_REQUEST << const_uint64_adapter(data.ping_id);
     
-    return generateOutgoingPacket(crypto_manager, data_to_encrypt, recipient_public_key, out_packet);
+    return generateOutgoingPacket(crypto_manager, NET_PACKET_PING_REQUEST, data_to_encrypt, recipient_public_key, out_packet);
 }
 
 bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingResponseData &data, OutputBuffer &out_packet)
@@ -55,7 +55,15 @@ bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey
     OutputBuffer data_to_encrypt;
     data_to_encrypt << NET_PACKET_PING_RESPONSE << const_uint64_adapter(data.ping_id);
     
-    return generateOutgoingPacket(crypto_manager, data_to_encrypt, recipient_public_key, out_packet);
+    return generateOutgoingPacket(crypto_manager, NET_PACKET_PING_RESPONSE, data_to_encrypt, recipient_public_key, out_packet);
+}
+
+bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodesRequestData &data, OutputBuffer &out_packet)
+{
+    OutputBuffer data_to_encrypt;
+    data_to_encrypt << data.client_id << const_uint64_adapter(data.ping_id);
+    
+    return generateOutgoingPacket(crypto_manager, NET_PACKET_GET_NODES, data_to_encrypt, recipient_public_key, out_packet);
 }
 
 static bool processIncomingPingRequestDataPacket(const ToxHeader header, InputBuffer &decrypted_buffer, IncomingPacketListener &listener)
@@ -86,6 +94,16 @@ static bool processIncomingPingResponseDataPacket(const ToxHeader header, InputB
     listener.onPingResponse(header.public_key, ping_response);
 }
 
+static bool processGetNodesRequestDataPacket(const ToxHeader header, InputBuffer &decrypted_buffer, IncomingPacketListener &listener)
+{
+    GetNodesRequestData get_nodes_request;
+    
+    if ((decrypted_buffer >> get_nodes_request.client_id >> uint64_adapter(get_nodes_request.ping_id)).fail())
+        return false;
+       
+    listener.onGetNodesRequest(header.public_key, get_nodes_request);
+}
+
 bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &packet, IncomingPacketListener &listener)
 {
     ToxHeader header;
@@ -105,6 +123,9 @@ bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &pac
             
         case NET_PACKET_PING_RESPONSE:
             return processIncomingPingResponseDataPacket(header, decrypted_buffer, listener);
+            
+        case NET_PACKET_GET_NODES:
+            return processGetNodesRequestDataPacket(header, decrypted_buffer, listener);
     }
     
     return false;

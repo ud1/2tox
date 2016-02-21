@@ -104,16 +104,24 @@ struct PingResponseData
     uint64_t ping_id;
 };
 
+struct GetNodesRequestData
+{
+    PublicKey client_id;
+    uint64_t ping_id;
+};
+
 class IncomingPacketListener
 {
 public:
     virtual void onPingRequest(const PublicKey &sender_public_key, const PingRequestData &data) {}
     virtual void onPingResponse(const PublicKey &sender_public_key, const PingResponseData &data) {}
+    virtual void onGetNodesRequest(const PublicKey &sender_public_key, const GetNodesRequestData &data) {}
 };
 
 
 bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingRequestData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingResponseData &data, OutputBuffer &out_packet);
+bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodesRequestData &data, OutputBuffer &out_packet);
 bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &packet, IncomingPacketListener &listener);
 
 }

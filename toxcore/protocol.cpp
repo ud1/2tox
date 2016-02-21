@@ -28,6 +28,86 @@ Nonce Nonce::create_random()
     return result;
 }
 
+static void write_ipv6_address(OutputBuffer &buffer, const boost::asio::ip::address &address)
+{
+    boost::asio::ip::address_v6::bytes_type ip6_bytes = address.to_v6().to_bytes();
+    buffer.write_bytes(ip6_bytes.begin(), ip6_bytes.end());
+}
+
+static void write_ipv4_address(OutputBuffer &buffer, const boost::asio::ip::address &address)
+{
+    boost::asio::ip::address_v4::bytes_type ip4_bytes = address.to_v4().to_bytes();
+    buffer.write_bytes(ip4_bytes.begin(), ip4_bytes.end());
+}
+
+static void read_ipv6_address(InputBuffer &buffer, boost::asio::ip::address &out_address)
+{
+    boost::asio::ip::address_v6::bytes_type ip6_bytes;
+    buffer.read_bytes(ip6_bytes.begin(), ip6_bytes.size());
+    out_address = boost::asio::ip::address(boost::asio::ip::address_v6(ip6_bytes));
+}
+
+static void read_ipv4_address(InputBuffer &buffer, boost::asio::ip::address &out_address)
+{
+    boost::asio::ip::address_v4::bytes_type ip4_bytes;
+    buffer.read_bytes(ip4_bytes.begin(), ip4_bytes.size());
+    out_address = boost::asio::ip::address(boost::asio::ip::address_v4(ip4_bytes));
+}
+
+static bool write_node_format (OutputBuffer &buffer, const dht::NodeFormat &node_format)
+{
+    bitox::impl::network::ToxFamily tox_family = bitox::impl::network::to_tox_family(node_format.ip_port.ip.family);
+    
+    if (node_format.ip_port.ip.family == bitox::network::Family::FAMILY_AF_INET6 || node_format.ip_port.ip.family == bitox::network::Family::FAMILY_TCP_INET6)
+    {
+        assert(node_format.ip_port.ip.address.is_v6() && "Address must be IPv6");
+        
+        buffer.write_byte(tox_family);
+        write_ipv6_address(buffer, node_format.ip_port.ip.address);
+        buffer << const_uint16_adapter(node_format.ip_port.port) << node_format.public_key;
+    }
+    else if (node_format.ip_port.ip.family == bitox::network::Family::FAMILY_AF_INET || node_format.ip_port.ip.family == bitox::network::Family::FAMILY_TCP_INET)
+    {
+        assert(node_format.ip_port.ip.address.is_v4() && "Address must be IPv4");
+        
+        buffer.write_byte(tox_family);
+        write_ipv4_address(buffer, node_format.ip_port.ip.address);
+        buffer << const_uint16_adapter(node_format.ip_port.port) << node_format.public_key;
+    }
+    else
+    {
+        assert(false && "Invalid node_format");
+        return false;
+    }
+    
+    return true;
+}
+
+static bool read_node_format (InputBuffer &buffer, dht::NodeFormat &out_node_format)
+{
+    bitox::impl::network::ToxFamily tox_family;
+    buffer.read_byte((uint8_t &) tox_family);
+    
+    if (tox_family == bitox::impl::network::TOX_AF_INET6 || bitox::impl::network::TOX_TCP_INET6)
+    {
+        out_node_format.ip_port.ip.family = bitox::impl::network::from_tox_family(tox_family);
+        read_ipv6_address(buffer, out_node_format.ip_port.ip.address);
+        buffer >> uint16_adapter(out_node_format.ip_port.port) >> out_node_format.public_key;
+    }
+    else if (tox_family == bitox::impl::network::TOX_AF_INET || bitox::impl::network::TOX_TCP_INET)
+    {
+        out_node_format.ip_port.ip.family = bitox::impl::network::from_tox_family(tox_family);
+        read_ipv4_address(buffer, out_node_format.ip_port.ip.address);
+        buffer >> uint16_adapter(out_node_format.ip_port.port) >> out_node_format.public_key;
+    }
+    else
+    {
+        return false;
+    }
+    
+    return !buffer.fail();
+}
+
 static bool generateOutgoingPacket(const CryptoManager &crypto_manager, PacketType packetType, OutputBuffer data_to_encrypt, const PublicKey &recipient_public_key, OutputBuffer &out_packet)
 {
     Nonce nonce = Nonce::create_random();
@@ -50,22 +130,6 @@ bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey
     return generateOutgoingPacket(crypto_manager, NET_PACKET_PING_REQUEST, data_to_encrypt, recipient_public_key, out_packet);
 }
 
-bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingResponseData &data, OutputBuffer &out_packet)
-{
-    OutputBuffer data_to_encrypt;
-    data_to_encrypt << NET_PACKET_PING_RESPONSE << const_uint64_adapter(data.ping_id);
-    
-    return generateOutgoingPacket(crypto_manager, NET_PACKET_PING_RESPONSE, data_to_encrypt, recipient_public_key, out_packet);
-}
-
-bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodesRequestData &data, OutputBuffer &out_packet)
-{
-    OutputBuffer data_to_encrypt;
-    data_to_encrypt << data.client_id << const_uint64_adapter(data.ping_id);
-    
-    return generateOutgoingPacket(crypto_manager, NET_PACKET_GET_NODES, data_to_encrypt, recipient_public_key, out_packet);
-}
-
 static bool processIncomingPingRequestDataPacket(const ToxHeader header, InputBuffer &decrypted_buffer, IncomingPacketListener &listener)
 {
     PacketType packet_type;
@@ -78,6 +142,14 @@ static bool processIncomingPingRequestDataPacket(const ToxHeader header, InputBu
         return false;
     
     listener.onPingRequest(header.public_key, ping_request);
+}
+
+bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingResponseData &data, OutputBuffer &out_packet)
+{
+    OutputBuffer data_to_encrypt;
+    data_to_encrypt << NET_PACKET_PING_RESPONSE << const_uint64_adapter(data.ping_id);
+    
+    return generateOutgoingPacket(crypto_manager, NET_PACKET_PING_RESPONSE, data_to_encrypt, recipient_public_key, out_packet);
 }
 
 static bool processIncomingPingResponseDataPacket(const ToxHeader header, InputBuffer &decrypted_buffer, IncomingPacketListener &listener)
@@ -94,6 +166,14 @@ static bool processIncomingPingResponseDataPacket(const ToxHeader header, InputB
     listener.onPingResponse(header.public_key, ping_response);
 }
 
+bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodesRequestData &data, OutputBuffer &out_packet)
+{
+    OutputBuffer data_to_encrypt;
+    data_to_encrypt << data.client_id << const_uint64_adapter(data.ping_id);
+    
+    return generateOutgoingPacket(crypto_manager, NET_PACKET_GET_NODES, data_to_encrypt, recipient_public_key, out_packet);
+}
+
 static bool processGetNodesRequestDataPacket(const ToxHeader header, InputBuffer &decrypted_buffer, IncomingPacketListener &listener)
 {
     GetNodesRequestData get_nodes_request;
@@ -102,6 +182,57 @@ static bool processGetNodesRequestDataPacket(const ToxHeader header, InputBuffer
         return false;
        
     listener.onGetNodesRequest(header.public_key, get_nodes_request);
+}
+
+bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const SendNodesData &data, OutputBuffer &out_packet)
+{
+    if (data.nodes.empty())
+        return false;
+    
+    if (data.nodes.size() > MAX_SENT_NODES)
+    {
+        assert(false && "Invalid SendNodesData");
+        return false;
+    }
+        
+    OutputBuffer data_to_encrypt;
+    data_to_encrypt.write_byte((uint8_t) data.nodes.size());
+    
+    for (const dht::NodeFormat &node_format : data.nodes)
+    {
+        if (!write_node_format(data_to_encrypt, node_format))
+            return false;
+    }
+    
+    data_to_encrypt << const_uint64_adapter(data.ping_id);
+    
+    return generateOutgoingPacket(crypto_manager, NET_PACKET_SEND_NODES_IPV6, data_to_encrypt, recipient_public_key, out_packet);
+}
+
+static bool processSetNodesDataPacket(const ToxHeader header, InputBuffer &decrypted_buffer, IncomingPacketListener &listener)
+{
+    SendNodesData send_nodes;
+    uint8_t nodes_size;
+    if (decrypted_buffer.read_byte(nodes_size).fail())
+        return false;
+    
+    if (nodes_size == 0 || nodes_size > MAX_SENT_NODES)
+        return false;
+    
+    for (size_t i = 0; i < nodes_size; ++i)
+    {
+        dht::NodeFormat node_format;
+        
+        if (!read_node_format(decrypted_buffer, node_format))
+            return false;
+        
+        send_nodes.nodes.push_back(node_format);
+    }
+    
+    if ((decrypted_buffer >> uint64_adapter(send_nodes.ping_id)).fail())
+        return false;
+       
+    listener.onSendNodes(header.public_key, send_nodes);
 }
 
 bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &packet, IncomingPacketListener &listener)
@@ -126,6 +257,9 @@ bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &pac
             
         case NET_PACKET_GET_NODES:
             return processGetNodesRequestDataPacket(header, decrypted_buffer, listener);
+            
+        case NET_PACKET_SEND_NODES_IPV6:
+            return processSetNodesDataPacket(header, decrypted_buffer, listener);
     }
     
     return false;

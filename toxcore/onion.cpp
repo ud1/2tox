@@ -25,7 +25,7 @@
 
 #include "onion.hpp"
 #include "util.hpp"
-#include "protocol.hpp"
+#include "protocol_impl.hpp"
 #include <cstring>
 
 #define RETURN_1 ONION_RETURN_1
@@ -56,7 +56,7 @@ static void ip_pack(uint8_t *data, IP source)
 
     data[0] = source.family;
 
-    if (source.family == TOX_AF_INET || source.family == TOX_TCP_INET) {
+    if (source.family == bitox::impl::network::TOX_AF_INET || source.family == bitox::impl::network::TOX_TCP_INET) {
         memset(data + 1, 0, SIZE_IP6);
         memcpy(data + 1, source.ip4.uint8, SIZE_IP4);
     } else {
@@ -72,7 +72,7 @@ static int ip_unpack(IP *target, const uint8_t *data, unsigned int data_size, _B
 
     target->family = data[0];
 
-    if (target->family == TOX_AF_INET || target->family == TOX_TCP_INET) {
+    if (target->family == bitox::impl::network::TOX_AF_INET || target->family == bitox::impl::network::TOX_TCP_INET) {
         memcpy(target->ip4.uint8, data + 1, SIZE_IP4);
     } else {
         memcpy(target->ip6.uint8, data + 1, SIZE_IP6);

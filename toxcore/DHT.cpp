@@ -45,7 +45,7 @@
 #include "LAN_discovery.hpp"
 #include "misc_tools.hpp"
 #include "util.hpp"
-#include "protocol.hpp"
+#include "protocol_impl.hpp"
 
 /* The timeout after which a node is discarded completely. */
 #define KILL_NODE_TIMEOUT (BAD_NODE_TIMEOUT + PING_INTERVAL)
@@ -194,19 +194,19 @@ void DHT::get_shared_key_sent (uint8_t *shared_key, const uint8_t *public_key)
 void to_net_family (IP *ip)
 {
 	if (ip->family == AF_INET)
-		ip->family = TOX_AF_INET;
+		ip->family = bitox::impl::network::TOX_AF_INET;
 	else if (ip->family == AF_INET6)
-		ip->family = TOX_AF_INET6;
+		ip->family = bitox::impl::network::TOX_AF_INET6;
 }
 
 int to_host_family (IP *ip)
 {
-	if (ip->family == TOX_AF_INET)
+	if (ip->family == bitox::impl::network::TOX_AF_INET)
 	{
 		ip->family = AF_INET;
 		return 0;
 	}
-	else if (ip->family == TOX_AF_INET6)
+	else if (ip->family == bitox::impl::network::TOX_AF_INET6)
 	{
 		ip->family = AF_INET6;
 		return 0;
@@ -266,22 +266,22 @@ int pack_nodes (uint8_t *data, uint16_t length, const Node_format *nodes, uint16
 		if (nodes[i].ip_port.ip.family == AF_INET)
 		{
 			ipv6 = 0;
-			net_family = TOX_AF_INET;
+			net_family = bitox::impl::network::TOX_AF_INET;
 		}
 		else if (nodes[i].ip_port.ip.family == TCP_INET)
 		{
 			ipv6 = 0;
-			net_family = TOX_TCP_INET;
+			net_family = bitox::impl::network::TOX_TCP_INET;
 		}
 		else if (nodes[i].ip_port.ip.family == AF_INET6)
 		{
 			ipv6 = 1;
-			net_family = TOX_AF_INET6;
+			net_family = bitox::impl::network::TOX_AF_INET6;
 		}
 		else if (nodes[i].ip_port.ip.family == TCP_INET6)
 		{
 			ipv6 = 1;
-			net_family = TOX_TCP_INET6;
+			net_family = bitox::impl::network::TOX_TCP_INET6;
 		}
 		else
 		{
@@ -340,12 +340,12 @@ int unpack_nodes (Node_format *nodes, uint16_t max_num_nodes, uint16_t *processe
 		int ipv6 = -1;
 		uint8_t host_family;
 
-		if (data[len_processed] == TOX_AF_INET)
+		if (data[len_processed] == bitox::impl::network::TOX_AF_INET)
 		{
 			ipv6 = 0;
 			host_family = AF_INET;
 		}
-		else if (data[len_processed] == TOX_TCP_INET)
+		else if (data[len_processed] == bitox::impl::network::TOX_TCP_INET)
 		{
 			if (!tcp_enabled)
 				return -1;
@@ -353,12 +353,12 @@ int unpack_nodes (Node_format *nodes, uint16_t max_num_nodes, uint16_t *processe
 			ipv6 = 0;
 			host_family = TCP_INET;
 		}
-		else if (data[len_processed] == TOX_AF_INET6)
+		else if (data[len_processed] == bitox::impl::network::TOX_AF_INET6)
 		{
 			ipv6 = 1;
 			host_family = AF_INET6;
 		}
-		else if (data[len_processed] == TOX_TCP_INET6)
+		else if (data[len_processed] == bitox::impl::network::TOX_TCP_INET6)
 		{
 			if (!tcp_enabled)
 				return -1;

@@ -27,6 +27,7 @@
 #include "crypto_core.hpp"
 #include "network.hpp"
 #include "ping_array.hpp"
+#include "protocol.hpp"
 
 #include <sodium.h>
 #include <sodium/utils.h>
@@ -42,8 +43,6 @@
 
 #define MAX_CLOSE_TO_BOOTSTRAP_NODES 8
 
-/* The max number of nodes to send with send nodes. */
-#define MAX_SENT_NODES 4
 
 /* Ping timeout in seconds */
 #define PING_TIMEOUT 5
@@ -58,12 +57,6 @@
 #define PINGS_MISSED_NODE_GOES_BAD 1
 #define PING_ROUNDTRIP 2
 #define BAD_NODE_TIMEOUT (PING_INTERVAL + PINGS_MISSED_NODE_GOES_BAD * (PING_INTERVAL + PING_ROUNDTRIP))
-
-/* Redefinitions of variables for safe transfer over wire. */
-#define TOX_AF_INET 2
-#define TOX_AF_INET6 10
-#define TOX_TCP_INET 130
-#define TOX_TCP_INET6 138
 
 /* The number of "fake" friends to add (for optimization purposes and so our paths for the onion part are more random) */
 #define DHT_FAKE_FRIEND_NUMBER 2
@@ -163,7 +156,7 @@ struct DHT_Friend
 		int32_t number;
 	} callbacks[DHT_FRIEND_MAX_LOCKS];
 
-	Node_format to_bootstrap[MAX_SENT_NODES];
+	Node_format to_bootstrap[bitox::MAX_SENT_NODES];
 	unsigned int num_to_bootstrap;
 };
 

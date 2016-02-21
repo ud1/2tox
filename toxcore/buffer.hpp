@@ -66,22 +66,23 @@ public:
     }
 
     template<typename ByteIter>
-    void read_bytes (ByteIter *out, size_t count)
+    InputBuffer &read_bytes (ByteIter *out, size_t count)
     {
         if (fail_bit || eof() || count > size())
         {
             fail_bit = true;
-            return;
+            return *this;
         }
 
         fail_bit = false;
         std::copy (buffer.begin() + offset, buffer.begin() + offset + count, out);
         offset += count;
+        return *this;
     }
     
-    void read_byte(uint8_t &b)
+    InputBuffer &read_byte(uint8_t &b)
     {
-        read_bytes(&b, 1);
+        return read_bytes(&b, 1);
     }
 
     size_t size() const

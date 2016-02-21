@@ -37,7 +37,7 @@
 #ifdef __linux
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
-#include <linux/netdevice.h>
+//#include <linux/netdevice.h>
 #include <unistd.h>
 #endif
 

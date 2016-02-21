@@ -23,7 +23,19 @@ struct uint64_adapter
     uint64_t &value;
 };
 
-inline OutputBuffer &operator << (OutputBuffer &buffer, const const_uint64_adapter &val)
+struct const_uint16_adapter
+{
+    const_uint16_adapter(const uint16_t &value) : value(value) {}
+    const uint16_t &value;
+};
+
+struct uint16_adapter
+{
+    uint16_adapter(uint16_t &value) : value(value) {}
+    uint16_t &value;
+};
+
+inline OutputBuffer &operator << (OutputBuffer &buffer, const_uint64_adapter val)
 {
     const uint8_t *ptr = reinterpret_cast<const uint8_t *>(&val.value);
     buffer.write_bytes (ptr, ptr + sizeof(uint64_t));
@@ -37,6 +49,19 @@ inline InputBuffer &operator >> (InputBuffer &buffer, uint64_adapter val)
     return buffer;
 }
 
+inline OutputBuffer &operator << (OutputBuffer &buffer, const_uint16_adapter val)
+{
+    const uint8_t *ptr = reinterpret_cast<const uint8_t *>(&val.value);
+    buffer.write_bytes (ptr, ptr + sizeof(uint16_t));
+    return buffer;
+}
+
+inline InputBuffer &operator >> (InputBuffer &buffer, uint16_adapter val)
+{
+    uint8_t *ptr = reinterpret_cast<uint8_t *>(&val.value);
+    buffer.read_bytes(ptr, sizeof(uint16_t));
+    return buffer;
+}
 
 template<size_t N>
 OutputBuffer &operator << (OutputBuffer &buffer, const std::array<uint8_t, N> arr)
@@ -112,8 +137,57 @@ inline InputBuffer &operator >> (InputBuffer &buffer, ToxHeader &header)
     return buffer;
 }
 
-
+namespace network
+{
     
+enum ToxFamily : uint8_t
+{
+    TOX_FAMILY_NULL = 0,
+    TOX_AF_INET = 2,
+    TOX_AF_INET6 = 10,
+    TOX_TCP_INET = 130,
+    TOX_TCP_INET6 = 138
+};
+    
+inline ToxFamily to_tox_family(bitox::network::Family family)
+{
+    using namespace bitox::network;
+    
+    switch(family)
+    {
+        case Family::FAMILY_AF_INET:
+            return TOX_AF_INET;
+        case Family::FAMILY_AF_INET6:
+            return TOX_AF_INET6;
+        case Family::FAMILY_TCP_INET:
+            return TOX_TCP_INET;
+        case Family::FAMILY_TCP_INET6:
+            return TOX_TCP_INET6;
+        default:
+            return TOX_FAMILY_NULL;
+    }
+}
+
+inline bitox::network::Family from_tox_family(ToxFamily family)
+{
+    using namespace bitox::network;
+    
+    switch(family)
+    {
+        case TOX_AF_INET:
+            return Family::FAMILY_AF_INET;
+        case TOX_AF_INET6:
+            return Family::FAMILY_AF_INET6;
+        case TOX_TCP_INET:
+            return Family::FAMILY_TCP_INET;
+        case TOX_TCP_INET6:
+            return Family::FAMILY_TCP_INET6;
+        default:
+            return Family::FAMILY_NULL;
+    }
+}
+
+}
 }
 }
 

@@ -12,6 +12,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 
 find_package(Threads REQUIRED)
 find_package(Sodium REQUIRED)
+find_package(Boost COMPONENTS system REQUIRED)
 
 include(CMakeDependentOption)
 include(FeatureSummary)

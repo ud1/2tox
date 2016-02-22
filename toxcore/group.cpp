@@ -679,7 +679,7 @@ int add_groupchat(Group_Chats *g_c, uint8_t type)
     g->identifier[0] = type;
     g->peer_number = 0; /* Founder is peer 0. */
     memcpy(g->real_pk, g_c->m->net_crypto->self_public_key, crypto_box_PUBLICKEYBYTES);
-    int peer_index = addpeer(g_c, groupnumber, g->real_pk, g_c->m->dht->self_public_key, 0);
+    int peer_index = addpeer(g_c, groupnumber, g->real_pk, g_c->m->dht->self_public_key.data.data(), 0);
 
     if (peer_index == -1) {
         return -1;

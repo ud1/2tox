@@ -273,7 +273,7 @@ static int add_to_entries(Onion_Announce *onion_a, IP_Port ret_ip_port, const ui
     }
 
     if (pos == -1) {
-        if (id_closest(onion_a->dht->self_public_key, public_key, onion_a->entries[0].public_key) == 1)
+        if (id_closest(onion_a->dht->self_public_key.data.data(), public_key, onion_a->entries[0].public_key) == 1)
             pos = 0;
     }
 
@@ -286,7 +286,7 @@ static int add_to_entries(Onion_Announce *onion_a, IP_Port ret_ip_port, const ui
     memcpy(onion_a->entries[pos].data_public_key, data_public_key, crypto_box_PUBLICKEYBYTES);
     onion_a->entries[pos].time = unix_time();
 
-    memcpy(cmp_public_key, onion_a->dht->self_public_key, crypto_box_PUBLICKEYBYTES);
+    memcpy(cmp_public_key, onion_a->dht->self_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
     qsort(onion_a->entries, ONION_ANNOUNCE_MAX_ENTRIES, sizeof(Onion_Announce_Entry), cmp_entry);
     return in_entries(onion_a, public_key);
 }
@@ -300,7 +300,7 @@ static int handle_announce_request(void *object, IP_Port source, const uint8_t *
 
     const uint8_t *packet_public_key = packet + 1 + crypto_box_NONCEBYTES;
     uint8_t shared_key[crypto_box_BEFORENMBYTES];
-    get_shared_key(&onion_a->shared_keys_recv, shared_key, onion_a->dht->self_secret_key, packet_public_key);
+    get_shared_key(&onion_a->shared_keys_recv, shared_key, onion_a->dht->self_secret_key.data.data(), packet_public_key);
 
     uint8_t plain[ONION_PING_ID_SIZE + crypto_box_PUBLICKEYBYTES + crypto_box_PUBLICKEYBYTES +
                   ONION_ANNOUNCE_SENDBACK_DATA_LENGTH];

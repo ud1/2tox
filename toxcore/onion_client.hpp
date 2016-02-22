@@ -27,6 +27,7 @@
 #include "onion_announce.hpp"
 #include "net_crypto.hpp"
 #include "ping_array.hpp"
+#include <vector>
 
 #define MAX_ONION_CLIENTS 8
 #define MAX_ONION_CLIENTS_ANNOUNCE 12 /* Number of nodes to announce ourselves to. */
@@ -132,8 +133,8 @@ struct Onion_Client
     DHT     *dht;
     Net_Crypto *c;
     Networking_Core *net;
-    Onion_Friend    *friends_list;
-    uint16_t       num_friends;
+    
+    std::vector<Onion_Friend> friends_list;
 
     Onion_Node clients_announce_list[MAX_ONION_CLIENTS_ANNOUNCE];
 

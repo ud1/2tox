@@ -82,7 +82,7 @@ static int create_cookie_request(const Net_Crypto *c, uint8_t *packet, uint8_t *
     uint8_t nonce[crypto_box_NONCEBYTES];
     new_nonce(nonce);
     packet[0] = NET_PACKET_COOKIE_REQUEST;
-    memcpy(packet + 1, c->dht->self_public_key, crypto_box_PUBLICKEYBYTES);
+    memcpy(packet + 1, c->dht->self_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
     memcpy(packet + 1 + crypto_box_PUBLICKEYBYTES, nonce, crypto_box_NONCEBYTES);
     int len = encrypt_data_symmetric(shared_key, nonce, plain, sizeof(plain),
                                      packet + 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES);
@@ -2618,7 +2618,7 @@ Net_Crypto *new_net_crypto(DHT *dht, TCP_Proxy_Info *proxy_info)
     if (temp == NULL)
         return NULL;
 
-    temp->tcp_c = new_tcp_connections(dht->self_secret_key, proxy_info);
+    temp->tcp_c = new_tcp_connections(dht->self_secret_key.data.data(), proxy_info);
 
     if (temp->tcp_c == NULL) {
         free(temp);

@@ -61,7 +61,7 @@ int send_ping_request(PING *ping, IP_Port ipp, const uint8_t *public_key)
     int       rc;
     uint64_t  ping_id;
 
-    if (id_equal(public_key, ping->dht->self_public_key))
+    if (id_equal(public_key, ping->dht->self_public_key.data.data()))
         return 1;
 
     uint8_t shared_key[crypto_box_BEFORENMBYTES];
@@ -82,7 +82,7 @@ int send_ping_request(PING *ping, IP_Port ipp, const uint8_t *public_key)
     memcpy(ping_plain + 1, &ping_id, sizeof(ping_id));
 
     pk[0] = NET_PACKET_PING_REQUEST;
-    id_copy(pk + 1, ping->dht->self_public_key);     // Our pubkey
+    id_copy(pk + 1, ping->dht->self_public_key.data.data());     // Our pubkey
     new_nonce(pk + 1 + crypto_box_PUBLICKEYBYTES); // Generate new nonce
 
 
@@ -103,7 +103,7 @@ static int send_ping_response(PING *ping, IP_Port ipp, const uint8_t *public_key
     uint8_t   pk[DHT_PING_SIZE];
     int       rc;
 
-    if (id_equal(public_key, ping->dht->self_public_key))
+    if (id_equal(public_key, ping->dht->self_public_key.data.data()))
         return 1;
 
     uint8_t ping_plain[PING_PLAIN_SIZE];
@@ -111,7 +111,7 @@ static int send_ping_response(PING *ping, IP_Port ipp, const uint8_t *public_key
     memcpy(ping_plain + 1, &ping_id, sizeof(ping_id));
 
     pk[0] = NET_PACKET_PING_RESPONSE;
-    id_copy(pk + 1, ping->dht->self_public_key);     // Our pubkey
+    id_copy(pk + 1, ping->dht->self_public_key.data.data());     // Our pubkey
     new_nonce(pk + 1 + crypto_box_PUBLICKEYBYTES); // Generate new nonce
 
     // Encrypt ping_id using recipient privkey
@@ -136,7 +136,7 @@ static int handle_ping_request(void *_dht, IP_Port source, const uint8_t *packet
 
     PING *ping = dht->ping.get();
 
-    if (id_equal(packet + 1, ping->dht->self_public_key))
+    if (id_equal(packet + 1, ping->dht->self_public_key.data.data()))
         return 1;
 
     uint8_t shared_key[crypto_box_BEFORENMBYTES];
@@ -175,7 +175,7 @@ static int handle_ping_response(void *_dht, IP_Port source, const uint8_t *packe
 
     PING *ping = dht->ping.get();
 
-    if (id_equal(packet + 1, ping->dht->self_public_key))
+    if (id_equal(packet + 1, ping->dht->self_public_key.data.data()))
         return 1;
 
     uint8_t shared_key[crypto_box_BEFORENMBYTES];
@@ -227,7 +227,7 @@ static int in_list(const Client_data *list, uint16_t length, const uint8_t *publ
     unsigned int i;
 
     for (i = 0; i < length; ++i) {
-        if (id_equal(list[i].public_key, public_key)) {
+        if (id_equal(list[i].public_key.data.data(), public_key)) {
             const IPPTsPng *ipptp;
 
             if (ip_port.ip.family == AF_INET) {
@@ -286,7 +286,7 @@ int add_to_ping(PING *ping, const uint8_t *public_key, IP_Port ip_port)
         }
     }
 
-    if (add_to_list(ping->to_ping, MAX_TO_PING, public_key, ip_port, ping->dht->self_public_key))
+    if (add_to_list(ping->to_ping, MAX_TO_PING, public_key, ip_port, ping->dht->self_public_key.data.data()))
         return 0;
 
     return -1;

@@ -163,7 +163,7 @@ static uint8_t *dist_index_id(Assoc *assoc, uint64_t dist_ind)
     Client_entry *entry = dist_index_entry(assoc, dist_ind);
 
     if (entry)
-        return entry->client.public_key;
+        return entry->client.public_key.data.data();
 
     return NULL;
 }
@@ -356,7 +356,7 @@ static uint8_t candidates_search(const Assoc *assoc, const uint8_t *id, hash_t h
         Client_entry *entry = &cnd_bckt->list[pos];
 
         if (entry->hash == hash)
-            if (id_equal(entry->client.public_key, id)) {
+            if (id_equal(entry->client.public_key.data.data(), id)) {
                 *entryptr = entry;
                 return 1;
             }
@@ -476,7 +476,7 @@ static uint8_t candidates_create_new(const Assoc *assoc, hash_t hash, const uint
         return 0;
 
     entry->hash = hash;
-    id_copy(entry->client.public_key, id);
+    id_copy(entry->client.public_key.data.data(), id);
 
     if (used)
         entry->used_at = unix_time();
@@ -536,7 +536,7 @@ static void client_id_self_update(Assoc *assoc)
         Client_entry *entry = &cnd_bckt->list[pos];
 
         if (entry->hash == assoc->self_hash)
-            if (id_equal(entry->client.public_key, assoc->self_client_id))
+            if (id_equal(entry->client.public_key.data.data(), assoc->self_client_id))
                 entry->hash = 0;
     }
 }
@@ -648,7 +648,7 @@ uint8_t Assoc_get_close_entries(Assoc *assoc, Assoc_close_entries *state)
                             continue;
                 }
 
-                uint64_t dist = state->distance_absolute_func(assoc, state->custom_data, state->wanted_id, entry->client.public_key);
+                uint64_t dist = state->distance_absolute_func(assoc, state->custom_data, state->wanted_id, entry->client.public_key.data.data());
                 uint32_t index = b * assoc->candidates_bucket_size + i;
                 dist_list[index] = (dist << DISTANCE_INDEX_INDEX_BITS) | index;
             }
@@ -914,7 +914,7 @@ void do_Assoc(Assoc *assoc, DHT *dht)
                         continue;
 
                     if (!target_id)
-                        target_id = entry->client.public_key;
+                        target_id = entry->client.public_key.data.data();
 
                     if (entry->seen_at) {
                         if (!seen)
@@ -942,7 +942,7 @@ void do_Assoc(Assoc *assoc, DHT *dht)
             LOGGER_DEBUG("[%u] => S[%s...] %s:%u", (uint32_t)(candidate % assoc->candidates_bucket_count),
                          idpart2str(seen->client.public_key, 8), ip_ntoa(&ippts->ip_port.ip), htons(ippts->ip_port.port));
 
-            dht->getnodes(&ippts->ip_port, seen->client.public_key, target_id);
+            dht->getnodes(&ippts->ip_port, seen->client.public_key.data.data(), target_id);
             seen->getnodes = unix_time();
         }
 
@@ -952,7 +952,7 @@ void do_Assoc(Assoc *assoc, DHT *dht)
             LOGGER_DEBUG("[%u] => H[%s...] %s:%u", (uint32_t)(candidate % assoc->candidates_bucket_count),
                          idpart2str(heard->client.public_key, 8), ip_ntoa(&ipp->ip), htons(ipp->port));
 
-            dht->getnodes(ipp, heard->client.public_key, target_id);
+            dht->getnodes(ipp, heard->client.public_key.data.data(), target_id);
             heard->getnodes = unix_time();
         }
 

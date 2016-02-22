@@ -332,7 +332,7 @@ int send_LANdiscovery(uint16_t port, DHT *dht)
 {
     uint8_t data[crypto_box_PUBLICKEYBYTES + 1];
     data[0] = NET_PACKET_LAN_DISCOVERY;
-    id_copy(data + 1, dht->self_public_key);
+    id_copy(data + 1, dht->self_public_key.data.data());
 
     send_broadcasts(dht->net, port, data, 1 + crypto_box_PUBLICKEYBYTES);
 

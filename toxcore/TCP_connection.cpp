@@ -1171,7 +1171,7 @@ unsigned int tcp_copy_connected_relays(TCP_Connections *tcp_c, Node_format *tcp_
         }
 
         if (tcp_con->status == TCP_CONN_CONNECTED) {
-            memcpy(tcp_relays[copied].public_key, tcp_con->connection->public_key, crypto_box_PUBLICKEYBYTES);
+            memcpy(tcp_relays[copied].public_key.data.data(), tcp_con->connection->public_key, crypto_box_PUBLICKEYBYTES);
             tcp_relays[copied].ip_port = tcp_con->connection->ip_port;
 
             if (tcp_relays[copied].ip_port.ip.family == AF_INET) {

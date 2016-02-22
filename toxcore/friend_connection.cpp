@@ -173,13 +173,13 @@ int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, IP_Port ip_
 
     for (i = 0; i < FRIEND_MAX_STORED_TCP_RELAYS; ++i) {
         if (friend_con->tcp_relays[i].ip_port.ip.family != 0
-                && public_key_cmp(friend_con->tcp_relays[i].public_key, public_key) == 0) {
+                && public_key_cmp(friend_con->tcp_relays[i].public_key.data.data(), public_key) == 0) {
             memset(&friend_con->tcp_relays[i], 0, sizeof(Node_format));
         }
     }
 
     friend_con->tcp_relays[index].ip_port = ip_port;
-    memcpy(friend_con->tcp_relays[index].public_key, public_key, crypto_box_PUBLICKEYBYTES);
+    memcpy(friend_con->tcp_relays[index].public_key.data.data(), public_key, crypto_box_PUBLICKEYBYTES);
     ++friend_con->tcp_relay_counter;
 
     return add_tcp_relay_peer(fr_c->net_crypto, friend_con->crypt_connection_id, ip_port, public_key);
@@ -200,7 +200,7 @@ static void connect_to_saved_tcp_relays(Friend_Connections *fr_c, int friendcon_
 
         if (friend_con->tcp_relays[index].ip_port.ip.family) {
             if (add_tcp_relay_peer(fr_c->net_crypto, friend_con->crypt_connection_id, friend_con->tcp_relays[index].ip_port,
-                                   friend_con->tcp_relays[index].public_key) == 0) {
+                                   friend_con->tcp_relays[index].public_key.data.data()) == 0) {
                 --number;
             }
         }
@@ -225,7 +225,7 @@ static unsigned int send_relays(Friend_Connections *fr_c, int friendcon_id)
     for (i = 0; i < n; ++i) {
         /* Associated the relays being sent with this connection.
            On receiving the peer will do the same which will establish the connection. */
-        friend_add_tcp_relay(fr_c, friendcon_id, nodes[i].ip_port, nodes[i].public_key);
+        friend_add_tcp_relay(fr_c, friendcon_id, nodes[i].ip_port, nodes[i].public_key.data.data());
     }
 
     length = pack_nodes(data + 1, sizeof(data) - 1, nodes, n);
@@ -401,7 +401,7 @@ static int handle_packet(void *object, int number, uint8_t *data, uint16_t lengt
         int j;
 
         for (j = 0; j < n; j++) {
-            friend_add_tcp_relay(fr_c, number, nodes[j].ip_port, nodes[j].public_key);
+            friend_add_tcp_relay(fr_c, number, nodes[j].ip_port, nodes[j].public_key.data.data());
         }
 
         return 0;

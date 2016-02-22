@@ -67,11 +67,22 @@ constexpr size_t MAX_SENT_NODES = 4;
 
 struct PublicKey
 {
+    PublicKey() {}
+    PublicKey(const uint8_t *key_bytes)
+    {
+        std::copy(key_bytes, key_bytes + PUBLIC_KEY_LEN, data.data());
+    }
+    
     std::array<uint8_t, PUBLIC_KEY_LEN> data = {};
     
     bool operator == (const PublicKey &o) const
     {
         return data == o.data;
+    }
+    
+    bool operator != (const PublicKey &o) const
+    {
+        return data != o.data;
     }
 };
 

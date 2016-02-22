@@ -187,7 +187,7 @@ struct Shared_Keys
 {
     struct
     {
-        uint8_t public_key[crypto_box_PUBLICKEYBYTES];
+        bitox::PublicKey public_key;
         uint8_t shared_key[crypto_box_BEFORENMBYTES];
         uint32_t times_requested;
         uint8_t  stored; /* 0 if not, 1 if is */
@@ -197,7 +197,7 @@ struct Shared_Keys
 
 /*----------------------------------------------------------------------------------*/
 
-typedef int (*cryptopacket_handler_callback) (void *object, IP_Port ip_port, const uint8_t *source_pubkey,
+typedef int (*cryptopacket_handler_callback) (void *object, IP_Port ip_port, const bitox::PublicKey &source_pubkey,
                                               const uint8_t *data, uint16_t len);
 
 struct Cryptopacket_Handles
@@ -248,15 +248,15 @@ struct DHT
      * Copy shared_key to encrypt/decrypt DHT packet from public_key into shared_key
      * for packets that we receive.
      */
-    void get_shared_key_recv (uint8_t *shared_key, const uint8_t *public_key);
+    void get_shared_key_recv (uint8_t *shared_key, const bitox::PublicKey &public_key);
 
     /*
      * Copy shared_key to encrypt/decrypt DHT packet from public_key into shared_key
      * for packets that we send.
      */
-    void get_shared_key_sent (uint8_t *shared_key, const uint8_t *public_key);
+    void get_shared_key_sent (uint8_t *shared_key, const bitox::PublicKey &public_key);
 
-    void getnodes (const IP_Port *from_ipp, const uint8_t *from_id, const uint8_t *which_id);
+    void getnodes (const IP_Port *from_ipp, const bitox::PublicKey &from_id, const uint8_t *which_id);
 
     /*
      * Add a new friend_ to the friends list.
@@ -271,7 +271,7 @@ struct DHT
      *  return true if success.
      *  return false if failure (friends list is full).
      */
-    bool addfriend (const uint8_t *public_key, void (*ip_callback) (void *data, int32_t number, IP_Port),
+    bool addfriend (const bitox::PublicKey &public_key, void (*ip_callback) (void *data, int32_t number, IP_Port),
                     void *data, int32_t number, uint16_t *lock_count);
 
     /*
@@ -281,7 +281,7 @@ struct DHT
      *  return true if success.
      *  return false if failure (public_key not in friends list).
      */
-    bool delfriend (const uint8_t *public_key, uint16_t lock_count);
+    bool delfriend (const bitox::PublicKey &public_key, uint16_t lock_count);
 
     /*
      * Get ip of friend_.
@@ -295,12 +295,12 @@ struct DHT
      *  return  0, -- if public_key refers to a friend_ and we failed to find the friend_ (yet)
      *  return  1, ip if public_key refers to a friend_ and we found him
      */
-    int getfriendip (const uint8_t *public_key, IP_Port *ip_port) const;
+    int getfriendip (const bitox::PublicKey &public_key, IP_Port *ip_port) const;
 
     /*
      * Return true if node can be added to close list, false if it can't.
      */
-    bool node_addable_to_close_list (const uint8_t *public_key, IP_Port ip_port);
+    bool node_addable_to_close_list (const bitox::PublicKey &public_key, IP_Port ip_port);
 
     /*
      * Get the (maximum MAX_SENT_NODES) closest nodes to public_key we know
@@ -313,7 +313,7 @@ struct DHT
      * return the number of nodes returned.
      *
      */
-    int get_close_nodes (const uint8_t *public_key, Node_format *nodes_list, sa_family_t sa_family,
+    int get_close_nodes (const bitox::PublicKey &public_key, Node_format *nodes_list, sa_family_t sa_family,
                          uint8_t is_LAN, uint8_t want_good) const;
 
     /*
@@ -339,7 +339,7 @@ struct DHT
      * Sends a "get nodes" request to the given node with ip, port and public_key
      * to setup connections
      */
-    void bootstrap (IP_Port ip_port, const uint8_t *public_key);
+    void bootstrap (IP_Port ip_port, const bitox::PublicKey &public_key);
 
     /* Resolves address into an IP address. If successful, sends a "get nodes"
      *   request to the given node with ip, port and public_key to setup connections
@@ -353,7 +353,7 @@ struct DHT
      *  returns 0 otherwise
      */
     bool bootstrap_from_address (const char *address, uint8_t ipv6enabled,
-                                 uint16_t port, const uint8_t *public_key);
+                                 uint16_t port, const bitox::PublicKey &public_key);
 
     /* Start sending packets after DHT loaded_friends_list and loaded_clients_list are set.
     *
@@ -383,13 +383,13 @@ struct DHT
     *  return number if datagrams sent (length parameter)
     *  return -1 if failure.
     */
-    int route_packet (const uint8_t *public_key, const uint8_t *packet, uint16_t length) const;
+    int route_packet (const bitox::PublicKey &public_key, const uint8_t *packet, uint16_t length) const;
 
     /* Send the following packet to everyone who tells us they are connected to friend_id.
     *
     *  return number of nodes it sent the packet to.
     */
-    int route_tofriend (const uint8_t *friend_id, const uint8_t *packet, uint16_t length) const;
+    int route_tofriend (const bitox::PublicKey &friend_id, const uint8_t *packet, uint16_t length) const;
 
     /* Function to handle crypto packets.
     */
@@ -402,7 +402,7 @@ struct DHT
     void save (uint8_t *data);
 
 
-    int addto_lists (IP_Port ip_port, const uint8_t *public_key);
+    int addto_lists (IP_Port ip_port, const bitox::PublicKey &public_key);
     void do_hardening ();
 
 //private:
@@ -410,28 +410,28 @@ struct DHT
      * Send a getnodes request.
      * sendback_node is the node that it will send back the response to (set to NULL to disable this)
      */
-    int getnodes (IP_Port ip_port, const uint8_t *public_key, const uint8_t *client_id,
+    int getnodes (IP_Port ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &client_id,
                   const Node_format *sendback_node);
 
-    uint8_t do_ping_and_sendnode_requests (uint64_t *lastgetnode, const uint8_t *public_key,
+    uint8_t do_ping_and_sendnode_requests (uint64_t *lastgetnode, const bitox::PublicKey &public_key,
                                            Client_data *list, uint32_t list_count, uint32_t *bootstrap_times, bool sortable);
 
     void do_DHT_friends ();
     void do_Close ();
     void do_NAT ();
-    int add_to_close (const uint8_t *public_key, IP_Port ip_port, bool simulate);
-    unsigned int ping_node_from_getnodes_ok (const uint8_t *public_key, IP_Port ip_port);
+    int add_to_close (const bitox::PublicKey &public_key, IP_Port ip_port, bool simulate);
+    unsigned int ping_node_from_getnodes_ok (const bitox::PublicKey &public_key, IP_Port ip_port);
     int friend_iplist (IP_Port *ip_portlist, uint16_t friend_num) const;
     int send_hardening_req (Node_format *sendto, uint8_t type, uint8_t *contents, uint16_t length);
-    int send_hardening_getnode_req (Node_format *dest, Node_format *node_totest, uint8_t *search_id);
-    int returnedip_ports (IP_Port ip_port, const uint8_t *public_key, const uint8_t *nodepublic_key);
-    int routeone_tofriend (const uint8_t *friend_id, const uint8_t *packet, uint16_t length);
+    int send_hardening_getnode_req (Node_format *dest, Node_format *node_totest, const bitox::PublicKey &search_id);
+    int returnedip_ports (IP_Port ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &nodepublic_key);
+    int routeone_tofriend (const bitox::PublicKey &friend_id, const uint8_t *packet, uint16_t length);
     void punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t friend_num);
-    IPPTsPng *get_closelist_IPPTsPng (const uint8_t *public_key, sa_family_t sa_family);
+    IPPTsPng *get_closelist_IPPTsPng (const bitox::PublicKey &public_key, sa_family_t sa_family);
     Node_format random_node (sa_family_t sa_family);
-    uint8_t sent_getnode_to_node (const uint8_t *public_key, IP_Port node_ip_port, uint64_t ping_id,
+    uint8_t sent_getnode_to_node (const bitox::PublicKey &public_key, IP_Port node_ip_port, uint64_t ping_id,
                                   Node_format *sendback_node);
-    int send_NATping (const uint8_t *public_key, uint64_t ping_id, uint8_t type);
+    int send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, uint8_t type);
     uint32_t have_nodes_closelist (Node_format *nodes, uint16_t num);
 };
 /*----------------------------------------------------------------------------------*/
@@ -442,8 +442,8 @@ struct DHT
  * If shared key is already in shared_keys, copy it to shared_key.
  * else generate it into shared_key and copy it to shared_keys
  */
-void get_shared_key (Shared_Keys *shared_keys, uint8_t *shared_key, const uint8_t *secret_key,
-                     const uint8_t *public_key);
+void get_shared_key (Shared_Keys *shared_keys, uint8_t *shared_key, const bitox::SecretKey &secret_key,
+                     const bitox::PublicKey &public_key);
 
 
 /* Compares pk1 and pk2 with pk.
@@ -452,12 +452,12 @@ void get_shared_key (Shared_Keys *shared_keys, uint8_t *shared_key, const uint8_
  *  return 1 if pk1 is closer.
  *  return 2 if pk2 is closer.
  */
-int id_closest (const uint8_t *pk, const uint8_t *pk1, const uint8_t *pk2);
+int id_closest (const bitox::PublicKey &pk, const bitox::PublicKey &pk1, const bitox::PublicKey &pk2);
 
 /* Add node to the node list making sure only the nodes closest to cmp_pk are in the list.
  */
-bool add_to_list (Node_format *nodes_list, unsigned int length, const uint8_t *pk, IP_Port ip_port,
-                  const uint8_t *cmp_pk);
+bool add_to_list (Node_format *nodes_list, unsigned int length, const bitox::PublicKey &pk, IP_Port ip_port,
+                  const bitox::PublicKey &cmp_pk);
 
 
 #endif

@@ -65,13 +65,13 @@ typedef struct {
     uint8_t public_key3[crypto_box_PUBLICKEYBYTES];
 
     IP_Port     ip_port1;
-    uint8_t     node_public_key1[crypto_box_PUBLICKEYBYTES];
+    bitox::PublicKey node_public_key1;
 
     IP_Port     ip_port2;
-    uint8_t     node_public_key2[crypto_box_PUBLICKEYBYTES];
+    bitox::PublicKey node_public_key2;
 
     IP_Port     ip_port3;
-    uint8_t     node_public_key3[crypto_box_PUBLICKEYBYTES];
+    bitox::PublicKey node_public_key3;
 
     uint32_t path_num;
 } Onion_Path;

@@ -28,9 +28,11 @@
 #include "network.hpp"
 #include "ping_array.hpp"
 #include "protocol.hpp"
+#include "ping.hpp"
 
 #include <sodium.h>
 #include <sodium/utils.h>
+#include <memory>
 
 /* Maximum number of clients stored per friend_. */
 #define MAX_FRIEND_CLIENTS 8
@@ -129,12 +131,6 @@ struct NAT
 
 #define DHT_FRIEND_MAX_LOCKS 32
 
-struct Node_format
-{
-	uint8_t     public_key[crypto_box_PUBLICKEYBYTES];
-	IP_Port     ip_port;
-};
-
 struct DHT_Friend
 {
 	uint8_t     public_key[crypto_box_PUBLICKEYBYTES];
@@ -212,11 +208,14 @@ struct Cryptopacket_Handles
 
 struct DHT
 {
-	Networking_Core *net;
+    explicit DHT(Networking_Core *net);
+    ~DHT();
+    
+	Networking_Core *net = nullptr;
 
 	Client_data    close_clientlist[LCLIENT_LIST];
-	uint64_t       close_lastgetnodes;
-	uint32_t       close_bootstrap_times;
+	uint64_t       close_lastgetnodes = 0;
+	uint32_t       close_bootstrap_times = 0;
 
 	/* Note: this key should not be/is not used to transmit any sensitive materials */
 	uint8_t      secret_symmetric_key[crypto_box_BEFORENMBYTES];
@@ -224,28 +223,26 @@ struct DHT
 	uint8_t self_public_key[crypto_box_PUBLICKEYBYTES];
 	uint8_t self_secret_key[crypto_box_SECRETKEYBYTES];
 
-	DHT_Friend    *friends_list;
-	uint16_t       num_friends;
-
-	Node_format   *loaded_nodes_list;
-	uint32_t       loaded_num_nodes;
-	unsigned int   loaded_nodes_index;
+        std::vector<DHT_Friend> friends_list;
+        std::vector<Node_format> loaded_nodes_list;
+	uint32_t       loaded_num_nodes = 0;
+	unsigned int   loaded_nodes_index = 0;
 
 	Shared_Keys shared_keys_recv;
 	Shared_Keys shared_keys_sent;
 
-	struct PING   *ping;
+	std::unique_ptr<PING> ping;
 	Ping_Array    dht_ping_array;
 	Ping_Array    dht_harden_ping_array;
 #ifdef ENABLE_ASSOC_DHT
-	struct Assoc  *assoc;
+	struct Assoc  *assoc = nullptr;
 #endif
-	uint64_t       last_run;
+	uint64_t       last_run = 0;
 
-	Cryptopacket_Handles cryptopackethandlers[256];
+	Cryptopacket_Handles cryptopackethandlers[256] = {};
 
-	Node_format to_bootstrap[MAX_CLOSE_TO_BOOTSTRAP_NODES];
-	unsigned int num_to_bootstrap;
+	Node_format to_bootstrap[MAX_CLOSE_TO_BOOTSTRAP_NODES] = {};
+	unsigned int num_to_bootstrap = 0;
 
 	/*
 	 * Copy shared_key to encrypt/decrypt DHT packet from public_key into shared_key
@@ -461,12 +458,6 @@ int id_closest (const uint8_t *pk, const uint8_t *pk1, const uint8_t *pk2);
  */
 bool add_to_list (Node_format *nodes_list, unsigned int length, const uint8_t *pk, IP_Port ip_port,
 				  const uint8_t *cmp_pk);
-
-
-/* Initialize DHT. */
-DHT *new_DHT (Networking_Core *net);
-
-void kill_DHT (DHT *dht);
 
 
 #endif

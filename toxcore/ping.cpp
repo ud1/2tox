@@ -41,21 +41,14 @@
 
 #define PING_NUM_MAX 512
 
-/* Maximum newly announced nodes to ping per TIME_TO_PING seconds. */
-#define MAX_TO_PING 32
+
 
 /* Ping newly announced nodes to ping per TIME_TO_PING seconds*/
 #define TIME_TO_PING 2
 
 using namespace bitox;
 
-struct PING {
-    DHT *dht;
 
-    Ping_Array  ping_array;
-    Node_format to_ping[MAX_TO_PING];
-    uint64_t    last_to_ping;
-};
 
 
 #define PING_PLAIN_SIZE (1 + sizeof(uint64_t))
@@ -79,7 +72,7 @@ int send_ping_request(PING *ping, IP_Port ipp, const uint8_t *public_key)
     uint8_t data[PING_DATA_SIZE];
     id_copy(data, public_key);
     memcpy(data + crypto_box_PUBLICKEYBYTES, &ipp, sizeof(IP_Port));
-    ping_id = ping_array_add(&ping->ping_array, data, sizeof(data));
+    ping_id = ping->ping_array.add(data, sizeof(data));
 
     if (ping_id == 0)
         return 1;
@@ -141,7 +134,7 @@ static int handle_ping_request(void *_dht, IP_Port source, const uint8_t *packet
     if (length != DHT_PING_SIZE)
         return 1;
 
-    PING *ping = dht->ping;
+    PING *ping = dht->ping.get();
 
     if (id_equal(packet + 1, ping->dht->self_public_key))
         return 1;
@@ -180,7 +173,7 @@ static int handle_ping_response(void *_dht, IP_Port source, const uint8_t *packe
     if (length != DHT_PING_SIZE)
         return 1;
 
-    PING *ping = dht->ping;
+    PING *ping = dht->ping.get();
 
     if (id_equal(packet + 1, ping->dht->self_public_key))
         return 1;
@@ -208,7 +201,7 @@ static int handle_ping_response(void *_dht, IP_Port source, const uint8_t *packe
     memcpy(&ping_id, ping_plain + 1, sizeof(ping_id));
     uint8_t data[PING_DATA_SIZE];
 
-    if (ping_array_check(data, sizeof(data), &ping->ping_array, ping_id) != sizeof(data))
+    if (ping->ping_array.check(data, sizeof(data), ping_id) != sizeof(data))
         return 1;
 
     if (!id_equal(packet + 1, data))
@@ -329,30 +322,16 @@ void do_to_ping(PING *ping)
 }
 
 
-PING *new_ping(DHT *dht)
+PING::PING(DHT *dht) :
+    ping_array(PING_NUM_MAX, PING_TIMEOUT)
 {
-    PING *ping = reinterpret_cast<PING *>(calloc(1, sizeof(PING)));
-
-    if (ping == NULL)
-        return NULL;
-
-    if (ping_array_init(&ping->ping_array, PING_NUM_MAX, PING_TIMEOUT) != 0) {
-        free(ping);
-        return NULL;
-    }
-
-    ping->dht = dht;
-    networking_registerhandler(ping->dht->net, NET_PACKET_PING_REQUEST, &handle_ping_request, dht);
-    networking_registerhandler(ping->dht->net, NET_PACKET_PING_RESPONSE, &handle_ping_response, dht);
-
-    return ping;
+    this->dht = dht;
+    networking_registerhandler(this->dht->net, NET_PACKET_PING_REQUEST, &handle_ping_request, dht);
+    networking_registerhandler(this->dht->net, NET_PACKET_PING_RESPONSE, &handle_ping_response, dht);
 }
 
-void kill_ping(PING *ping)
+PING::~PING()
 {
-    networking_registerhandler(ping->dht->net, NET_PACKET_PING_REQUEST, NULL, NULL);
-    networking_registerhandler(ping->dht->net, NET_PACKET_PING_RESPONSE, NULL, NULL);
-    ping_array_free_all(&ping->ping_array);
-
-    free(ping);
+    networking_registerhandler(dht->net, NET_PACKET_PING_REQUEST, NULL, NULL);
+    networking_registerhandler(dht->net, NET_PACKET_PING_RESPONSE, NULL, NULL);
 }

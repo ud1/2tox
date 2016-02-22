@@ -119,6 +119,16 @@ inline InputBuffer &operator >> (InputBuffer &buffer, Nonce &nonce)
     return buffer >> nonce.data;
 }
 
+inline OutputBuffer &operator << (OutputBuffer &buffer, const OnionPingId &ping_id)
+{
+    return buffer << ping_id.data;
+}
+
+inline InputBuffer &operator >> (InputBuffer &buffer, OnionPingId &ping_id)
+{
+    return buffer >> ping_id.data;
+}
+
 struct SharedKey
 {
     std::array<uint8_t, SHARED_KEY_LEN> data = {};

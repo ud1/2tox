@@ -529,7 +529,7 @@ static int friend_number (const DHT *dht, const uint8_t *public_key)
 {
 	uint32_t i;
 
-	for (i = 0; i < dht->num_friends; ++i)
+	for (i = 0; i < dht->friends_list.size(); ++i)
 	{
 		if (id_equal (dht->friends_list[i].public_key, public_key))
 			return i;
@@ -673,7 +673,7 @@ static int get_somewhat_close_nodes (const DHT *dht, const uint8_t *public_key, 
 	                              dht->friends_list[i].client_list, MAX_FRIEND_CLIENTS,
 	                              &num_nodes, is_LAN, want_good);
 	*/
-	for (i = 0; i < dht->num_friends; ++i)
+	for (i = 0; i < dht->friends_list.size(); ++i)
 		get_close_nodes_inner (public_key, nodes_list, sa_family,
 							   dht->friends_list[i].client_list, MAX_FRIEND_CLIENTS,
 							   &num_nodes, is_LAN, 0);
@@ -993,7 +993,7 @@ unsigned int DHT::ping_node_from_getnodes_ok (const uint8_t *public_key, IP_Port
 
 	unsigned int i;
 
-	for (i = 0; i < num_friends; ++i)
+	for (i = 0; i < friends_list.size(); ++i)
 	{
 		_Bool store_ok = 0;
 
@@ -1059,7 +1059,7 @@ int DHT::addto_lists (IP_Port ip_port, const uint8_t *public_key)
 
 	DHT_Friend *friend_foundip = 0;
 
-	for (i = 0; i < num_friends; ++i)
+	for (i = 0; i < friends_list.size(); ++i)
 	{
 		if (!client_or_ip_port_in_list (friends_list[i].client_list,
 										MAX_FRIEND_CLIENTS, public_key, ip_port))
@@ -1160,7 +1160,7 @@ int DHT::returnedip_ports (IP_Port ip_port, const uint8_t *public_key, const uin
 	}
 	else
 	{
-		for (i = 0; i < num_friends; ++i)
+		for (i = 0; i < friends_list.size(); ++i)
 		{
 			if (id_equal (public_key, friends_list[i].public_key))
 			{
@@ -1223,11 +1223,11 @@ int DHT::getnodes (IP_Port ip_port, const uint8_t *public_key, const uint8_t *cl
 	if (sendback_node != NULL)
 	{
 		memcpy (plain_message + sizeof (receiver), sendback_node, sizeof (Node_format));
-		ping_id = ping_array_add (&dht_harden_ping_array, plain_message, sizeof (plain_message));
+		ping_id = dht_harden_ping_array.add(plain_message, sizeof (plain_message));
 	}
 	else
 	{
-		ping_id = ping_array_add (&dht_ping_array, plain_message, sizeof (receiver));
+		ping_id = dht_ping_array.add(plain_message, sizeof (receiver));
 	}
 
 	if (ping_id == 0)
@@ -1342,7 +1342,7 @@ static int handle_getnodes (void *object, IP_Port source, const uint8_t *packet,
 
 	sendnodes_ipv6 (dht, source, packet + 1, plain, plain + crypto_box_PUBLICKEYBYTES, sizeof (uint64_t), shared_key);
 
-	add_to_ping (dht->ping, packet + 1, source);
+	add_to_ping (dht->ping.get(), packet + 1, source);
 
 	return 0;
 }
@@ -1353,11 +1353,11 @@ uint8_t DHT::sent_getnode_to_node (const uint8_t *public_key, IP_Port node_ip_po
 {
 	uint8_t data[sizeof (Node_format) * 2];
 
-	if (ping_array_check (data, sizeof (data), &dht_ping_array, ping_id) == sizeof (Node_format))
+	if (dht_ping_array.check (data, sizeof (data), ping_id) == sizeof (Node_format))
 	{
 		memset (sendback_node, 0, sizeof (Node_format));
 	}
-	else if (ping_array_check (data, sizeof (data), &dht_harden_ping_array, ping_id) == sizeof (data))
+	else if (dht_harden_ping_array.check (data, sizeof (data), ping_id) == sizeof (data))
 	{
 		memcpy (sendback_node, data + sizeof (Node_format), sizeof (Node_format));
 	}
@@ -1497,19 +1497,13 @@ bool DHT::addfriend (const uint8_t *public_key, void (*ip_callback) (void *data,
 		return true;
 	}
 
-	DHT_Friend *temp;
-	temp = reinterpret_cast<DHT_Friend *> (realloc (friends_list, sizeof (DHT_Friend) * (num_friends + 1)));
-
-	if (temp == NULL)
-		return false;
-
-	friends_list = temp;
-	DHT_Friend *friend_ = &friends_list[num_friends];
+	friends_list.emplace_back();
+        
+	DHT_Friend *friend_ = &(friends_list.back());
 	memset (friend_, 0, sizeof (DHT_Friend));
 	memcpy (friend_->public_key, public_key, crypto_box_PUBLICKEYBYTES);
 
 	friend_->nat.NATping_id = random_64b();
-	++num_friends;
 
 	lock_num = friend_->lock_count;
 	++friend_->lock_count;
@@ -1548,28 +1542,14 @@ bool DHT::delfriend (const uint8_t *public_key, uint16_t lock_count)
 
 	DHT_Friend *temp;
 
-	--num_friends;
-
-	if (num_friends != friend_num)
+	if (friends_list.size() - 1 != friend_num)
 	{
 		memcpy (&friends_list[friend_num],
-				&friends_list[num_friends],
+				&friends_list[friends_list.size() - 1],
 				sizeof (DHT_Friend));
 	}
-
-	if (num_friends == 0)
-	{
-		free (friends_list);
-		friends_list = NULL;
-		return true;
-	}
-
-	temp = reinterpret_cast<DHT_Friend *> (realloc (friends_list, sizeof (DHT_Friend) * (num_friends)));
-
-	if (temp == NULL)
-		return false;
-
-	friends_list = temp;
+	
+	friends_list.pop_back();
 	return true;
 }
 
@@ -1581,18 +1561,18 @@ int DHT::getfriendip (const uint8_t *public_key, IP_Port *ip_port) const
 	ip_reset (&ip_port->ip);
 	ip_port->port = 0;
 
-	for (i = 0; i < num_friends; ++i)
+	for (i = 0; i < friends_list.size(); ++i)
 	{
 		/* Equal */
 		if (id_equal (friends_list[i].public_key, public_key))
 		{
 			for (j = 0; j < MAX_FRIEND_CLIENTS; ++j)
 			{
-				Client_data *client = &friends_list[i].client_list[j];
+				const Client_data *client = &friends_list[i].client_list[j];
 
 				if (id_equal (client->public_key, public_key))
 				{
-					IPPTsPng *assoc = NULL;
+					const IPPTsPng *assoc = NULL;
 					uint32_t a;
 
 					for (a = 0, assoc = &client->assoc6; a < 2; a++, assoc = &client->assoc4)
@@ -1694,7 +1674,7 @@ void DHT::do_DHT_friends ()
 {
 	unsigned int i, j;
 
-	for (i = 0; i < num_friends; ++i)
+	for (i = 0; i < friends_list.size(); ++i)
 	{
 		DHT_Friend *friend_ = &friends_list[i];
 
@@ -1836,11 +1816,11 @@ int DHT::route_packet (const uint8_t *public_key, const uint8_t *packet, uint16_
  */
 int DHT::friend_iplist (IP_Port *ip_portlist, uint16_t friend_num) const
 {
-	if (friend_num >= num_friends)
+	if (friend_num >= friends_list.size())
 		return -1;
 
-	DHT_Friend *friend_ = &friends_list[friend_num];
-	Client_data *client;
+	const DHT_Friend *friend_ = &friends_list[friend_num];
+	const Client_data *client;
 	IP_Port ipv4s[MAX_FRIEND_CLIENTS];
 	int num_ipv4s = 0;
 	IP_Port ipv6s[MAX_FRIEND_CLIENTS];
@@ -1922,8 +1902,8 @@ int DHT::route_tofriend (const uint8_t *friend_id, const uint8_t *packet, uint16
 	if (ip_num < (MAX_FRIEND_CLIENTS / 4))
 		return 0; /* Reason for that? */
 
-	DHT_Friend *friend_ = &friends_list[num];
-	Client_data *client;
+	const DHT_Friend *friend_ = &friends_list[num];
+	const Client_data *client;
 
 	/* extra legwork, because having the outside allocating the space for us
 	 * is *usually* good(tm) (bites us in the behind in this case though) */
@@ -1936,7 +1916,7 @@ int DHT::route_tofriend (const uint8_t *friend_id, const uint8_t *packet, uint16
 				continue;
 
 			client = &friend_->client_list[i];
-			IPPTsPng *assoc = NULL;
+			const IPPTsPng *assoc = NULL;
 
 			if (!a)
 				assoc = &client->assoc4;
@@ -2155,7 +2135,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
 		IP_Port pinging;
 		ip_copy (&pinging.ip, &ip);
 		pinging.port = htons (firstport);
-		send_ping_request (ping, pinging, friends_list[friend_num].public_key);
+		send_ping_request (ping.get(), pinging, friends_list[friend_num].public_key);
 	}
 	else
 	{
@@ -2166,7 +2146,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
 			IP_Port pinging;
 			ip_copy (&pinging.ip, &ip);
 			pinging.port = htons (port);
-			send_ping_request (ping, pinging, friends_list[friend_num].public_key);
+			send_ping_request (ping.get(), pinging, friends_list[friend_num].public_key);
 		}
 
 		friends_list[friend_num].nat.punching_index = i;
@@ -2182,7 +2162,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
 		for (i = friends_list[friend_num].nat.punching_index2; i != top; ++i)
 		{
 			pinging.port = htons (port + i);
-			send_ping_request (ping, pinging, friends_list[friend_num].public_key);
+			send_ping_request (ping.get(), pinging, friends_list[friend_num].public_key);
 		}
 
 		friends_list[friend_num].nat.punching_index2 = i - (MAX_PUNCHING_PORTS / 2);
@@ -2196,7 +2176,7 @@ void DHT::do_NAT ()
 	uint32_t i;
 	uint64_t temp_time = unix_time();
 
-	for (i = 0; i < num_friends; ++i)
+	for (i = 0; i < friends_list.size(); ++i)
 	{
 		IP_Port ip_list[MAX_FRIEND_CLIENTS];
 		int num = friend_iplist (ip_list, i);
@@ -2622,57 +2602,46 @@ static int cryptopacket_handle (void *object, IP_Port source, const uint8_t *pac
 
 /*----------------------------------------------------------------------------------*/
 
+DHT::DHT(Networking_Core *net) :
+    dht_ping_array(DHT_PING_ARRAY_SIZE, PING_TIMEOUT),
+    dht_harden_ping_array(DHT_PING_ARRAY_SIZE, PING_TIMEOUT)
+{
+        /* init time */
+        unix_time_update();
+        assert(net && "Networking_Core must not be null");
+
+        this->net = net;
+        this->ping = std::unique_ptr<PING>(new PING(this));
+
+        networking_registerhandler (this->net, NET_PACKET_GET_NODES, &handle_getnodes, this);
+        networking_registerhandler (this->net, NET_PACKET_SEND_NODES_IPV6, &handle_sendnodes_ipv6, this);
+        networking_registerhandler (this->net, NET_PACKET_CRYPTO, &cryptopacket_handle, this);
+        this->cryptopacket_registerhandler (CRYPTO_PACKET_NAT_PING, &handle_NATping, this);
+        this->cryptopacket_registerhandler (CRYPTO_PACKET_HARDENING, &handle_hardening, this);
+
+        new_symmetric_key (this->secret_symmetric_key);
+        crypto_box_keypair (this->self_public_key, this->self_secret_key);
+
+#ifdef ENABLE_ASSOC_DHT
+        this->assoc = new_Assoc_default (this->self_public_key);
+#endif
+        uint32_t i;
+
+        for (i = 0; i < DHT_FAKE_FRIEND_NUMBER; ++i)
+        {
+                uint8_t random_key_bytes[crypto_box_PUBLICKEYBYTES];
+                randombytes (random_key_bytes, sizeof (random_key_bytes));
+
+                if (!this->addfriend (random_key_bytes, 0, 0, 0, 0))
+                {
+                    throw std::runtime_error("Add friend error");
+                }
+        }
+}
+
 DHT *new_DHT (Networking_Core *net)
 {
-	/* init time */
-	unix_time_update();
-
-	if (net == NULL)
-		return NULL;
-
-	DHT *dht = reinterpret_cast<DHT *> (calloc (1, sizeof (DHT)));
-
-	if (dht == NULL)
-		return NULL;
-
-	dht->net = net;
-	dht->ping = new_ping (dht);
-
-	if (dht->ping == NULL)
-	{
-		kill_DHT (dht);
-		return NULL;
-	}
-
-	networking_registerhandler (dht->net, NET_PACKET_GET_NODES, &handle_getnodes, dht);
-	networking_registerhandler (dht->net, NET_PACKET_SEND_NODES_IPV6, &handle_sendnodes_ipv6, dht);
-	networking_registerhandler (dht->net, NET_PACKET_CRYPTO, &cryptopacket_handle, dht);
-	dht->cryptopacket_registerhandler (CRYPTO_PACKET_NAT_PING, &handle_NATping, dht);
-	dht->cryptopacket_registerhandler (CRYPTO_PACKET_HARDENING, &handle_hardening, dht);
-
-	new_symmetric_key (dht->secret_symmetric_key);
-	crypto_box_keypair (dht->self_public_key, dht->self_secret_key);
-
-	ping_array_init (&dht->dht_ping_array, DHT_PING_ARRAY_SIZE, PING_TIMEOUT);
-	ping_array_init (&dht->dht_harden_ping_array, DHT_PING_ARRAY_SIZE, PING_TIMEOUT);
-#ifdef ENABLE_ASSOC_DHT
-	dht->assoc = new_Assoc_default (dht->self_public_key);
-#endif
-	uint32_t i;
-
-	for (i = 0; i < DHT_FAKE_FRIEND_NUMBER; ++i)
-	{
-		uint8_t random_key_bytes[crypto_box_PUBLICKEYBYTES];
-		randombytes (random_key_bytes, sizeof (random_key_bytes));
-
-		if (!dht->addfriend (random_key_bytes, 0, 0, 0, 0))
-		{
-			kill_DHT (dht);
-			return NULL;
-		}
-	}
-
-	return dht;
+    return new DHT(net);
 }
 
 void DHT::do_DHT ()
@@ -2693,7 +2662,7 @@ void DHT::do_DHT ()
 	do_Close ();
 	do_DHT_friends ();
 	do_NAT ();
-	do_to_ping (ping);
+	do_to_ping (ping.get());
 	//do_hardening(dht);
 #ifdef ENABLE_ASSOC_DHT
 
@@ -2703,21 +2672,16 @@ void DHT::do_DHT ()
 #endif
 	last_run = unix_time();
 }
-void kill_DHT (DHT *dht)
+
+DHT::~DHT()
 {
 #ifdef ENABLE_ASSOC_DHT
-	kill_Assoc (dht->assoc);
+	kill_Assoc (assoc);
 #endif
-	networking_registerhandler (dht->net, NET_PACKET_GET_NODES, NULL, NULL);
-	networking_registerhandler (dht->net, NET_PACKET_SEND_NODES_IPV6, NULL, NULL);
-	dht->cryptopacket_registerhandler (CRYPTO_PACKET_NAT_PING, NULL, NULL);
-	dht->cryptopacket_registerhandler (CRYPTO_PACKET_HARDENING, NULL, NULL);
-	ping_array_free_all (&dht->dht_ping_array);
-	ping_array_free_all (&dht->dht_harden_ping_array);
-	kill_ping (dht->ping);
-	free (dht->friends_list);
-	free (dht->loaded_nodes_list);
-	free (dht);
+	networking_registerhandler (net, NET_PACKET_GET_NODES, NULL, NULL);
+	networking_registerhandler (net, NET_PACKET_SEND_NODES_IPV6, NULL, NULL);
+	cryptopacket_registerhandler (CRYPTO_PACKET_NAT_PING, NULL, NULL);
+	cryptopacket_registerhandler (CRYPTO_PACKET_HARDENING, NULL, NULL);
 }
 
 /* new DHT format for load/save, more robust and forward compatible */
@@ -2740,9 +2704,9 @@ uint32_t DHT::size () const
 		numv6 += (close_clientlist[i].assoc6.timestamp != 0);
 	}
 
-	for (i = 0; i < DHT_FAKE_FRIEND_NUMBER && i < num_friends; ++i)
+	for (i = 0; i < DHT_FAKE_FRIEND_NUMBER && i < friends_list.size(); ++i)
 	{
-		DHT_Friend *fr = &friends_list[i];
+		const DHT_Friend *fr = &friends_list[i];
 
 		for (j = 0; j < MAX_FRIEND_CLIENTS; ++j)
 		{
@@ -2798,7 +2762,7 @@ void DHT::save (uint8_t *data)
 		}
 	}
 
-	for (i = 0; i < DHT_FAKE_FRIEND_NUMBER && i < num_friends; ++i)
+	for (i = 0; i < DHT_FAKE_FRIEND_NUMBER && i < friends_list.size(); ++i)
 	{
 		DHT_Friend *fr = &friends_list[i];
 
@@ -2829,14 +2793,13 @@ void DHT::save (uint8_t *data)
 /* Start sending packets after DHT loaded_friends_list and loaded_clients_list are set */
 bool DHT::connect_after_load ()
 {
-	if (!loaded_nodes_list)
+	if (loaded_nodes_list.empty())
 		return false;
 
 	/* DHT is connected, stop. */
 	if (non_lan_connected())
 	{
-		free (loaded_nodes_list);
-		loaded_nodes_list = NULL;
+            loaded_nodes_list.clear();
 		loaded_num_nodes = 0;
 		return true;
 	}
@@ -2864,11 +2827,10 @@ static int dht_load_state_callback (void *outer, const uint8_t *data, uint32_t l
 				break;
 
 			{
-				free (dht->loaded_nodes_list);
-				// Copy to loaded_clients_list
-				dht->loaded_nodes_list = reinterpret_cast<Node_format *> (calloc (MAX_SAVED_DHT_NODES, sizeof (Node_format)));
+				dht->loaded_nodes_list.clear();
+				dht->loaded_nodes_list.resize(MAX_SAVED_DHT_NODES);
 
-				int num = unpack_nodes (dht->loaded_nodes_list, MAX_SAVED_DHT_NODES, NULL, data, length, 0);
+				int num = unpack_nodes (dht->loaded_nodes_list.data(), MAX_SAVED_DHT_NODES, NULL, data, length, 0);
 
 				if (num > 0)
 				{

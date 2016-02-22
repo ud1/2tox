@@ -196,7 +196,7 @@ static int32_t init_new_friend(Messenger *m, const uint8_t *real_pk, uint8_t sta
             if (m->numfriends == i)
                 ++m->numfriends;
 
-            if (friend_con_connected(m->fr_c, friendcon_id) == FRIENDCONN_STATUS_CONNECTED) {
+            if (friend_con_connected(m->fr_c, friendcon_id) == FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTED) {
                 send_online_packet(m, i);
             }
 
@@ -388,7 +388,7 @@ int m_delfriend(Messenger *m, int32_t friendnumber)
     remove_request_received(&(m->fr), m->friendlist[friendnumber].real_pk);
     friend_connection_callbacks(m->fr_c, m->friendlist[friendnumber].friendcon_id, MESSENGER_CALLBACK_INDEX, 0, 0, 0, 0, 0);
 
-    if (friend_con_connected(m->fr_c, m->friendlist[friendnumber].friendcon_id) == FRIENDCONN_STATUS_CONNECTED) {
+    if (friend_con_connected(m->fr_c, m->friendlist[friendnumber].friendcon_id) == FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTED) {
         send_offline_packet(m, m->friendlist[friendnumber].friendcon_id);
     }
 
@@ -1779,7 +1779,7 @@ Messenger *new_messenger(Messenger_Options *options, unsigned int *error)
         return NULL;
     }
 
-    m->dht = new_DHT(m->net);
+    m->dht = new DHT(m->net);
 
     if (m->dht == NULL) {
         kill_networking(m->net);
@@ -1791,23 +1791,23 @@ Messenger *new_messenger(Messenger_Options *options, unsigned int *error)
 
     if (m->net_crypto == NULL) {
         kill_networking(m->net);
-        kill_DHT(m->dht);
+        delete m->dht;
         free(m);
         return NULL;
     }
 
     m->onion = new_onion(m->dht);
     m->onion_a = new_onion_announce(m->dht);
-    m->onion_c =  new_onion_client(m->net_crypto);
+    m->onion_c = new Onion_Client(m->net_crypto);
     m->fr_c = new_friend_connections(m->onion_c);
 
     if (!(m->onion && m->onion_a && m->onion_c)) {
         kill_friend_connections(m->fr_c);
         kill_onion(m->onion);
         kill_onion_announce(m->onion_a);
-        kill_onion_client(m->onion_c);
+        delete m->onion_c;
         kill_net_crypto(m->net_crypto);
-        kill_DHT(m->dht);
+        delete m->dht;
         kill_networking(m->net);
         free(m);
         return NULL;
@@ -1820,9 +1820,9 @@ Messenger *new_messenger(Messenger_Options *options, unsigned int *error)
             kill_friend_connections(m->fr_c);
             kill_onion(m->onion);
             kill_onion_announce(m->onion_a);
-            kill_onion_client(m->onion_c);
+            delete m->onion_c;
             kill_net_crypto(m->net_crypto);
-            kill_DHT(m->dht);
+            delete m->dht;
             kill_networking(m->net);
             free(m);
 
@@ -1859,9 +1859,9 @@ void kill_messenger(Messenger *m)
     kill_friend_connections(m->fr_c);
     kill_onion(m->onion);
     kill_onion_announce(m->onion_a);
-    kill_onion_client(m->onion_c);
+    delete m->onion_c;
     kill_net_crypto(m->net_crypto);
-    kill_DHT(m->dht);
+    delete m->dht;
     kill_networking(m->net);
 
     for (i = 0; i < m->numfriends; ++i) {

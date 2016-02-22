@@ -124,7 +124,11 @@ typedef struct {
 typedef int (*oniondata_handler_callback)(void *object, const uint8_t *source_pubkey, const uint8_t *data,
         uint16_t len);
 
-typedef struct {
+struct Onion_Client
+{
+    explicit Onion_Client(Net_Crypto *c);
+    ~Onion_Client();
+    
     DHT     *dht;
     Net_Crypto *c;
     Networking_Core *net;
@@ -161,7 +165,7 @@ typedef struct {
 
     unsigned int onion_connected;
     bool UDP_connected;
-} Onion_Client;
+};
 
 
 /* Add a node to the path_nodes bootstrap array.
@@ -275,10 +279,6 @@ int send_onion_data(Onion_Client *onion_c, int friend_num, const uint8_t *data, 
 void oniondata_registerhandler(Onion_Client *onion_c, uint8_t byte, oniondata_handler_callback cb, void *object);
 
 void do_onion_client(Onion_Client *onion_c);
-
-Onion_Client *new_onion_client(Net_Crypto *c);
-
-void kill_onion_client(Onion_Client *onion_c);
 
 
 /*  return 0 if we are not connected to the network.

@@ -142,6 +142,7 @@ static bool processIncomingPingRequestDataPacket(const ToxHeader header, InputBu
         return false;
     
     listener.onPingRequest(header.public_key, ping_request);
+    return true;
 }
 
 bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingResponseData &data, OutputBuffer &out_packet)
@@ -164,6 +165,7 @@ static bool processIncomingPingResponseDataPacket(const ToxHeader header, InputB
         return false;
     
     listener.onPingResponse(header.public_key, ping_response);
+    return true;
 }
 
 bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodesRequestData &data, OutputBuffer &out_packet)
@@ -182,6 +184,7 @@ static bool processGetNodesRequestDataPacket(const ToxHeader header, InputBuffer
         return false;
        
     listener.onGetNodesRequest(header.public_key, get_nodes_request);
+    return true;
 }
 
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const SendNodesData &data, OutputBuffer &out_packet)
@@ -233,6 +236,26 @@ static bool processSetNodesDataPacket(const ToxHeader header, InputBuffer &decry
         return false;
        
     listener.onSendNodes(header.public_key, send_nodes);
+    return true;
+}
+
+bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const AnnounceRequestData &data, OutputBuffer &out_packet)
+{
+    OutputBuffer data_to_encrypt;
+    data_to_encrypt << data.ping_id << data.client_id << data.data_public_key << const_uint64_adapter(data.sendback_data);
+    return generateOutgoingPacket(crypto_manager, NET_PACKET_ANNOUNCE_REQUEST, data_to_encrypt, recipient_public_key, out_packet);
+}
+
+static bool processAnnounceRequestDataPacket(const ToxHeader header, InputBuffer &decrypted_buffer, IncomingPacketListener &listener)
+{
+    AnnounceRequestData announce;
+    if ((decrypted_buffer >> announce.ping_id >> announce.client_id >> announce.data_public_key >> uint64_adapter(announce.sendback_data)).fail())
+    {
+        return false;
+    }
+    
+    listener.onAnnounceRequest(header.public_key, announce);
+    return true;
 }
 
 bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &&packet, IncomingPacketListener &listener)

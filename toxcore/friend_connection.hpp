@@ -57,14 +57,16 @@
 #define SHARE_RELAYS_INTERVAL (5 * 60)
 
 
-enum {
+enum class FriendConnectionStatus
+{
     FRIENDCONN_STATUS_NONE,
     FRIENDCONN_STATUS_CONNECTING,
     FRIENDCONN_STATUS_CONNECTED
 };
 
-typedef struct {
-    uint8_t status;
+struct Friend_Conn
+{
+    FriendConnectionStatus status;
 
     uint8_t real_public_key[crypto_box_PUBLICKEYBYTES];
     uint8_t dht_temp_pk[crypto_box_PUBLICKEYBYTES];
@@ -98,10 +100,11 @@ typedef struct {
     uint16_t tcp_relay_counter;
 
     bool hosting_tcp_relay;
-} Friend_Conn;
+};
 
 
-typedef struct {
+struct Friend_Connections
+{
     Net_Crypto *net_crypto;
     DHT *dht;
     Onion_Client *onion_c;
@@ -113,7 +116,7 @@ typedef struct {
     void *fr_request_object;
 
     uint64_t last_LANdiscovery;
-} Friend_Connections;
+};
 
 /* return friendcon_id corresponding to the real public key on success.
  * return -1 on failure.
@@ -131,7 +134,7 @@ int friend_connection_lock(Friend_Connections *fr_c, int friendcon_id);
  * return FRIENDCONN_STATUS_CONNECTING if the friend isn't connected.
  * return FRIENDCONN_STATUS_NONE on failure.
  */
-unsigned int friend_con_connected(Friend_Connections *fr_c, int friendcon_id);
+FriendConnectionStatus friend_con_connected(Friend_Connections *fr_c, int friendcon_id);
 
 /* Copy public keys associated to friendcon_id.
  *

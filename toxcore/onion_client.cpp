@@ -362,7 +362,7 @@ static int new_sendback(Onion_Client *onion_c, uint32_t num, const uint8_t *publ
     memcpy(data + sizeof(uint32_t), public_key, crypto_box_PUBLICKEYBYTES);
     memcpy(data + sizeof(uint32_t) + crypto_box_PUBLICKEYBYTES, &ip_port, sizeof(IP_Port));
     memcpy(data + sizeof(uint32_t) + crypto_box_PUBLICKEYBYTES + sizeof(IP_Port), &path_num, sizeof(uint32_t));
-    *sendback = ping_array_add(&onion_c->announce_ping_array, data, sizeof(data));
+    *sendback = onion_c->announce_ping_array.add(data, sizeof(data));
 
     if (*sendback == 0)
         return -1;
@@ -387,7 +387,7 @@ static uint32_t check_sendback(Onion_Client *onion_c, const uint8_t *sendback, u
     memcpy(&sback, sendback, sizeof(uint64_t));
     uint8_t data[sizeof(uint32_t) + crypto_box_PUBLICKEYBYTES + sizeof(IP_Port) + sizeof(uint32_t)];
 
-    if (ping_array_check(data, sizeof(data), &onion_c->announce_ping_array, sback) != sizeof(data))
+    if (onion_c->announce_ping_array.check(data, sizeof(data), sback) != sizeof(data))
         return ~0;
 
     memcpy(ret_pubkey, data + sizeof(uint32_t), crypto_box_PUBLICKEYBYTES);
@@ -1488,48 +1488,31 @@ void do_onion_client(Onion_Client *onion_c)
     onion_c->last_run = unix_time();
 }
 
-Onion_Client *new_onion_client(Net_Crypto *c)
+Onion_Client::Onion_Client(Net_Crypto *c) :
+    announce_ping_array(ANNOUNCE_ARRAY_SIZE, ANNOUNCE_TIMEOUT)
 {
-    if (c == NULL)
-        return NULL;
+    assert(c && "Net_Crypto must not be null");
 
-    Onion_Client *onion_c = (Onion_Client *) calloc(1, sizeof(Onion_Client));
-
-    if (onion_c == NULL)
-        return NULL;
-
-    if (ping_array_init(&onion_c->announce_ping_array, ANNOUNCE_ARRAY_SIZE, ANNOUNCE_TIMEOUT) != 0) {
-        free(onion_c);
-        return NULL;
-    }
-
-    onion_c->dht = c->dht;
-    onion_c->net = c->dht->net;
-    onion_c->c = c;
-    new_symmetric_key(onion_c->secret_symmetric_key);
-    crypto_box_keypair(onion_c->temp_public_key, onion_c->temp_secret_key);
-    networking_registerhandler(onion_c->net, NET_PACKET_ANNOUNCE_RESPONSE, &handle_announce_response, onion_c);
-    networking_registerhandler(onion_c->net, NET_PACKET_ONION_DATA_RESPONSE, &handle_data_response, onion_c);
-    oniondata_registerhandler(onion_c, ONION_DATA_DHTPK, &handle_dhtpk_announce, onion_c);
-    onion_c->dht->cryptopacket_registerhandler(CRYPTO_PACKET_DHTPK, &handle_dht_dhtpk, onion_c);
-    set_onion_packet_tcp_connection_callback(onion_c->c->tcp_c, &handle_tcp_onion, onion_c);
-
-    return onion_c;
+    this->dht = c->dht;
+    this->net = c->dht->net;
+    this->c = c;
+    new_symmetric_key(this->secret_symmetric_key);
+    crypto_box_keypair(this->temp_public_key, this->temp_secret_key);
+    networking_registerhandler(this->net, NET_PACKET_ANNOUNCE_RESPONSE, &handle_announce_response, this);
+    networking_registerhandler(this->net, NET_PACKET_ONION_DATA_RESPONSE, &handle_data_response, this);
+    oniondata_registerhandler(this, ONION_DATA_DHTPK, &handle_dhtpk_announce, this);
+    this->dht->cryptopacket_registerhandler(CRYPTO_PACKET_DHTPK, &handle_dht_dhtpk, this);
+    set_onion_packet_tcp_connection_callback(this->c->tcp_c, &handle_tcp_onion, this);
 }
 
-void kill_onion_client(Onion_Client *onion_c)
+Onion_Client::~Onion_Client()
 {
-    if (onion_c == NULL)
-        return;
-
-    ping_array_free_all(&onion_c->announce_ping_array);
-    realloc_onion_friends(onion_c, 0);
-    networking_registerhandler(onion_c->net, NET_PACKET_ANNOUNCE_RESPONSE, NULL, NULL);
-    networking_registerhandler(onion_c->net, NET_PACKET_ONION_DATA_RESPONSE, NULL, NULL);
-    oniondata_registerhandler(onion_c, ONION_DATA_DHTPK, NULL, NULL);
-    onion_c->dht->cryptopacket_registerhandler(CRYPTO_PACKET_DHTPK, NULL, NULL);
-    set_onion_packet_tcp_connection_callback(onion_c->c->tcp_c, NULL, NULL);
-    sodium_memzero(onion_c, sizeof(Onion_Client));
-    free(onion_c);
+    realloc_onion_friends(this, 0);
+    networking_registerhandler(this->net, NET_PACKET_ANNOUNCE_RESPONSE, NULL, NULL);
+    networking_registerhandler(this->net, NET_PACKET_ONION_DATA_RESPONSE, NULL, NULL);
+    oniondata_registerhandler(this, ONION_DATA_DHTPK, NULL, NULL);
+    this->dht->cryptopacket_registerhandler(CRYPTO_PACKET_DHTPK, NULL, NULL);
+    set_onion_packet_tcp_connection_callback(this->c->tcp_c, NULL, NULL);
+    sodium_memzero(this, sizeof(Onion_Client));
 }
 

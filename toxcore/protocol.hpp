@@ -59,6 +59,7 @@ enum PacketType : uint8_t
 
 constexpr size_t PUBLIC_KEY_LEN = 32;
 constexpr size_t SECRET_KEY_LEN = 32;
+constexpr size_t ONION_PING_ID_LEN = 32;
 constexpr size_t NONCE_LEN = 24;
 
 /* The max number of nodes to send with send nodes. */
@@ -87,6 +88,11 @@ private:
 struct SecretKey
 {
     std::array<uint8_t, SECRET_KEY_LEN> data = {};
+};
+
+struct OnionPingId
+{
+    std::array<uint8_t, ONION_PING_ID_LEN> data = {};
 };
 
 class CryptoManager
@@ -169,6 +175,14 @@ struct SendNodesData
     uint64_t ping_id;
 };
 
+struct AnnounceRequestData
+{
+    OnionPingId ping_id;
+    PublicKey client_id;
+    PublicKey data_public_key;
+    uint64_t sendback_data;
+};
+
 class IncomingPacketListener
 {
 public:
@@ -176,6 +190,7 @@ public:
     virtual void onPingResponse (const PublicKey &sender_public_key, const PingResponseData &data) {}
     virtual void onGetNodesRequest (const PublicKey &sender_public_key, const GetNodesRequestData &data) {}
     virtual void onSendNodes (const PublicKey &sender_public_key, const SendNodesData &data) {}
+    virtual void onAnnounceRequest (const PublicKey &sender_public_key, const AnnounceRequestData &data) {}
 };
 
 
@@ -183,6 +198,7 @@ bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKe
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingResponseData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodesRequestData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const SendNodesData &data, OutputBuffer &out_packet);
+bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const AnnounceRequestData &data, OutputBuffer &out_packet);
 bool processIncomingPacket (const CryptoManager &crypto_manager, InputBuffer &&packet, IncomingPacketListener &listener);
 
 }

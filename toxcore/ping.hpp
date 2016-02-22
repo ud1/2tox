@@ -24,7 +24,29 @@
 #ifndef __PING_H__
 #define __PING_H__
 
-struct PING;
+/* Maximum newly announced nodes to ping per TIME_TO_PING seconds. */
+#define MAX_TO_PING 32
+
+#include "protocol.hpp"
+
+struct DHT;
+
+struct Node_format
+{
+        uint8_t     public_key[bitox::PUBLIC_KEY_LEN];
+        IP_Port     ip_port;
+};
+
+struct PING {
+    explicit PING(DHT *dht);
+    ~PING();
+    
+    DHT *dht;
+
+    Ping_Array  ping_array;
+    Node_format to_ping[MAX_TO_PING];
+    uint64_t    last_to_ping;
+};
 
 /* Add nodes to the to_ping list.
  * All nodes in this list are pinged every TIME_TOPING seconds
@@ -38,9 +60,6 @@ struct PING;
  */
 int add_to_ping(PING *ping, const uint8_t *public_key, IP_Port ip_port);
 void do_to_ping(PING *ping);
-
-PING *new_ping(DHT *dht);
-void kill_ping(PING *ping);
 
 int send_ping_request(PING *ping, IP_Port ipp, const uint8_t *public_key);
 

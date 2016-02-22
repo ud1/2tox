@@ -365,7 +365,7 @@ static int connect_to_closest(Group_Chats *g_c, int groupnumber)
 
         add_conn_to_groupchat(g_c, friendcon_id, groupnumber, 1, lock);
 
-        if (friend_con_connected(g_c->fr_c, friendcon_id) == FRIENDCONN_STATUS_CONNECTED) {
+        if (friend_con_connected(g_c->fr_c, friendcon_id) == FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTED) {
             send_packet_online(g_c->fr_c, friendcon_id, groupnumber, g->identifier);
         }
     }

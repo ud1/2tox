@@ -39,7 +39,7 @@ static uint8_t friendconn_id_not_valid(const Friend_Connections *fr_c, int frien
     if (fr_c->conns == NULL)
         return 1;
 
-    if (fr_c->conns[friendcon_id].status == FRIENDCONN_STATUS_NONE)
+    if (fr_c->conns[friendcon_id].status == FriendConnectionStatus::FRIENDCONN_STATUS_NONE)
         return 1;
 
     return 0;
@@ -78,7 +78,7 @@ static int create_friend_conn(Friend_Connections *fr_c)
     uint32_t i;
 
     for (i = 0; i < fr_c->num_cons; ++i) {
-        if (fr_c->conns[i].status == FRIENDCONN_STATUS_NONE)
+        if (fr_c->conns[i].status == FriendConnectionStatus::FRIENDCONN_STATUS_NONE)
             return i;
     }
 
@@ -107,7 +107,7 @@ static int wipe_friend_conn(Friend_Connections *fr_c, int friendcon_id)
     memset(&(fr_c->conns[friendcon_id]), 0 , sizeof(Friend_Conn));
 
     for (i = fr_c->num_cons; i != 0; --i) {
-        if (fr_c->conns[i - 1].status != FRIENDCONN_STATUS_NONE)
+        if (fr_c->conns[i - 1].status != FriendConnectionStatus::FRIENDCONN_STATUS_NONE)
             break;
     }
 
@@ -318,18 +318,18 @@ static int handle_status(void *object, int number, uint8_t status)
 
     if (status) {  /* Went online. */
         call_cb = 1;
-        friend_con->status = FRIENDCONN_STATUS_CONNECTED;
+        friend_con->status = FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTED;
         friend_con->ping_lastrecv = unix_time();
         friend_con->share_relays_lastsent = 0;
         onion_set_friend_online(fr_c->onion_c, friend_con->onion_friendnum, status);
     } else {  /* Went offline. */
-        if (friend_con->status != FRIENDCONN_STATUS_CONNECTING) {
+        if (friend_con->status != FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING) {
             call_cb = 1;
             friend_con->dht_pk_lastrecv = unix_time();
             onion_set_friend_online(fr_c->onion_c, friend_con->onion_friendnum, status);
         }
 
-        friend_con->status = FRIENDCONN_STATUS_CONNECTING;
+        friend_con->status = FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING;
         friend_con->crypt_connection_id = -1;
         friend_con->hosting_tcp_relay = 0;
     }
@@ -558,12 +558,12 @@ int friend_connection_lock(Friend_Connections *fr_c, int friendcon_id)
  * return FRIENDCONN_STATUS_CONNECTING if the friend isn't connected.
  * return FRIENDCONN_STATUS_NONE on failure.
  */
-unsigned int friend_con_connected(Friend_Connections *fr_c, int friendcon_id)
+FriendConnectionStatus friend_con_connected(Friend_Connections *fr_c, int friendcon_id)
 {
     Friend_Conn *friend_con = get_conn(fr_c, friendcon_id);
 
     if (!friend_con)
-        return 0;
+        return FriendConnectionStatus::FRIENDCONN_STATUS_NONE;
 
     return friend_con->status;
 }
@@ -672,7 +672,7 @@ int new_friend_connection(Friend_Connections *fr_c, const uint8_t *real_public_k
     Friend_Conn *friend_con = &fr_c->conns[friendcon_id];
 
     friend_con->crypt_connection_id = -1;
-    friend_con->status = FRIENDCONN_STATUS_CONNECTING;
+    friend_con->status = FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING;
     memcpy(friend_con->real_public_key, real_public_key, crypto_box_PUBLICKEYBYTES);
     friend_con->onion_friendnum = onion_friendnum;
 
@@ -743,7 +743,7 @@ int send_friend_request_packet(Friend_Connections *fr_c, int friendcon_id, uint3
     memcpy(packet + 1, &nospam_num, sizeof(nospam_num));
     memcpy(packet + 1 + sizeof(nospam_num), data, length);
 
-    if (friend_con->status == FRIENDCONN_STATUS_CONNECTED) {
+    if (friend_con->status == FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTED) {
         packet[0] = PACKET_ID_FRIEND_REQUESTS;
         return write_cryptpacket(fr_c->net_crypto, friend_con->crypt_connection_id, packet, sizeof(packet), 0) != -1;
     } else {
@@ -797,7 +797,7 @@ void do_friend_connections(Friend_Connections *fr_c)
         Friend_Conn *friend_con = get_conn(fr_c, i);
 
         if (friend_con) {
-            if (friend_con->status == FRIENDCONN_STATUS_CONNECTING) {
+            if (friend_con->status == FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING) {
                 if (friend_con->dht_pk_lastrecv + FRIEND_DHT_TIMEOUT < temp_time) {
                     if (friend_con->dht_lock) {
                         fr_c->dht->delfriend(friend_con->dht_temp_pk, friend_con->dht_lock);
@@ -816,7 +816,7 @@ void do_friend_connections(Friend_Connections *fr_c)
                     }
                 }
 
-            } else if (friend_con->status == FRIENDCONN_STATUS_CONNECTED) {
+            } else if (friend_con->status == FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTED) {
                 if (friend_con->ping_lastsent + FRIEND_PING_INTERVAL < temp_time) {
                     send_ping(fr_c, i);
                 }

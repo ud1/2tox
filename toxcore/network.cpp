@@ -64,7 +64,7 @@ in_addr IP::to_in_addr() const
 in6_addr IP::to_in6_addr() const
 {
     in6_addr result;
-    boost::asio::ip::address_v6::bytes_type bytes = address.is_v6() ? address.to_v6().to_bytes() : boost::asio::ip::address_v6::v4_compatible(address.to_v4()).to_bytes();
+    boost::asio::ip::address_v6::bytes_type bytes = address.is_v6() ? address.to_v6().to_bytes() : boost::asio::ip::address_v6::v4_mapped(address.to_v4()).to_bytes();
     memcpy((void *)&result, (void *) bytes.data(), 16);
     
     return result;

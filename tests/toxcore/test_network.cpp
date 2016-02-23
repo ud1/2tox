@@ -667,11 +667,11 @@ TEST_F(NC_Test, send)
             ASSERT_TRUE( this->remote.set_ip("::ffff:127.0.0.1", 27011) );
             ASSERT_TRUE( this->local.send(this->remote, "hello world") );
         }
-        /*{ // TODO
+        {
             SCOPED_TRACE("good remote ipv4");
             ASSERT_TRUE( this->remote.set_ip("127.0.0.1", 27011) );
             ASSERT_TRUE( this->local.send(this->remote, "hello world") );
-        }*/
+        }
         {
             SCOPED_TRACE("bad remote");
             ASSERT_FALSE( this->remote.set_ip("asd", 27011) );
@@ -712,13 +712,13 @@ TEST_F(NC_Test, receive)
         ASSERT_TRUE( this->local.set_ip("127.0.0.1", 27010) );
         ASSERT_TRUE( this->local.set_net() );
 
-        /*ASSERT_TRUE( this->remote.set_ip("::ffff:127.0.0.1", 27011) );
+        ASSERT_TRUE( this->remote.set_ip("::ffff:127.0.0.1", 27011) );
         ASSERT_TRUE( this->remote.set_net() );
         ASSERT_TRUE( this->local.data_received(this->remote, "test receive A!") );
 
         ASSERT_TRUE( this->remote.set_ip("::", 27011) );
         ASSERT_TRUE( this->remote.set_net() );
-        ASSERT_TRUE( this->local.data_received(this->remote, "test receive B!") );*/ // TODO
+        ASSERT_TRUE( this->local.data_received(this->remote, "test receive B!") );
 
         ASSERT_TRUE( this->remote.set_ip("::1", 27011) );
         ASSERT_TRUE( this->remote.set_net() );

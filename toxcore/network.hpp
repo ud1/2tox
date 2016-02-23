@@ -31,9 +31,11 @@
 #define TCP_INET6 (AF_INET6 + 3)
 #define TCP_FAMILY (AF_INET6 + 4)
 
+#include "protocol.hpp"
+
 //#include <boost/asio.hpp>
 
-struct IP4;
+/*struct IP4;
 struct IP6;
 
 struct IP4 {
@@ -76,19 +78,19 @@ struct IP {
     bool isset() const;
 };
 
-struct IP_Port {
+struct IPPort {
     IP ip;
     uint16_t port;
 
-    explicit IP_Port();
+    explicit IPPort();
 
-    bool operator==(const IP_Port& other) const;
+    bool operator==(const IPPort& other) const;
     bool isset() const;
 
-    static sockaddr_storage to_addr_4(const IP_Port& self);
-    static sockaddr_storage to_addr_6(const IP_Port& self);
-    static IP_Port          from_addr(const sockaddr_storage& addr);
-};
+    static sockaddr_storage to_addr_4(const IPPort& self);
+    static sockaddr_storage to_addr_6(const IPPort& self);
+    static IPPort          from_addr(const sockaddr_storage& addr);
+};*/
 
 /* Does the IP6 struct a contain an IPv4 address in an IPv6 one? */
 #define IPV6_IPV4_IN_V6(a) ((a.uint64[0] == 0) && (a.uint32[2] == htonl (0xffff)))
@@ -101,6 +103,12 @@ struct IP_Port {
 
 #define TOX_ENABLE_IPV6_DEFAULT 1
 
+namespace bitox
+{
+
+namespace network
+{    
+    
 struct Socket {
     int fd;
 
@@ -109,9 +117,9 @@ struct Socket {
 
     bool is_valid() const;
     void kill() const;
-    int bind(const IP_Port& ip_port) const;
-    int sendto(uint8_t socket_family, IP_Port ip_port, const void* data, size_t length, int flags) const;
-    int recvfrom(IP_Port* ip_port, void* data, uint32_t* length, size_t max_len, int flags) const;
+    int bind(const IPPort& ip_port) const;
+    int sendto(uint8_t socket_family, IPPort ip_port, const void* data, size_t length, int flags) const;
+    int recvfrom(IPPort* ip_port, void* data, uint32_t* length, size_t max_len, int flags) const;
     bool set_nonblock() const;
     bool set_nosigpipe() const;
     bool set_reuseaddr() const;
@@ -125,7 +133,7 @@ typedef unsigned int sock_t;
  * Packet data is put into data.
  * Packet length is put into length.
  */
-typedef int (*packet_handler_callback)(void* object, IP_Port ip_port, const uint8_t* data, uint16_t len);
+typedef int (*packet_handler_callback)(void* object, const IPPort &ip_port, const uint8_t* data, uint16_t len);
 
 struct Packet_Handler {
     packet_handler_callback function;
@@ -203,7 +211,7 @@ int ip_equal(const IP* a, const IP* b);
  *
  * returns 0 when not equal or when uninitialized
  */
-int ipport_equal(const IP_Port* a, const IP_Port* b);
+int ipport_equal(const IPPort* a, const IPPort* b);
 
 /* nulls out ip */
 void ip_reset(IP* ip);
@@ -212,11 +220,11 @@ void ip_init(IP* ip, uint8_t ipv6enabled);
 /* checks if ip is valid */
 int ip_isset(const IP* ip);
 /* checks if ip is valid */
-int ipport_isset(const IP_Port *ipport);
+int ipport_isset(const IPPort *ipport);
 /* copies an ip structure */
 void ip_copy(IP* target, const IP* source);
 /* copies an ip_port structure */
-void ipport_copy(IP_Port* target, const IP_Port* source);
+void ipport_copy(IPPort* target, const IPPort* source);
 
 /*
  * addr_resolve():
@@ -306,7 +314,7 @@ uint64_t current_time_monotonic(void);
 /* Basic network functions: */
 
 /* Function to send packet(data) of length to ip_port. */
-int sendpacket(Networking_Core* net, IP_Port ip_port, const uint8_t* data, uint16_t length);
+int sendpacket(Networking_Core* net, IPPort ip_port, const uint8_t* data, uint16_t length);
 
 /* Function to call when packet beginning with byte=id is received. */
 void networking_registerhandler(Networking_Core* net, uint8_t id, packet_handler_callback cb, void* object);
@@ -329,5 +337,7 @@ Networking_Core* new_networking_ex(IP ip, uint16_t port_from, uint16_t port_to, 
 
 /* Function to cleanup networking stuff (doesn't do much right now). */
 void kill_networking(Networking_Core *net);
+}
+}
 
 #endif

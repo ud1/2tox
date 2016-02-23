@@ -120,8 +120,8 @@ typedef struct {
     uint64_t temp_packet_sent_time; /* The time at which the last temp_packet was sent in ms. */
     uint32_t temp_packet_num_sent;
 
-    IP_Port ip_portv4; /* The ip and port to contact this guy directly.*/
-    IP_Port ip_portv6;
+    bitox::network::IPPort ip_portv4; /* The ip and port to contact this guy directly.*/
+    bitox::network::IPPort ip_portv6;
     uint64_t direct_lastrecv_timev4; /* The Time at which we last received a direct packet in ms. */
     uint64_t direct_lastrecv_timev6;
 
@@ -179,7 +179,7 @@ typedef struct {
 } Crypto_Connection;
 
 typedef struct {
-    IP_Port source;
+    bitox::network::IPPort source;
     uint8_t public_key[crypto_box_PUBLICKEYBYTES]; /* The real public key of the peer. */
     uint8_t dht_public_key[crypto_box_PUBLICKEYBYTES]; /* The dht public key of the peer. */
     uint8_t recv_nonce[crypto_box_NONCEBYTES]; /* Nonce of received packets. */
@@ -248,7 +248,7 @@ int new_crypto_connection(Net_Crypto *c, const uint8_t *real_public_key, const u
  * return -1 on failure.
  * return 0 on success.
  */
-int set_direct_ip_port(Net_Crypto *c, int crypt_connection_id, IP_Port ip_port, bool connected);
+int set_direct_ip_port(Net_Crypto *c, int crypt_connection_id, bitox::network::IPPort ip_port, bool connected);
 
 /* Set function to be called when connection with crypt_connection_id goes connects/disconnects.
  *
@@ -343,14 +343,14 @@ int send_lossy_cryptpacket(Net_Crypto *c, int crypt_connection_id, const uint8_t
  * return 0 if it was added.
  * return -1 if it wasn't.
  */
-int add_tcp_relay_peer(Net_Crypto *c, int crypt_connection_id, IP_Port ip_port, const uint8_t *public_key);
+int add_tcp_relay_peer(Net_Crypto *c, int crypt_connection_id, bitox::network::IPPort ip_port, const uint8_t *public_key);
 
 /* Add a tcp relay to the array.
  *
  * return 0 if it was added.
  * return -1 if it wasn't.
  */
-int add_tcp_relay(Net_Crypto *c, IP_Port ip_port, const uint8_t *public_key);
+int add_tcp_relay(Net_Crypto *c, bitox::network::IPPort ip_port, const uint8_t *public_key);
 
 /* Return a random TCP connection number for use in send_tcp_onion_request.
  *

@@ -32,10 +32,13 @@
 
 #include "util.hpp"
 
+using namespace bitox;
+using namespace bitox::network;
+
 /* return 1 on success
  * return 0 on failure
  */
-static int connect_sock_to(sock_t sock, IP_Port ip_port, TCP_Proxy_Info *proxy_info)
+static int connect_sock_to(sock_t sock, IPPort ip_port, TCP_Proxy_Info *proxy_info)
 {
     if (proxy_info->proxy_type != TCP_PROXY_NONE) {
         ip_port = proxy_info->ip_port;
@@ -45,19 +48,19 @@ static int connect_sock_to(sock_t sock, IP_Port ip_port, TCP_Proxy_Info *proxy_i
 
     size_t addrsize;
 
-    if (ip_port.ip.family == AF_INET) {
+    if (ip_port.ip.family == Family::FAMILY_AF_INET) {
         struct sockaddr_in *addr4 = (struct sockaddr_in *)&addr;
 
         addrsize = sizeof(struct sockaddr_in);
         addr4->sin_family = AF_INET;
-        addr4->sin_addr = ip_port.ip.ip4.in_addr;
+        addr4->sin_addr = ip_port.ip.to_in_addr();
         addr4->sin_port = ip_port.port;
-    } else if (ip_port.ip.family == AF_INET6) {
+    } else if (ip_port.ip.family == Family::FAMILY_AF_INET6) {
         struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&addr;
 
         addrsize = sizeof(struct sockaddr_in6);
         addr6->sin6_family = AF_INET6;
-        addr6->sin6_addr = ip_port.ip.ip6.in6_addr;
+        addr6->sin6_addr = ip_port.ip.to_in6_addr();
         addr6->sin6_port = ip_port.port;
     } else {
         return 0;
@@ -164,16 +167,16 @@ static void proxy_socks5_generate_connection_request(TCP_Client_Connection *TCP_
     TCP_conn->last_packet[2] = 0; /* reserved, must be 0 */
     uint16_t length = 3;
 
-    if (TCP_conn->ip_port.ip.family == AF_INET) {
+    if (TCP_conn->ip_port.ip.family == Family::FAMILY_AF_INET) {
         TCP_conn->last_packet[3] = 1; /* IPv4 address */
         ++length;
-        memcpy(TCP_conn->last_packet + length, TCP_conn->ip_port.ip.ip4.uint8, sizeof(IP4));
-        length += sizeof(IP4);
+        memcpy(TCP_conn->last_packet + length, TCP_conn->ip_port.ip.address.to_v4().to_bytes().data(), 4);
+        length += 4;
     } else {
         TCP_conn->last_packet[3] = 4; /* IPv6 address */
         ++length;
-        memcpy(TCP_conn->last_packet + length, TCP_conn->ip_port.ip.ip6.uint8, sizeof(IP6));
-        length += sizeof(IP6);
+        memcpy(TCP_conn->last_packet + length, TCP_conn->ip_port.ip.address.to_v6().to_bytes().data(), 16);
+        length += 16;
     }
 
     memcpy(TCP_conn->last_packet + length, &TCP_conn->ip_port.port, sizeof(uint16_t));
@@ -189,8 +192,8 @@ static void proxy_socks5_generate_connection_request(TCP_Client_Connection *TCP_
  */
 static int proxy_socks5_read_connection_response(TCP_Client_Connection *TCP_conn)
 {
-    if (TCP_conn->ip_port.ip.family == AF_INET) {
-        uint8_t data[4 + sizeof(IP4) + sizeof(uint16_t)];
+    if (TCP_conn->ip_port.ip.family == Family::FAMILY_AF_INET) {
+        uint8_t data[4 + 4 + sizeof(uint16_t)];
         int ret = read_TCP_packet(TCP_conn->sock, data, sizeof(data));
 
         if (ret == -1)
@@ -200,7 +203,7 @@ static int proxy_socks5_read_connection_response(TCP_Client_Connection *TCP_conn
             return 1;
 
     } else {
-        uint8_t data[4 + sizeof(IP6) + sizeof(uint16_t)];
+        uint8_t data[4 + 16 + sizeof(uint16_t)];
         int ret = read_TCP_packet(TCP_conn->sock, data, sizeof(data));
 
         if (ret == -1)
@@ -608,17 +611,17 @@ void onion_response_handler(TCP_Client_Connection *con, int (*onion_callback)(vo
 
 /* Create new TCP connection to ip_port/public_key
  */
-TCP_Client_Connection *new_TCP_connection(IP_Port ip_port, const uint8_t *public_key, const uint8_t *self_public_key,
+TCP_Client_Connection *new_TCP_connection(IPPort ip_port, const uint8_t *public_key, const uint8_t *self_public_key,
         const uint8_t *self_secret_key, TCP_Proxy_Info *proxy_info)
 {
     if (networking_at_startup() != 0) {
         return NULL;
     }
 
-    if (ip_port.ip.family != AF_INET && ip_port.ip.family != AF_INET6)
+    if (ip_port.ip.family != Family::FAMILY_AF_INET && ip_port.ip.family != Family::FAMILY_AF_INET6)
         return NULL;
 
-    uint8_t family = ip_port.ip.family;
+    Family family = ip_port.ip.family;
 
     TCP_Proxy_Info default_proxyinfo;
 
@@ -631,7 +634,7 @@ TCP_Client_Connection *new_TCP_connection(IP_Port ip_port, const uint8_t *public
         family = proxy_info->ip_port.ip.family;
     }
 
-    sock_t sock = socket(family, SOCK_STREAM, IPPROTO_TCP);
+    sock_t sock = socket((int) family, SOCK_STREAM, IPPROTO_TCP);
 
     if (!sock_valid(sock)) {
         return NULL;

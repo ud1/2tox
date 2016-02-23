@@ -34,6 +34,9 @@
  *  return 0 if it succeeds.
  */
 
+using namespace bitox;
+using namespace bitox::network;
+
 template <typename T>
 bool realloc_tox_array(T *&array, size_t num)
 {
@@ -702,7 +705,7 @@ static int reconnect_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connec
     if (tcp_con->status == TCP_CONN_SLEEPING)
         return -1;
 
-    IP_Port ip_port = tcp_con->connection->ip_port;
+    IPPort ip_port = tcp_con->connection->ip_port;
     uint8_t relay_pk[crypto_box_PUBLICKEYBYTES];
     memcpy(relay_pk, tcp_con->connection->public_key, crypto_box_PUBLICKEYBYTES);
     kill_TCP_connection(tcp_con->connection);
@@ -1021,15 +1024,15 @@ static int tcp_relay_on_online(TCP_Connections *tcp_c, int tcp_connections_numbe
     return 0;
 }
 
-static int add_tcp_relay_instance(TCP_Connections *tcp_c, IP_Port ip_port, const uint8_t *relay_pk)
+static int add_tcp_relay_instance(TCP_Connections *tcp_c, IPPort ip_port, const uint8_t *relay_pk)
 {
-    if (ip_port.ip.family == TCP_INET) {
-        ip_port.ip.family = AF_INET;
-    } else if (ip_port.ip.family == TCP_INET6) {
-        ip_port.ip.family = AF_INET6;
+    if (ip_port.ip.family == Family::FAMILY_TCP_INET) {
+        ip_port.ip.family = Family::FAMILY_AF_INET;
+    } else if (ip_port.ip.family == Family::FAMILY_TCP_INET6) {
+        ip_port.ip.family = Family::FAMILY_AF_INET6;
     }
 
-    if (ip_port.ip.family != AF_INET && ip_port.ip.family != AF_INET6)
+    if (ip_port.ip.family != Family::FAMILY_AF_INET && ip_port.ip.family != Family::FAMILY_AF_INET6)
         return -1;
 
     int tcp_connections_number = create_tcp_connection(tcp_c);
@@ -1056,7 +1059,7 @@ static int add_tcp_relay_instance(TCP_Connections *tcp_c, IP_Port ip_port, const
  * return 0 on success.
  * return -1 on failure.
  */
-int add_tcp_relay_global(TCP_Connections *tcp_c, IP_Port ip_port, const uint8_t *relay_pk)
+int add_tcp_relay_global(TCP_Connections *tcp_c, IPPort ip_port, const uint8_t *relay_pk)
 {
     int tcp_connections_number = find_tcp_connection_relay(tcp_c, relay_pk);
 
@@ -1109,7 +1112,7 @@ int add_tcp_number_relay_connection(TCP_Connections *tcp_c, int connections_numb
  * return 0 on success.
  * return -1 on failure.
  */
-int add_tcp_relay_connection(TCP_Connections *tcp_c, int connections_number, IP_Port ip_port, const uint8_t *relay_pk)
+int add_tcp_relay_connection(TCP_Connections *tcp_c, int connections_number, IPPort ip_port, const uint8_t *relay_pk)
 {
     TCP_Connection_to *con_to = get_connection(tcp_c, connections_number);
 
@@ -1174,10 +1177,10 @@ unsigned int tcp_copy_connected_relays(TCP_Connections *tcp_c, Node_format *tcp_
             memcpy(tcp_relays[copied].public_key.data.data(), tcp_con->connection->public_key, crypto_box_PUBLICKEYBYTES);
             tcp_relays[copied].ip_port = tcp_con->connection->ip_port;
 
-            if (tcp_relays[copied].ip_port.ip.family == AF_INET) {
-                tcp_relays[copied].ip_port.ip.family = TCP_INET;
-            } else if (tcp_relays[copied].ip_port.ip.family == AF_INET6) {
-                tcp_relays[copied].ip_port.ip.family = TCP_INET6;
+            if (tcp_relays[copied].ip_port.ip.family == Family::FAMILY_AF_INET) {
+                tcp_relays[copied].ip_port.ip.family = Family::FAMILY_TCP_INET;
+            } else if (tcp_relays[copied].ip_port.ip.family == Family::FAMILY_AF_INET6) {
+                tcp_relays[copied].ip_port.ip.family = Family::FAMILY_TCP_INET6;
             }
 
             ++copied;

@@ -36,7 +36,7 @@ typedef enum {
 } TCP_PROXY_TYPE;
 
 typedef struct {
-    IP_Port ip_port;
+    bitox::network::IPPort ip_port;
     uint8_t proxy_type; // a value from TCP_PROXY_TYPE
 } TCP_Proxy_Info;
 
@@ -52,10 +52,10 @@ enum {
 };
 typedef struct  {
     uint8_t status;
-    sock_t  sock;
+    bitox::network::sock_t  sock;
     uint8_t self_public_key[crypto_box_PUBLICKEYBYTES]; /* our public key */
     uint8_t public_key[crypto_box_PUBLICKEYBYTES]; /* public key of the server */
-    IP_Port ip_port; /* The ip and port of the server */
+    bitox::network::IPPort ip_port; /* The ip and port of the server */
     TCP_Proxy_Info proxy_info;
     uint8_t recv_nonce[crypto_box_NONCEBYTES]; /* Nonce of received packets. */
     uint8_t sent_nonce[crypto_box_NONCEBYTES]; /* Nonce of sent packets. */
@@ -102,7 +102,7 @@ typedef struct  {
 
 /* Create new TCP connection to ip_port/public_key
  */
-TCP_Client_Connection *new_TCP_connection(IP_Port ip_port, const uint8_t *public_key, const uint8_t *self_public_key,
+TCP_Client_Connection *new_TCP_connection(bitox::network::IPPort ip_port, const uint8_t *public_key, const uint8_t *self_public_key,
         const uint8_t *self_secret_key, TCP_Proxy_Info *proxy_info);
 
 /* Run the TCP connection

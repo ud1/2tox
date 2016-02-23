@@ -74,6 +74,9 @@ typedef Messenger Tox;
 #error TOX_MAX_STATUS_MESSAGE_LENGTH is assumed to be equal to MAX_STATUSMESSAGE_LENGTH
 #endif
 
+using namespace bitox;
+using namespace bitox::network;
+
 uint32_t tox_version_major(void)
 {
     return 0;
@@ -198,7 +201,7 @@ Tox *tox_new(const struct Tox_Options *options, TOX_ERR_NEW *error)
             ip_init(&m_options.proxy_info.ip_port.ip, m_options.ipv6enabled);
 
             if (m_options.ipv6enabled)
-                m_options.proxy_info.ip_port.ip.family = AF_UNSPEC;
+                m_options.proxy_info.ip_port.ip.family = bitox::network::Family::FAMILY_NULL;
 
             if (!addr_resolve_or_parse_ip(options->proxy_host, &m_options.proxy_info.ip_port.ip, NULL)) {
                 SET_ERROR_PARAMETER(error, TOX_ERR_NEW_PROXY_BAD_HOST);
@@ -285,18 +288,18 @@ bool tox_bootstrap(Tox *tox, const char *address, uint16_t port, const uint8_t *
     unsigned int count = 0;
 
     do {
-        IP_Port ip_port;
+        IPPort ip_port;
         ip_port.port = htons(port);
-        ip_port.ip.family = info->ai_family;
+        ip_port.ip.family = (Family) info->ai_family;
 
         if (info->ai_socktype && info->ai_socktype != SOCK_DGRAM) {
             continue;
         }
 
         if (info->ai_family == AF_INET) {
-            ip_port.ip.ip4.in_addr = ((struct sockaddr_in *)info->ai_addr)->sin_addr;
+            ip_port.ip.from_in_addr(((struct sockaddr_in *)info->ai_addr)->sin_addr);
         } else if (info->ai_family == AF_INET6) {
-            ip_port.ip.ip6.in6_addr = ((struct sockaddr_in6 *)info->ai_addr)->sin6_addr;
+            ip_port.ip.from_in6_addr(((struct sockaddr_in6 *)info->ai_addr)->sin6_addr);
         } else {
             continue;
         }
@@ -343,18 +346,18 @@ bool tox_add_tcp_relay(Tox *tox, const char *address, uint16_t port, const uint8
     unsigned int count = 0;
 
     do {
-        IP_Port ip_port;
+        IPPort ip_port;
         ip_port.port = htons(port);
-        ip_port.ip.family = info->ai_family;
+        ip_port.ip.family = (Family) info->ai_family;
 
         if (info->ai_socktype && info->ai_socktype != SOCK_STREAM) {
             continue;
         }
 
         if (info->ai_family == AF_INET) {
-            ip_port.ip.ip4.in_addr = ((struct sockaddr_in *)info->ai_addr)->sin_addr;
+            ip_port.ip.from_in_addr(((struct sockaddr_in *)info->ai_addr)->sin_addr);
         } else if (info->ai_family == AF_INET6) {
-            ip_port.ip.ip6.in6_addr = ((struct sockaddr_in6 *)info->ai_addr)->sin6_addr;
+            ip_port.ip.from_in6_addr(((struct sockaddr_in6 *)info->ai_addr)->sin6_addr);
         } else {
             continue;
         }

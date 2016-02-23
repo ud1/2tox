@@ -63,7 +63,7 @@
 
 typedef struct {
     uint8_t     public_key[crypto_box_PUBLICKEYBYTES];
-    IP_Port     ip_port;
+    bitox::network::IPPort     ip_port;
     uint8_t     ping_id[ONION_PING_ID_SIZE];
     uint8_t     data_public_key[crypto_box_PUBLICKEYBYTES];
     uint8_t     is_stored;
@@ -111,7 +111,7 @@ typedef struct {
     Last_Pinged last_pinged[MAX_STORED_PINGED_NODES];
     uint8_t last_pinged_index;
 
-    int (*tcp_relay_node_callback)(void *object, uint32_t number, IP_Port ip_port, const uint8_t *public_key);
+    int (*tcp_relay_node_callback)(void *object, uint32_t number, bitox::network::IPPort ip_port, const uint8_t *public_key);
     void *tcp_relay_node_callback_object;
     uint32_t tcp_relay_node_callback_number;
 
@@ -132,7 +132,7 @@ struct Onion_Client
     
     DHT     *dht;
     Net_Crypto *c;
-    Networking_Core *net;
+    bitox::network::Networking_Core *net;
     
     std::vector<Onion_Friend> friends_list;
 
@@ -174,7 +174,7 @@ struct Onion_Client
  * return -1 on failure
  * return 0 on success
  */
-int onion_add_bs_path_node(Onion_Client *onion_c, IP_Port ip_port, const uint8_t *public_key);
+int onion_add_bs_path_node(Onion_Client *onion_c, const bitox::network::IPPort &ip_port, const uint8_t *public_key);
 
 /* Put up to max_num nodes in nodes.
  *
@@ -221,7 +221,7 @@ int onion_set_friend_online(Onion_Client *onion_c, int friend_num, uint8_t is_on
  *  return  1, ip if public_key refers to a friend and we found him
  *
  */
-int onion_getfriendip(const Onion_Client *onion_c, int friend_num, IP_Port *ip_port);
+int onion_getfriendip(const Onion_Client *onion_c, int friend_num, bitox::network::IPPort *ip_port);
 
 /* Set the function for this friend that will be callbacked with object and number
  * when that friends gives us one of the TCP relays he is connected to.
@@ -232,7 +232,7 @@ int onion_getfriendip(const Onion_Client *onion_c, int friend_num, IP_Port *ip_p
  * return 0 on success.
  */
 int recv_tcp_relay_handler(Onion_Client *onion_c, int friend_num, int (*tcp_relay_node_callback)(void *object,
-                           uint32_t number, IP_Port ip_port, const uint8_t *public_key), void *object, uint32_t number);
+                           uint32_t number, bitox::network::IPPort ip_port, const uint8_t *public_key), void *object, uint32_t number);
 
 
 /* Set the function for this friend that will be callbacked with object and number

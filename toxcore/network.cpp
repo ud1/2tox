@@ -17,81 +17,33 @@
 #include <assert.h>
 #include <algorithm>
 
+#include "protocol_impl.hpp"
+
 static void unix_time_update() { /* FIXME */ }
 
 static uint64_t current_time_actual(void) { /* FIXME */ return 0; }
 
-int networking_at_startup(void) { /* FIXME */ return 0; }
-
 uint64_t current_time_monotonic(void) { /* FIXME */ return 0; }
 
-bool IP4::operator==(const IP4& other) const {
-    return in_addr.s_addr == other.in_addr.s_addr;
-}
-
-bool IP6::operator==(const IP6& other) const {
-    return uint64[0] == other.uint64[0] && uint64[1] == other.uint64[1];
-}
-
-bool IP6::contains_ipv4() const
+namespace bitox
 {
-    // IPv4 address in IPv6?
-    return uint64[0] == 0 && uint32[2] == htonl(0xffff);
-}
 
-bool IP4::operator==(const IP6& other) const {
-    if (other.contains_ipv4())
-        return uint32 == other.uint32[3];
-    return false;
-}
+namespace network
+{    
 
-bool IP6::operator==(const IP4& other) const {
-    return other == *this;
-}
-
-bool IP::operator==(const IP& other) const
-{
-    const IP& self = *this;
-
-    const bool self_v4 = self.family == AF_INET;
-    const bool self_v6 = self.family == AF_INET6;
-    const bool other_v4 = other.family == AF_INET;
-    const bool other_v6 = other.family == AF_INET6;
-
-    if (self_v4 && other_v4)
-        return self.ip4 == other.ip4;
-    else if (self_v4 && other_v6)
-        return self.ip4 == other.ip6;
-    else if (self_v6 && other_v4)
-        return self.ip6 == other.ip4;
-    else if (self_v6 && other_v6)
-        return self.ip6 == other.ip6;
-    else
-        return false;
-}
-
-IP6 IP4::to_ip6() const
-{
-    IP6 ip6;
-    ip6.uint32[0] = 0;
-    ip6.uint32[1] = 0;
-    ip6.uint32[2] = htonl(0xFFFF);
-    ip6.uint32[3] = this->uint32;
-    return ip6;
-}
-
+int networking_at_startup(void) { /* FIXME */ return 0; }
 
 IP IP::create_ip4()
 {
     IP result = IP();
-    result.family = AF_INET;
+    result.family = bitox::network::Family::FAMILY_AF_INET;
     return result;
 }
 
 IP IP::create_ip6()
 {
     IP result = IP();
-    result.family = AF_INET6;
+    result.family = bitox::network::Family::FAMILY_AF_INET6;
     return result;
 }
 
@@ -100,68 +52,103 @@ IP IP::create(bool ipv6enabled)
     return ipv6enabled ? create_ip6() : create_ip4();
 }
 
-
-bool IP::isset() const {
-    return family != 0;
-}
-
-
-IP_Port::IP_Port() : ip(), port() { }
-
-bool IP_Port::operator==(const IP_Port& other) const {
-    return port == other.port && ip == other.ip;
-}
-
-bool IP_Port::isset() const {
-    return port != 0 && ip.isset();
-}
-
-sockaddr_storage IP_Port::to_addr_4(const IP_Port& self)
+in_addr IP::to_in_addr() const
 {
-    assert(self.ip.family == AF_INET);
+    in_addr result;
+    boost::asio::ip::address_v4::bytes_type bytes = address.to_v4().to_bytes();
+    memcpy((void *)&result, (void *) bytes.data(), 4);
+    
+    return result;
+}
+
+in6_addr IP::to_in6_addr() const
+{
+    in6_addr result;
+    boost::asio::ip::address_v6::bytes_type bytes = address.is_v6() ? address.to_v6().to_bytes() : boost::asio::ip::address_v6::v4_compatible(address.to_v4()).to_bytes();
+    memcpy((void *)&result, (void *) bytes.data(), 16);
+    
+    return result;
+}
+
+void IP::from_in_addr(in_addr addr)
+{
+    boost::asio::ip::address_v4::bytes_type bytes;
+    memcpy((void *) bytes.data(), (void *)&addr, 4);
+    address = boost::asio::ip::address_v4(bytes);
+}
+
+void IP::from_in6_addr(in6_addr addr)
+{
+    boost::asio::ip::address_v6::bytes_type bytes;
+    memcpy((void *) bytes.data(), (void *)&addr, 16);
+    address = boost::asio::ip::address_v6(bytes);
+}
+
+void IP::from_uint32(uint32_t ipv4_addr)
+{
+    boost::asio::ip::address_v4::bytes_type bytes;
+    memcpy((void *) bytes.data(), (void *)&ipv4_addr, 4);
+    address = boost::asio::ip::address_v4(bytes);
+}
+
+uint32_t IP::to_uint32() const
+{
+    uint32_t result;
+    boost::asio::ip::address_v4::bytes_type bytes = address.to_v4().to_bytes();
+    memcpy((void *)&result, (void *) bytes.data(), 4);
+    return result;
+}
+
+void IP::from_string(const std::string &str)
+{
+    address = boost::asio::ip::address::from_string(str);
+}
+
+sockaddr_storage IPPort::to_addr_4() const
+{
+    assert(ip.address.is_v4());
     sockaddr_storage storage;
     sockaddr_in* const addr = reinterpret_cast<sockaddr_in*>( &storage );
 
     addr->sin_family = AF_INET;
-    addr->sin_addr = self.ip.ip4.in_addr;
-    addr->sin_port = self.port;
+    addr->sin_addr = ip.to_in_addr();
+    addr->sin_port = port;
 
     return storage;
 }
 
-sockaddr_storage IP_Port::to_addr_6(const IP_Port& self)
+sockaddr_storage IPPort::to_addr_6() const
 {
-    assert(self.ip.family != 0);
-    const IP6& ip_addr = (self.ip.family == AF_INET6) ? self.ip.ip6 : self.ip.ip4.to_ip6();
     sockaddr_storage storage;
     sockaddr_in6* const addr = reinterpret_cast<sockaddr_in6*>( &storage );
 
     addr->sin6_family = AF_INET6;
-    addr->sin6_port = self.port;
-    addr->sin6_addr = ip_addr.in6_addr;
+    addr->sin6_port = port;
+    addr->sin6_addr = ip.to_in6_addr();
     addr->sin6_flowinfo = 0;
     addr->sin6_scope_id = 0;
 
     return storage;
 }
 
-IP_Port IP_Port::from_addr(const sockaddr_storage& addr)
+
+IPPort IPPort::from_addr(const sockaddr_storage& addr) // TODO
 {
-    IP_Port ip_port;
+    IPPort ip_port;
     if (addr.ss_family == AF_INET) {
         const sockaddr_in* const addr_in = (sockaddr_in*) &addr;
-        ip_port.ip.family = addr_in->sin_family;
-        ip_port.ip.ip4.in_addr = addr_in->sin_addr;
+        ip_port.ip.family = bitox::network::Family::FAMILY_AF_INET;
+        ip_port.ip.from_in_addr(addr_in->sin_addr);
         ip_port.port = addr_in->sin_port;
     } else if (addr.ss_family == AF_INET6) {
         const sockaddr_in6* const addr_in = (sockaddr_in6*) &addr;
-        ip_port.ip.family = addr_in->sin6_family;
-        ip_port.ip.ip6.in6_addr = addr_in->sin6_addr;
+        ip_port.ip.family = bitox::network::Family::FAMILY_AF_INET6;
+        ip_port.ip.from_in6_addr(addr_in->sin6_addr);
         ip_port.port = addr_in->sin6_port;
 
-        if (ip_port.ip.ip6.contains_ipv4()) {
-            ip_port.ip.family = AF_INET;
-            ip_port.ip.ip4.uint32 = ip_port.ip.ip6.uint32[3];
+        if (ip_port.ip.address.to_v6().is_v4_compatible() || ip_port.ip.address.to_v6().is_v4_mapped()) {
+            ip_port.ip.family = bitox::network::Family::FAMILY_AF_INET;
+            ip_port.ip.address = ip_port.ip.address.to_v6().to_v4();
         }
     }
     return ip_port;
@@ -219,16 +206,16 @@ void Socket::kill() const {
     close(fd);
 }
 
-int Socket::bind(const IP_Port& ip_port) const
+int Socket::bind(const IPPort& ip_port) const
 {
     sockaddr_storage addr;
     size_t addrsize;
 
-    if (ip_port.ip.family == AF_INET) {
-        addr = IP_Port::to_addr_4( ip_port );
+    if (ip_port.ip.address.is_v4()) {
+        addr = ip_port.to_addr_4();
         addrsize = sizeof(sockaddr_in);
-    } else if (ip_port.ip.family == AF_INET6) {
-        addr = IP_Port::to_addr_6( ip_port );
+    } else if (ip_port.ip.address.is_v6()) {
+        addr = ip_port.to_addr_6();
         addrsize = sizeof(sockaddr_in6);
     } else {
         addrsize = 0;
@@ -237,7 +224,7 @@ int Socket::bind(const IP_Port& ip_port) const
 }
 
 
-int Socket::sendto(uint8_t socket_family, IP_Port target, const void* data, size_t length, int flags) const
+int Socket::sendto(uint8_t socket_family, IPPort target, const void* data, size_t length, int flags) const
 {
     if (socket_family == 0 || !(socket_family == AF_INET || socket_family == AF_INET6)) {
         /* Socket not initialized */
@@ -249,26 +236,26 @@ int Socket::sendto(uint8_t socket_family, IP_Port target, const void* data, size
         return -1;
 
     /* socket AF_INET, but target IP NOT: can't send */
-    if (socket_family == AF_INET && target.ip.family != AF_INET)
+    if (socket_family == AF_INET && !target.ip.address.is_v4())
         return -1;
 
     sockaddr_storage addr;
     size_t addrsize = 0;
 
     if (socket_family == AF_INET6) {
-        addr = IP_Port::to_addr_6(target);
+        addr = target.to_addr_6();
         addrsize = sizeof(sockaddr_in6);
     } else if (socket_family == AF_INET) {
-        addr = IP_Port::to_addr_4(target);
+        addr = target.to_addr_4();
         addrsize = sizeof(sockaddr_in);
     }
 
     return ::sendto(fd, data, length, flags, reinterpret_cast<sockaddr*>(&addr), addrsize);
 }
 
-int Socket::recvfrom(IP_Port* ip_port, void* data, uint32_t* length, size_t max_len, int flags) const
+int Socket::recvfrom(IPPort* ip_port, void* data, uint32_t* length, size_t max_len, int flags) const
 {
-    *ip_port = IP_Port();
+    *ip_port = IPPort();
     *length = 0;
 
     sockaddr_storage addr;
@@ -281,7 +268,7 @@ int Socket::recvfrom(IP_Port* ip_port, void* data, uint32_t* length, size_t max_
     *length = ret;
 
     if (addr.ss_family == AF_INET || addr.ss_family == AF_INET6) {
-        *ip_port = IP_Port::from_addr(addr);
+        *ip_port = IPPort::from_addr(addr);
     } else {
         return -1;
     }
@@ -335,7 +322,7 @@ void Networking_Core::poll() const
 
     unix_time_update();
 
-    IP_Port ip_port;
+    IPPort ip_port;
     uint8_t data[MAX_UDP_PACKET_SIZE];
     uint32_t length;
 
@@ -399,7 +386,7 @@ int set_socket_dualstack(sock_t sock)
     return socket.set_dualstack();
 }
 
-int sendpacket(Networking_Core* net, IP_Port ip_port, const uint8_t* data, uint16_t length)
+int sendpacket(Networking_Core* net, IPPort ip_port, const uint8_t* data, uint16_t length)
 {
     Socket socket;
     socket.fd = net->sock;
@@ -446,7 +433,7 @@ Networking_Core* new_networking_ex(IP ip, uint16_t port_from, uint16_t port_to, 
         *error = 2;
 
     /* maybe check for invalid IPs like 224+.x.y.z? if there is any IP set ever */
-    if (ip.family != AF_INET && ip.family != AF_INET6) {
+    if (!ip.isset()) {
         // Invalid address family
         return NULL;
     }
@@ -456,7 +443,7 @@ Networking_Core* new_networking_ex(IP ip, uint16_t port_from, uint16_t port_to, 
 
     Networking_Core* net = new Networking_Core();
 
-    net->family = ip.family;
+    net->family = (sa_family_t) ip.family;
     net->port = 0;
 
     size_t tx_rx_buff_size = 1024 * 1024 * 2;
@@ -493,7 +480,7 @@ Networking_Core* new_networking_ex(IP ip, uint16_t port_from, uint16_t port_to, 
         return NULL;
     }
 
-    if (ip.family == AF_INET6) {
+    if (ip.family == bitox::network::Family::FAMILY_AF_INET6) {
         if ( !net_socket.set_dualstack() ) {
             kill_networking(net);
 
@@ -542,7 +529,7 @@ Networking_Core* new_networking_ex(IP ip, uint16_t port_from, uint16_t port_to, 
      */
 
     /* Bind our socket to port PORT and the given IP address (usually 0.0.0.0 or ::) */
-    IP_Port ip_port;
+    IPPort ip_port;
     ip_port.ip = ip;
     uint16_t port_to_try = port_from;
 
@@ -624,14 +611,14 @@ void ip_copy(IP* target, const IP* source)
     *target = *source;
 }
 
-int ipport_equal(const IP_Port* a, const IP_Port* b) {
+int ipport_equal(const IPPort* a, const IPPort* b) {
     if (!a || !b || !a->port)
         return 0;
 
     return *a == *b;
 }
 
-int ipport_isset(const IP_Port* ipport)
+int ipport_isset(const IPPort* ipport)
 {
     if (!ipport || !ipport->port)
         return 0;
@@ -639,7 +626,7 @@ int ipport_isset(const IP_Port* ipport)
     return ipport->ip.isset();
 }
 
-void ipport_copy(IP_Port* target, const IP_Port* source)
+void ipport_copy(IPPort* target, const IPPort* source)
 {
     if (!source || !target)
         return;
@@ -653,13 +640,14 @@ int ip_parse_addr(const IP* ip, char* address, size_t length)
         return 0;
     }
 
-    void* addr = NULL;
-    if (ip->family == AF_INET) {
-        addr = (in_addr*) &ip->ip4;
-    } else if (ip->family == AF_INET6) {
-        addr = (in6_addr*) &ip->ip6;
+    if (ip->family == bitox::network::Family::FAMILY_AF_INET)
+    {
+        in_addr addr = ip->to_in_addr();
+        return inet_ntop((int) ip->family, &addr, address, length) != NULL;
+    } else if (ip->family == bitox::network::Family::FAMILY_AF_INET6) {
+        in6_addr addr = ip->to_in6_addr();
+        return inet_ntop((int) ip->family, &addr, address, length) != NULL;
     }
-    return inet_ntop(ip->family, addr, address, length) != NULL;
 }
 
 static char addresstext[96];
@@ -678,11 +666,11 @@ const char* ip_ntoa(const IP* ip)
         return addresstext;
     }
 
-    if (ip->family == AF_INET) {
+    if (ip->family == bitox::network::Family::FAMILY_AF_INET) {
         /* returns standard quad-dotted notation */
         snprintf(addresstext, sizeof(addresstext), "%s", converted);
         return addresstext;
-    } else if (ip->family == AF_INET6) {
+    } else if (ip->family == bitox::network::Family::FAMILY_AF_INET6) {
         /* returns hex-groups enclosed into square brackets */
         snprintf(addresstext, sizeof(addresstext), "[%s]", converted);
         return addresstext;
@@ -697,19 +685,23 @@ int addr_parse_ip(const char *address, IP *to)
     if (!address || !to)
         return 0;
 
-    in_addr addr4;
-
-    if (1 == inet_pton(AF_INET, address, &addr4)) {
-        to->family = AF_INET;
-        to->ip4.in_addr = addr4;
+    try
+    {
+        to->from_string(address);
+    }
+    catch (std::exception &e)
+    {
+        return 0;
+    }
+    
+    if (to->address.is_v4())
+    {
+        to->family = bitox::network::Family::FAMILY_AF_INET;
         return 1;
     }
-
-    in6_addr addr6;
-
-    if (1 == inet_pton(AF_INET6, address, &addr6)) {
-        to->family = AF_INET6;
-        to->ip6.in6_addr = addr6;
+    else
+    {
+        to->family = bitox::network::Family::FAMILY_AF_INET6;
         return 1;
     }
 
@@ -724,7 +716,7 @@ int addr_resolve(const char* address, IP* to, IP* extra)
     if (networking_at_startup() != 0)
         return 0;
 
-    const sa_family_t family = to->family;
+    const sa_family_t family = (sa_family_t) to->family;
 
     addrinfo hints;
     memset(&hints, 0, sizeof(hints));
@@ -739,19 +731,18 @@ int addr_resolve(const char* address, IP* to, IP* extra)
         return 0;
     }
 
-    IP4 ip4;
-    IP6 ip6;
-
+    in_addr addr4;
+    in6_addr addr6;
     for (const addrinfo* walker = server; (walker != NULL) && (rc != 3); walker = walker->ai_next) {
         switch (walker->ai_family) {
             case AF_INET: {
                 if (walker->ai_family == family) { /* AF_INET requested, done */
                     const sockaddr_in* const addr = (sockaddr_in*) walker->ai_addr;
-                    to->ip4.in_addr = addr->sin_addr;
+                    to->from_in_addr(addr->sin_addr);
                     rc = 3;
                 } else if (!(rc & 1)) { /* AF_UNSPEC requested, store away */
                     const sockaddr_in* const addr = (sockaddr_in*) walker->ai_addr;
-                    ip4.in_addr = addr->sin_addr;
+                    addr4 = addr->sin_addr;
                     rc |= 1;
                 }
             } break;
@@ -760,13 +751,13 @@ int addr_resolve(const char* address, IP* to, IP* extra)
                 if (walker->ai_family == family) { /* AF_INET6 requested, done */
                     if (walker->ai_addrlen == sizeof(sockaddr_in6)) {
                         const sockaddr_in6* const addr = (sockaddr_in6*) walker->ai_addr;
-                        to->ip6.in6_addr = addr->sin6_addr;
+                        to->from_in6_addr(addr->sin6_addr);
                         rc = 3;
                     }
                 } else if (!(rc & 2)) { /* AF_UNSPEC requested, store away */
                     if (walker->ai_addrlen == sizeof(sockaddr_in6)) {
                         const sockaddr_in6* const addr = (sockaddr_in6*) walker->ai_addr;
-                        ip6.in6_addr = addr->sin6_addr;
+                        addr6= addr->sin6_addr;
                         rc |= 2;
                     }
                 }
@@ -774,18 +765,18 @@ int addr_resolve(const char* address, IP* to, IP* extra)
         }
     }
 
-    if (to->family == AF_UNSPEC) {
+    if (to->family == Family::FAMILY_NULL) {
         if (rc & 2) {
-            to->family = AF_INET6;
-            to->ip6 = ip6;
+            to->family = Family::FAMILY_AF_INET6;
+            to->from_in6_addr(addr6);
 
             if ((rc & 1) && (extra != NULL)) {
-                extra->family = AF_INET;
-                extra->ip4 = ip4;
+                extra->family = Family::FAMILY_AF_INET;
+                extra->from_in_addr(addr4);
             }
         } else if (rc & 1) {
-            to->family = AF_INET;
-            to->ip4 = ip4;
+            to->family = Family::FAMILY_AF_INET;
+            to->from_in_addr(addr4);
         } else
             rc = 0;
     }
@@ -801,4 +792,7 @@ int addr_resolve_or_parse_ip(const char* address, IP* to, IP* extra)
             return 0;
 
     return 1;
+}
+
+}
 }

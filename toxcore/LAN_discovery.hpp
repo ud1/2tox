@@ -41,14 +41,14 @@ void LANdiscovery_init(DHT *dht);
 void LANdiscovery_kill(DHT *dht);
 
 /* Is IP a local ip or not. */
-bool Local_ip(IP ip);
+bool Local_ip(bitox::network::IP ip);
 
 /* checks if a given IP isn't routable
  *
  *  return 0 if ip is a LAN ip.
  *  return -1 if it is not.
  */
-int LAN_ip(IP ip);
+int LAN_ip(bitox::network::IP ip);
 
 
 #endif

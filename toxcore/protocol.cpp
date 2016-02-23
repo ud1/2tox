@@ -13,6 +13,39 @@ static_assert(SECRET_KEY_LEN == crypto_box_SECRETKEYBYTES, "Wrong SECRET_KEY_LEN
 static_assert(NONCE_LEN      == crypto_box_NONCEBYTES,     "Wrong NONCE_LEN constant value");
 static_assert(MAC_BYTES_LEN  == crypto_box_MACBYTES,       "Wrong MAC_BYTES_LEN constant value");
 
+namespace network 
+{
+
+bool IP::operator==(const IP& other) const
+{
+    if (!isset() || !other.isset())
+        return false;
+    
+    const bool self_v4 = address.is_v4();
+    const bool other_v4 = other.address.is_v4();
+    
+    if (self_v4 && other_v4 || !self_v4 && !other_v4)
+        return address == other.address;
+    
+    if (self_v4)
+    {
+        boost::asio::ip::address_v6 o = other.address.to_v6();
+        if (o.is_v4_compatible() || o.is_v4_mapped())
+            return address.to_v4() == o.to_v4();
+    }
+    else
+    {
+        boost::asio::ip::address_v6 s = address.to_v6();
+        if (s.is_v4_compatible() || s.is_v4_mapped())
+            return other.address.to_v4() == s.to_v4();
+    }
+    
+    return false;
+}    
+
+    
+}
+
     
 Nonce Nonce::create_empty()
 {

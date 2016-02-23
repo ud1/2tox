@@ -211,7 +211,7 @@ struct Group_Chats;
 
 struct Messenger {
 
-    Networking_Core *net;
+    bitox::network::Networking_Core *net;
     Net_Crypto *net_crypto;
     DHT *dht;
 

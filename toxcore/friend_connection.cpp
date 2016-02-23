@@ -28,6 +28,9 @@
 #include "friend_connection.hpp"
 #include "util.hpp"
 
+using namespace bitox;
+using namespace bitox::network;
+
 /* return 1 if the friendcon_id is not valid.
  * return 0 if the friendcon_id is valid.
  */
@@ -151,7 +154,7 @@ int getfriend_conn_id_pk(Friend_Connections *fr_c, const uint8_t *real_pk)
  * return -1 on failure.
  * return 0 on success.
  */
-int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, IP_Port ip_port, const uint8_t *public_key)
+int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, IPPort ip_port, const uint8_t *public_key)
 {
     Friend_Conn *friend_con = get_conn(fr_c, friendcon_id);
 
@@ -160,7 +163,7 @@ int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, IP_Port ip_
 
     /* Local ip and same pk means that they are hosting a TCP relay. */
     if (Local_ip(ip_port.ip) && public_key_cmp(friend_con->dht_temp_pk, public_key) == 0) {
-        if (friend_con->dht_ip_port.ip.family != 0) {
+        if (friend_con->dht_ip_port.ip.family != Family::FAMILY_NULL) {
             ip_port.ip = friend_con->dht_ip_port.ip;
         } else {
             friend_con->hosting_tcp_relay = 0;
@@ -172,7 +175,7 @@ int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, IP_Port ip_
     uint16_t index = friend_con->tcp_relay_counter % FRIEND_MAX_STORED_TCP_RELAYS;
 
     for (i = 0; i < FRIEND_MAX_STORED_TCP_RELAYS; ++i) {
-        if (friend_con->tcp_relays[i].ip_port.ip.family != 0
+        if (friend_con->tcp_relays[i].ip_port.ip.family != Family::FAMILY_NULL
                 && public_key_cmp(friend_con->tcp_relays[i].public_key.data.data(), public_key) == 0) {
             memset(&friend_con->tcp_relays[i], 0, sizeof(Node_format));
         }
@@ -198,7 +201,7 @@ static void connect_to_saved_tcp_relays(Friend_Connections *fr_c, int friendcon_
     for (i = 0; (i < FRIEND_MAX_STORED_TCP_RELAYS) && (number != 0); ++i) {
         uint16_t index = (friend_con->tcp_relay_counter - (i + 1)) % FRIEND_MAX_STORED_TCP_RELAYS;
 
-        if (friend_con->tcp_relays[index].ip_port.ip.family) {
+        if (friend_con->tcp_relays[index].ip_port.ip.family != Family::FAMILY_NULL) {
             if (add_tcp_relay_peer(fr_c->net_crypto, friend_con->crypt_connection_id, friend_con->tcp_relays[index].ip_port,
                                    friend_con->tcp_relays[index].public_key.data.data()) == 0) {
                 --number;
@@ -245,7 +248,7 @@ static unsigned int send_relays(Friend_Connections *fr_c, int friendcon_id)
 }
 
 /* callback for recv TCP relay nodes. */
-static int tcp_relay_node_callback(void *object, uint32_t number, IP_Port ip_port, const uint8_t *public_key)
+static int tcp_relay_node_callback(void *object, uint32_t number, IPPort ip_port, const uint8_t *public_key)
 {
     Friend_Connections *fr_c = (Friend_Connections *) object;
     Friend_Conn *friend_con = get_conn(fr_c, number);
@@ -262,7 +265,7 @@ static int tcp_relay_node_callback(void *object, uint32_t number, IP_Port ip_por
 
 static int friend_new_connection(Friend_Connections *fr_c, int friendcon_id);
 /* Callback for DHT ip_port changes. */
-static void dht_ip_callback(void *object, int32_t number, IP_Port ip_port)
+static void dht_ip_callback(void *object, int32_t number, IPPort ip_port)
 {
     Friend_Connections *fr_c = (Friend_Connections *) object;
     Friend_Conn *friend_con = get_conn(fr_c, number);
@@ -472,7 +475,7 @@ static int handle_new_connections(void *object, New_Connection *n_c)
         connection_lossy_data_handler(fr_c->net_crypto, id, &handle_lossy_packet, fr_c, friendcon_id);
         friend_con->crypt_connection_id = id;
 
-        if (n_c->source.ip.family != AF_INET && n_c->source.ip.family != AF_INET6) {
+        if (n_c->source.ip.family != Family::FAMILY_AF_INET && n_c->source.ip.family != Family::FAMILY_AF_INET6) {
             set_direct_ip_port(fr_c->net_crypto, friend_con->crypt_connection_id, friend_con->dht_ip_port, 0);
         } else {
             friend_con->dht_ip_port = n_c->source;
@@ -806,7 +809,7 @@ void do_friend_connections(Friend_Connections *fr_c)
                 }
 
                 if (friend_con->dht_ip_port_lastrecv + FRIEND_DHT_TIMEOUT < temp_time) {
-                    friend_con->dht_ip_port.ip.family = 0;
+                    friend_con->dht_ip_port.ip.family = Family::FAMILY_NULL;
                 }
 
                 if (friend_con->dht_lock) {

@@ -44,9 +44,10 @@
 #define MAX_INTERFACES 16
 
 using namespace bitox;
+using namespace bitox::network;
 
 static int     broadcast_count = -1;
-static IP_Port broadcast_ip_port[MAX_INTERFACES];
+static IPPort broadcast_ip_port[MAX_INTERFACES];
 
 #if defined(_WIN32) || defined(__WIN32__) || defined (WIN32)
 
@@ -83,7 +84,7 @@ static void fetch_broadcast_info(uint16_t port)
             if (addr_parse_ip(pAdapter->IpAddressList.IpMask.String, &subnet_mask)
                     && addr_parse_ip(pAdapter->GatewayList.IpAddress.String, &gateway)) {
                 if (gateway.family == AF_INET && subnet_mask.family == AF_INET) {
-                    IP_Port *ip_port = &broadcast_ip_port[broadcast_count];
+                    IPPort *ip_port = &broadcast_ip_port[broadcast_count];
                     ip_port->ip.family = AF_INET;
                     uint32_t gateway_ip = ntohl(gateway.ip4.uint32), subnet_ip = ntohl(subnet_mask.ip4.uint32);
                     uint32_t broadcast_ip = gateway_ip + ~subnet_ip - 1;
@@ -156,11 +157,11 @@ static void fetch_broadcast_info(uint16_t port)
             return;
         }
 
-        IP_Port *ip_port = &broadcast_ip_port[broadcast_count];
-        ip_port->ip.family = AF_INET;
-        ip_port->ip.ip4.in_addr = sock4->sin_addr;
+        IPPort *ip_port = &broadcast_ip_port[broadcast_count];
+        ip_port->ip.family = Family::FAMILY_AF_INET;
+        ip_port->ip.from_in_addr(sock4->sin_addr);
 
-        if (ip_port->ip.ip4.uint32 == 0) {
+        if (ip_port->ip.is_unspecified()) {
             continue;
         }
 
@@ -209,25 +210,31 @@ static IP broadcast_ip(sa_family_t family_socket, sa_family_t family_broadcast)
     ip_reset(&ip);
 
     if (family_socket == AF_INET6) {
+        boost::asio::ip::address_v6::bytes_type bytes = ip.address.to_v6().to_bytes();
+        
         if (family_broadcast == AF_INET6) {
-            ip.family = AF_INET6;
+            ip.family = Family::FAMILY_AF_INET6;
             /* FF02::1 is - according to RFC 4291 - multicast all-nodes link-local */
             /* FE80::*: MUST be exact, for that we would need to look over all
              * interfaces and check in which status they are */
-            ip.ip6.uint8[ 0] = 0xFF;
-            ip.ip6.uint8[ 1] = 0x02;
-            ip.ip6.uint8[15] = 0x01;
+            
+            bytes[ 0] = 0xFF;
+            bytes[ 1] = 0x02;
+            bytes[15] = 0x01;
+            ip.address = boost::asio::ip::address_v6(bytes);
         } else if (family_broadcast == AF_INET) {
-            ip.family = AF_INET6;
-            ip.ip6.uint32[0] = 0;
-            ip.ip6.uint32[1] = 0;
-            ip.ip6.uint32[2] = htonl(0xFFFF);
-            ip.ip6.uint32[3] = INADDR_BROADCAST;
+            ip.family = Family::FAMILY_AF_INET6;
+            bytes[0] = bytes[1] = bytes[2] = bytes[3] = 0;
+            bytes[4] = bytes[5] = bytes[6] = bytes[7] = 0;
+            bytes[8] = bytes[9] = 0;
+            bytes[10] = bytes[11] = 0xff;
+            bytes[12] = bytes[13] = bytes[14] = bytes[15] = 0xff;
+            ip.address = boost::asio::ip::address_v6(bytes);
         }
     } else if (family_socket == AF_INET) {
         if (family_broadcast == AF_INET) {
-            ip.family = AF_INET;
-            ip.ip4.uint32 = INADDR_BROADCAST;
+            ip.family = Family::FAMILY_AF_INET;
+            ip.from_uint32(INADDR_BROADCAST);
         }
     }
 
@@ -237,24 +244,13 @@ static IP broadcast_ip(sa_family_t family_socket, sa_family_t family_broadcast)
 /* Is IP a local ip or not. */
 _Bool Local_ip(IP ip)
 {
-    if (ip.family == AF_INET) {
-        IP4 ip4 = ip.ip4;
-
-        /* Loopback. */
-        if (ip4.uint8[0] == 127)
-            return 1;
-    } else {
-        /* embedded IPv4-in-IPv6 */
-        if (IPV6_IPV4_IN_V6(ip.ip6)) {
-            IP ip4;
-            ip4.family = AF_INET;
-            ip4.ip4.uint32 = ip.ip6.uint32[3];
-            return Local_ip(ip4);
-        }
-
-        /* localhost in IPv6 (::1) */
-        if (ip.ip6.uint64[0] == 0 && ip.ip6.uint32[2] == 0 && ip.ip6.uint32[3] == htonl(1))
-            return 1;
+    if (ip.address.is_loopback())
+        return 1;
+    
+    if (ip.is_v4_mapped()) {
+        ip.convert_to_v4();
+        ip.family = Family::FAMILY_AF_INET;
+        return Local_ip(ip);
     }
 
     return 0;
@@ -268,44 +264,46 @@ int LAN_ip(IP ip)
     if (Local_ip(ip))
         return 0;
 
-    if (ip.family == AF_INET) {
-        IP4 ip4 = ip.ip4;
+    if (ip.family == Family::FAMILY_AF_INET) {
+        boost::asio::ip::address_v4::bytes_type ip4 = ip.address.to_v4().to_bytes();
 
         /* 10.0.0.0 to 10.255.255.255 range. */
-        if (ip4.uint8[0] == 10)
+        if (ip4[0] == 10)
             return 0;
 
         /* 172.16.0.0 to 172.31.255.255 range. */
-        if (ip4.uint8[0] == 172 && ip4.uint8[1] >= 16 && ip4.uint8[1] <= 31)
+        if (ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31)
             return 0;
 
         /* 192.168.0.0 to 192.168.255.255 range. */
-        if (ip4.uint8[0] == 192 && ip4.uint8[1] == 168)
+        if (ip4[0] == 192 && ip4[1] == 168)
             return 0;
 
         /* 169.254.1.0 to 169.254.254.255 range. */
-        if (ip4.uint8[0] == 169 && ip4.uint8[1] == 254 && ip4.uint8[2] != 0
-                && ip4.uint8[2] != 255)
+        if (ip4[0] == 169 && ip4[1] == 254 && ip4[2] != 0
+                && ip4[2] != 255)
             return 0;
 
         /* RFC 6598: 100.64.0.0 to 100.127.255.255 (100.64.0.0/10)
          * (shared address space to stack another layer of NAT) */
-        if ((ip4.uint8[0] == 100) && ((ip4.uint8[1] & 0xC0) == 0x40))
+        if ((ip4[0] == 100) && ((ip4[1] & 0xC0) == 0x40))
             return 0;
 
-    } else if (ip.family == AF_INET6) {
+    } else if (ip.family == Family::FAMILY_AF_INET6) {
 
+        boost::asio::ip::address_v6::bytes_type ip6 = ip.address.to_v6().to_bytes();
         /* autogenerated for each interface: FE80::* (up to FEBF::*)
            FF02::1 is - according to RFC 4291 - multicast all-nodes link-local */
-        if (((ip.ip6.uint8[0] == 0xFF) && (ip.ip6.uint8[1] < 3) && (ip.ip6.uint8[15] == 1)) ||
-                ((ip.ip6.uint8[0] == 0xFE) && ((ip.ip6.uint8[1] & 0xC0) == 0x80)))
+        if (((ip6[0] == 0xFF) && (ip6[1] < 3) && (ip6[15] == 1)) ||
+                ((ip6[0] == 0xFE) && ((ip6[1] & 0xC0) == 0x80)))
             return 0;
 
         /* embedded IPv4-in-IPv6 */
-        if (IPV6_IPV4_IN_V6(ip.ip6)) {
+        if (ip.is_v4_mapped()) {
             IP ip4;
-            ip4.family = AF_INET;
-            ip4.ip4.uint32 = ip.ip6.uint32[3];
+            ip4.family = Family::FAMILY_AF_INET;
+            ip4 = ip;
+            ip4.convert_to_v4();
             return LAN_ip(ip4);
         }
     }
@@ -313,7 +311,7 @@ int LAN_ip(IP ip)
     return -1;
 }
 
-static int handle_LANdiscovery(void *object, IP_Port source, const uint8_t *packet, uint16_t length)
+static int handle_LANdiscovery(void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
 {
     DHT *dht = reinterpret_cast<DHT *>(object);
 
@@ -337,7 +335,7 @@ int send_LANdiscovery(uint16_t port, DHT *dht)
     send_broadcasts(dht->net, port, data, 1 + crypto_box_PUBLICKEYBYTES);
 
     int res = -1;
-    IP_Port ip_port;
+    IPPort ip_port;
     ip_port.port = port;
 
     /* IPv6 multicast */

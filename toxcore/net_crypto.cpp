@@ -35,6 +35,7 @@
 #include "protocol.hpp"
 
 using namespace bitox;
+using namespace bitox::network;
 
 static uint8_t crypt_connection_id_not_valid(const Net_Crypto *c, int crypt_connection_id)
 {
@@ -195,7 +196,7 @@ static int handle_cookie_request(const Net_Crypto *c, uint8_t *request_plain, ui
 
 /* Handle the cookie request packet (for raw UDP)
  */
-static int udp_handle_cookie_request(void *object, IP_Port source, const uint8_t *packet, uint16_t length)
+static int udp_handle_cookie_request(void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
 {
     Net_Crypto *c = (Net_Crypto *) object;
     uint8_t request_plain[COOKIE_REQUEST_PLAIN_LENGTH];
@@ -394,14 +395,14 @@ static Crypto_Connection *get_crypto_connection(const Net_Crypto *c, int crypt_c
  * return -1 on failure.
  * return 0 on success.
  */
-static int add_ip_port_connection(Net_Crypto *c, int crypt_connection_id, IP_Port ip_port)
+static int add_ip_port_connection(Net_Crypto *c, int crypt_connection_id, IPPort ip_port)
 {
     Crypto_Connection *conn = get_crypto_connection(c, crypt_connection_id);
 
     if (conn == 0)
         return -1;
 
-    if (ip_port.ip.family == AF_INET) {
+    if (ip_port.ip.family == Family::FAMILY_AF_INET) {
         if (!ipport_equal(&ip_port, &conn->ip_portv4) && LAN_ip(conn->ip_portv4.ip) != 0) {
             if (!bs_list_add(&c->ip_port_list, (uint8_t *)&ip_port, crypt_connection_id))
                 return -1;
@@ -410,7 +411,7 @@ static int add_ip_port_connection(Net_Crypto *c, int crypt_connection_id, IP_Por
             conn->ip_portv4 = ip_port;
             return 0;
         }
-    } else if (ip_port.ip.family == AF_INET6) {
+    } else if (ip_port.ip.family == Family::FAMILY_AF_INET6) {
         if (!ipport_equal(&ip_port, &conn->ip_portv6)) {
             if (!bs_list_add(&c->ip_port_list, (uint8_t *)&ip_port, crypt_connection_id))
                 return -1;
@@ -424,15 +425,15 @@ static int add_ip_port_connection(Net_Crypto *c, int crypt_connection_id, IP_Por
     return -1;
 }
 
-/* Return the IP_Port that should be used to send packets to the other peer.
+/* Return the IPPort that should be used to send packets to the other peer.
  *
- * return IP_Port with family 0 on failure.
- * return IP_Port on success.
+ * return IPPort with family 0 on failure.
+ * return IPPort on success.
  */
-IP_Port return_ip_port_connection(Net_Crypto *c, int crypt_connection_id)
+IPPort return_ip_port_connection(Net_Crypto *c, int crypt_connection_id)
 {
-    IP_Port empty;
-    empty.ip.family = 0;
+    IPPort empty;
+    empty.ip.family = Family::FAMILY_NULL;
 
     Crypto_Connection *conn = get_crypto_connection(c, crypt_connection_id);
 
@@ -452,9 +453,9 @@ IP_Port return_ip_port_connection(Net_Crypto *c, int crypt_connection_id)
 
     if (v4 && LAN_ip(conn->ip_portv4.ip) == 0) {
         return conn->ip_portv4;
-    } else if (v6 && conn->ip_portv6.ip.family == AF_INET6) {
+    } else if (v6 && conn->ip_portv6.ip.family == Family::FAMILY_AF_INET6) {
         return conn->ip_portv6;
-    } else if (conn->ip_portv4.ip.family == AF_INET) {
+    } else if (conn->ip_portv4.ip.family == Family::FAMILY_AF_INET) {
         return conn->ip_portv4;
     } else {
         return empty;
@@ -477,10 +478,10 @@ static int send_packet_to(Net_Crypto *c, int crypt_connection_id, const uint8_t 
     int direct_send_attempt = 0;
 
     pthread_mutex_lock(&conn->mutex);
-    IP_Port ip_port = return_ip_port_connection(c, crypt_connection_id);
+    IPPort ip_port = return_ip_port_connection(c, crypt_connection_id);
 
     //TODO: on bad networks, direct connections might not last indefinitely.
-    if (ip_port.ip.family != 0) {
+    if (ip_port.ip.family != Family::FAMILY_NULL) {
         _Bool direct_connected = 0;
         crypto_connection_status(c, crypt_connection_id, &direct_connected, NULL);
 
@@ -1567,26 +1568,26 @@ static int getcryptconnection_id(const Net_Crypto *c, const uint8_t *public_key)
  *  return positive number on success.
  *  0 if source was a direct UDP connection.
  */
-static int crypto_connection_add_source(Net_Crypto *c, int crypt_connection_id, IP_Port source)
+static int crypto_connection_add_source(Net_Crypto *c, int crypt_connection_id, IPPort source)
 {
     Crypto_Connection *conn = get_crypto_connection(c, crypt_connection_id);
 
     if (conn == 0)
         return -1;
 
-    if (source.ip.family == AF_INET || source.ip.family == AF_INET6) {
+    if (source.ip.family == Family::FAMILY_AF_INET || source.ip.family == Family::FAMILY_AF_INET6) {
         if (add_ip_port_connection(c, crypt_connection_id, source) != 0)
             return -1;
 
-        if (source.ip.family == AF_INET) {
+        if (source.ip.family == Family::FAMILY_AF_INET) {
             conn->direct_lastrecv_timev4 = unix_time();
         } else {
             conn->direct_lastrecv_timev6 = unix_time();
         }
 
         return 0;
-    } else if (source.ip.family == TCP_FAMILY) {
-        if (add_tcp_number_relay_connection(c->tcp_c, conn->connection_number_tcp, source.ip.ip6.uint32[0]) == 0)
+    } else if (source.ip.family == Family::FAMILY_TCP_FAMILY) {
+        if (add_tcp_number_relay_connection(c->tcp_c, conn->connection_number_tcp, source.onion_ip.con_id) == 0)
             return 1;
     }
 
@@ -1613,7 +1614,7 @@ void new_connection_handler(Net_Crypto *c, int (*new_connection_callback)(void *
  * return -1 on failure.
  * return 0 on success.
  */
-static int handle_new_connection_handshake(Net_Crypto *c, IP_Port source, const uint8_t *data, uint16_t length)
+static int handle_new_connection_handshake(Net_Crypto *c, IPPort source, const uint8_t *data, uint16_t length)
 {
     New_Connection n_c;
     n_c.cookie = (uint8_t *) malloc(COOKIE_LENGTH);
@@ -1780,7 +1781,7 @@ int new_crypto_connection(Net_Crypto *c, const uint8_t *real_public_key, const u
  * return -1 on failure.
  * return 0 on success.
  */
-int set_direct_ip_port(Net_Crypto *c, int crypt_connection_id, IP_Port ip_port, _Bool connected)
+int set_direct_ip_port(Net_Crypto *c, int crypt_connection_id, IPPort ip_port, _Bool connected)
 {
     Crypto_Connection *conn = get_crypto_connection(c, crypt_connection_id);
 
@@ -1789,13 +1790,13 @@ int set_direct_ip_port(Net_Crypto *c, int crypt_connection_id, IP_Port ip_port, 
 
     if (add_ip_port_connection(c, crypt_connection_id, ip_port) == 0) {
         if (connected) {
-            if (ip_port.ip.family == AF_INET) {
+            if (ip_port.ip.family == Family::FAMILY_AF_INET) {
                 conn->direct_lastrecv_timev4 = unix_time();
             } else {
                 conn->direct_lastrecv_timev6 = unix_time();
             }
         } else {
-            if (ip_port.ip.family == AF_INET) {
+            if (ip_port.ip.family == Family::FAMILY_AF_INET) {
                 conn->direct_lastrecv_timev4 = 0;
             } else {
                 conn->direct_lastrecv_timev6 = 0;
@@ -1847,10 +1848,10 @@ static int tcp_oob_callback(void *object, const uint8_t *public_key, unsigned in
     if (data[0] == NET_PACKET_COOKIE_REQUEST) {
         return tcp_oob_handle_cookie_request(c, tcp_connections_number, public_key, data, length);
     } else if (data[0] == NET_PACKET_CRYPTO_HS) {
-        IP_Port source;
+        IPPort source;
         source.port = 0;
-        source.ip.family = TCP_FAMILY;
-        source.ip.ip6.uint32[0] = tcp_connections_number;
+        source.ip.family = Family::FAMILY_TCP_FAMILY;
+        source.onion_ip.con_id = tcp_connections_number;
 
         if (handle_new_connection_handshake(c, source, data, length) != 0)
             return -1;
@@ -1866,7 +1867,7 @@ static int tcp_oob_callback(void *object, const uint8_t *public_key, unsigned in
  * return 0 if it was added.
  * return -1 if it wasn't.
  */
-int add_tcp_relay_peer(Net_Crypto *c, int crypt_connection_id, IP_Port ip_port, const uint8_t *public_key)
+int add_tcp_relay_peer(Net_Crypto *c, int crypt_connection_id, IPPort ip_port, const uint8_t *public_key)
 {
     Crypto_Connection *conn = get_crypto_connection(c, crypt_connection_id);
 
@@ -1884,7 +1885,7 @@ int add_tcp_relay_peer(Net_Crypto *c, int crypt_connection_id, IP_Port ip_port, 
  * return 0 if it was added.
  * return -1 if it wasn't.
  */
-int add_tcp_relay(Net_Crypto *c, IP_Port ip_port, const uint8_t *public_key)
+int add_tcp_relay(Net_Crypto *c, IPPort ip_port, const uint8_t *public_key)
 {
     pthread_mutex_lock(&c->tcp_mutex);
     int ret = add_tcp_relay_global(c->tcp_c, ip_port, public_key);
@@ -2070,7 +2071,7 @@ int nc_dht_pk_callback(Net_Crypto *c, int crypt_connection_id, void (*function)(
  * return -1 on failure.
  * return connection id on success.
  */
-static int crypto_id_ip_port(const Net_Crypto *c, IP_Port ip_port)
+static int crypto_id_ip_port(const Net_Crypto *c, IPPort ip_port)
 {
     return bs_list_find(&c->ip_port_list, (uint8_t *)&ip_port);
 }
@@ -2085,7 +2086,7 @@ static int crypto_id_ip_port(const Net_Crypto *c, IP_Port ip_port)
  * Crypto data packets.
  *
  */
-static int udp_handle_packet(void *object, IP_Port source, const uint8_t *packet, uint16_t length)
+static int udp_handle_packet(void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
 {
     if (length <= CRYPTO_MIN_PACKET_SIZE || length > MAX_CRYPTO_PACKET_SIZE)
         return 1;
@@ -2113,7 +2114,7 @@ static int udp_handle_packet(void *object, IP_Port source, const uint8_t *packet
 
     pthread_mutex_lock(&conn->mutex);
 
-    if (source.ip.family == AF_INET) {
+    if (source.ip.family == Family::FAMILY_AF_INET) {
         conn->direct_lastrecv_timev4 = unix_time();
     } else {
         conn->direct_lastrecv_timev6 = unix_time();
@@ -2647,7 +2648,7 @@ Net_Crypto *new_net_crypto(DHT *dht, TCP_Proxy_Info *proxy_info)
     networking_registerhandler(dht->net, NET_PACKET_CRYPTO_HS, &udp_handle_packet, temp);
     networking_registerhandler(dht->net, NET_PACKET_CRYPTO_DATA, &udp_handle_packet, temp);
 
-    bs_list_init(&temp->ip_port_list, sizeof(IP_Port), 8);
+    bs_list_init(&temp->ip_port_list, sizeof(IPPort), 8);
 
     return temp;
 }

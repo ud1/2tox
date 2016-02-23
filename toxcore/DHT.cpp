@@ -67,6 +67,7 @@
 #define MAX_BOOTSTRAP_TIMES 5
 
 using namespace bitox;
+using namespace bitox::network;
 
 /* Compares pk1 and pk2 with pk.
  *
@@ -199,7 +200,7 @@ void DHT::get_shared_key_sent (uint8_t *shared_key, const bitox::PublicKey &publ
     get_shared_key (&shared_keys_sent, shared_key, self_secret_key, public_key);
 }
 
-void to_net_family (IP *ip)
+/*void to_net_family (IP *ip)
 {
     if (ip->family == AF_INET)
     {
@@ -227,7 +228,7 @@ int to_host_family (IP *ip)
     {
         return -1;
     }
-}
+}*/
 
 #define PACKED_NODE_SIZE_IP4 (1 + SIZE_IP4 + sizeof(uint16_t) + crypto_box_PUBLICKEYBYTES)
 #define PACKED_NODE_SIZE_IP6 (1 + SIZE_IP6 + sizeof(uint16_t) + crypto_box_PUBLICKEYBYTES)
@@ -269,28 +270,28 @@ int pack_nodes (uint8_t *data, uint16_t length, const Node_format *nodes, uint16
 {
     uint32_t i, packed_length = 0;
 
-    for (i = 0; i < number; ++i)
+    /*for (i = 0; i < number; ++i)
     {
         int ipv6 = -1;
         uint8_t net_family;
 
         // FIXME use functions to convert endianness
-        if (nodes[i].ip_port.ip.family == AF_INET)
+        if (nodes[i].ip_port.ip.family == Family::FAMILY_AF_INET)
         {
             ipv6 = 0;
             net_family = bitox::impl::network::TOX_AF_INET;
         }
-        else if (nodes[i].ip_port.ip.family == TCP_INET)
+        else if (nodes[i].ip_port.ip.family == Family::FAMILY_TCP_INET)
         {
             ipv6 = 0;
             net_family = bitox::impl::network::TOX_TCP_INET;
         }
-        else if (nodes[i].ip_port.ip.family == AF_INET6)
+        else if (nodes[i].ip_port.ip.family == Family::FAMILY_AF_INET6)
         {
             ipv6 = 1;
             net_family = bitox::impl::network::TOX_AF_INET6;
         }
-        else if (nodes[i].ip_port.ip.family == TCP_INET6)
+        else if (nodes[i].ip_port.ip.family == Family::FAMILY_TCP_INET6)
         {
             ipv6 = 1;
             net_family = bitox::impl::network::TOX_TCP_INET6;
@@ -334,7 +335,7 @@ int pack_nodes (uint8_t *data, uint16_t length, const Node_format *nodes, uint16
         {
             return -1;
         }
-    }
+    }*/
 
     return packed_length;
 }
@@ -351,7 +352,7 @@ int unpack_nodes (Node_format *nodes, uint16_t max_num_nodes, uint16_t *processe
 {
     uint32_t num = 0, len_processed = 0;
 
-    while (num < max_num_nodes && len_processed < length)
+    /*while (num < max_num_nodes && len_processed < length)
     {
         int ipv6 = -1;
         uint8_t host_family;
@@ -400,7 +401,7 @@ int unpack_nodes (Node_format *nodes, uint16_t max_num_nodes, uint16_t *processe
                 return -1;
             }
 
-            nodes[num].ip_port.ip.family = host_family;
+            nodes[num].ip_port.ip.family = (Family) host_family;
             memcpy (&nodes[num].ip_port.ip.ip4, data + len_processed + 1, SIZE_IP4);
             memcpy (&nodes[num].ip_port.port, data + len_processed + 1 + SIZE_IP4, sizeof (uint16_t));
             memcpy (nodes[num].public_key.data.data(), data + len_processed + 1 + SIZE_IP4 + sizeof (uint16_t), crypto_box_PUBLICKEYBYTES);
@@ -416,7 +417,7 @@ int unpack_nodes (Node_format *nodes, uint16_t max_num_nodes, uint16_t *processe
                 return -1;
             }
 
-            nodes[num].ip_port.ip.family = host_family;
+            nodes[num].ip_port.ip.family = (Family) host_family;
             memcpy (&nodes[num].ip_port.ip.ip6, data + len_processed + 1, SIZE_IP6);
             memcpy (&nodes[num].ip_port.port, data + len_processed + 1 + SIZE_IP6, sizeof (uint16_t));
             memcpy (nodes[num].public_key.data.data(), data + len_processed + 1 + SIZE_IP6 + sizeof (uint16_t), crypto_box_PUBLICKEYBYTES);
@@ -432,7 +433,7 @@ int unpack_nodes (Node_format *nodes, uint16_t max_num_nodes, uint16_t *processe
     if (processed_data_len)
     {
         *processed_data_len = len_processed;
-    }
+    }*/
 
     return num;
 }
@@ -446,7 +447,7 @@ int unpack_nodes (Node_format *nodes, uint16_t max_num_nodes, uint16_t *processe
  *
  *  return True(1) or False(0)
  */
-static int client_or_ip_port_in_list (Client_data *list, uint16_t length, const bitox::PublicKey &public_key, IP_Port ip_port)
+static int client_or_ip_port_in_list (Client_data *list, uint16_t length, const bitox::PublicKey &public_key, IPPort ip_port)
 {
     uint32_t i;
     uint64_t temp_time = unix_time();
@@ -456,7 +457,7 @@ static int client_or_ip_port_in_list (Client_data *list, uint16_t length, const 
         if (list[i].public_key == public_key)
         {
             /* Refresh the client timestamp. */
-            if (ip_port.ip.family == AF_INET)
+            if (ip_port.ip.family == Family::FAMILY_AF_INET)
             {
 
                 LOGGER_SCOPE (if (!ipport_equal (&list[i].assoc4.ip_port, &ip_port))
@@ -475,7 +476,7 @@ static int client_or_ip_port_in_list (Client_data *list, uint16_t length, const 
                 list[i].assoc4.ip_port = ip_port;
                 list[i].assoc4.timestamp = temp_time;
             }
-            else if (ip_port.ip.family == AF_INET6)
+            else if (ip_port.ip.family == Family::FAMILY_AF_INET6)
             {
 
                 LOGGER_SCOPE (if (!ipport_equal (&list[i].assoc4.ip_port, &ip_port))
@@ -505,7 +506,7 @@ static int client_or_ip_port_in_list (Client_data *list, uint16_t length, const 
     for (i = 0; i < length; ++i)
     {
         /* MAYBE: check the other address, if valid, don't nuke? */
-        if ( (ip_port.ip.family == AF_INET) && ipport_equal (&list[i].assoc4.ip_port, &ip_port))
+        if ( (ip_port.ip.family == Family::FAMILY_AF_INET) && ipport_equal (&list[i].assoc4.ip_port, &ip_port))
         {
             /* Initialize client timestamp. */
             list[i].assoc4.timestamp = temp_time;
@@ -517,7 +518,7 @@ static int client_or_ip_port_in_list (Client_data *list, uint16_t length, const 
             memset (&list[i].assoc6, 0, sizeof (list[i].assoc6));
             return 1;
         }
-        else if ( (ip_port.ip.family == AF_INET6) && ipport_equal (&list[i].assoc6.ip_port, &ip_port))
+        else if ( (ip_port.ip.family == Family::FAMILY_AF_INET6) && ipport_equal (&list[i].assoc6.ip_port, &ip_port))
         {
             /* Initialize client timestamp. */
             list[i].assoc6.timestamp = temp_time;
@@ -574,11 +575,11 @@ static int friend_number (const DHT *dht, const bitox::PublicKey &public_key)
 
 /* Add node to the node list making sure only the nodes closest to cmp_pk are in the list.
  */
-_Bool add_to_list (Node_format *nodes_list, unsigned int length, const bitox::PublicKey &pk, IP_Port ip_port,
+_Bool add_to_list (Node_format *nodes_list, unsigned int length, const bitox::PublicKey &pk, IPPort ip_port,
                    const bitox::PublicKey &cmp_pk)
 {
     bitox::PublicKey pk_bak;
-    IP_Port ip_port_bak;
+    IPPort ip_port_bak;
 
     unsigned int i;
 
@@ -887,10 +888,10 @@ static void sort_client_list (Client_data *list, unsigned int length, const bito
 static int replace_all (Client_data    *list,
                         uint16_t        length,
                         const bitox::PublicKey &public_key,
-                        IP_Port         ip_port,
+                        IPPort         ip_port,
                         const bitox::PublicKey &comp_public_key)
 {
-    if ( (ip_port.ip.family != AF_INET) && (ip_port.ip.family != AF_INET6))
+    if ( (ip_port.ip.family != Family::FAMILY_AF_INET) && (ip_port.ip.family != Family::FAMILY_AF_INET6))
     {
         return 0;
     }
@@ -904,7 +905,7 @@ static int replace_all (Client_data    *list,
 
         Client_data *client = &list[0];
 
-        if (ip_port.ip.family == AF_INET)
+        if (ip_port.ip.family == Family::FAMILY_AF_INET)
         {
             ipptp_write = &client->assoc4;
             ipptp_clear = &client->assoc6;
@@ -939,7 +940,7 @@ static int replace_all (Client_data    *list,
  * return -1 on failure.
  * return 0 on success.
  */
-int DHT::add_to_close (const bitox::PublicKey &public_key, IP_Port ip_port, bool simulate)
+int DHT::add_to_close (const bitox::PublicKey &public_key, IPPort ip_port, bool simulate)
 {
     unsigned int i;
 
@@ -961,7 +962,7 @@ int DHT::add_to_close (const bitox::PublicKey &public_key, IP_Port ip_port, bool
                 IPPTsPng *ipptp_write = NULL;
                 IPPTsPng *ipptp_clear = NULL;
 
-                if (ip_port.ip.family == AF_INET)
+                if (ip_port.ip.family == Family::FAMILY_AF_INET)
                 {
                     ipptp_write = &client->assoc4;
                     ipptp_clear = &client->assoc6;
@@ -993,7 +994,7 @@ int DHT::add_to_close (const bitox::PublicKey &public_key, IP_Port ip_port, bool
 
 /* Return 1 if node can be added to close list, 0 if it can't.
  */
-bool DHT::node_addable_to_close_list (const bitox::PublicKey &public_key, IP_Port ip_port)
+bool DHT::node_addable_to_close_list (const bitox::PublicKey &public_key, IPPort ip_port)
 {
     if (add_to_close (public_key, ip_port, 1) == 0)
     {
@@ -1004,14 +1005,14 @@ bool DHT::node_addable_to_close_list (const bitox::PublicKey &public_key, IP_Por
 }
 
 static _Bool is_pk_in_client_list (Client_data *list, unsigned int client_list_length, const bitox::PublicKey &public_key,
-                                   IP_Port ip_port)
+                                   IPPort ip_port)
 {
     unsigned int i;
 
     for (i = 0; i < client_list_length; ++i)
     {
-        if ( (ip_port.ip.family == AF_INET && !is_timeout (list[i].assoc4.timestamp, BAD_NODE_TIMEOUT))
-                || (ip_port.ip.family == AF_INET6 && !is_timeout (list[i].assoc6.timestamp, BAD_NODE_TIMEOUT)))
+        if ( (ip_port.ip.family == Family::FAMILY_AF_INET && !is_timeout (list[i].assoc4.timestamp, BAD_NODE_TIMEOUT))
+                || (ip_port.ip.family == Family::FAMILY_AF_INET6 && !is_timeout (list[i].assoc6.timestamp, BAD_NODE_TIMEOUT)))
         {
             if (list[i].public_key == public_key)
             {
@@ -1029,7 +1030,7 @@ static _Bool is_pk_in_client_list (Client_data *list, unsigned int client_list_l
  * return 0 if the node should not be pinged.
  * return 1 if it should.
  */
-unsigned int DHT::ping_node_from_getnodes_ok (const bitox::PublicKey &public_key, IP_Port ip_port)
+unsigned int DHT::ping_node_from_getnodes_ok (const bitox::PublicKey &public_key, IPPort ip_port)
 {
     _Bool ret = 0;
 
@@ -1097,15 +1098,15 @@ unsigned int DHT::ping_node_from_getnodes_ok (const bitox::PublicKey &public_key
  *
  *  returns 1+ if the item is used in any list, 0 else
  */
-int DHT::addto_lists (IP_Port ip_port, const bitox::PublicKey &public_key)
+int DHT::addto_lists (IPPort ip_port, const bitox::PublicKey &public_key)
 {
     uint32_t i, used = 0;
 
     /* convert IPv4-in-IPv6 to IPv4 */
-    if ( (ip_port.ip.family == AF_INET6) && IPV6_IPV4_IN_V6 (ip_port.ip.ip6))
+    if ( (ip_port.ip.family == Family::FAMILY_AF_INET6) && ip_port.ip.is_v4_mapped())
     {
-        ip_port.ip.family = AF_INET;
-        ip_port.ip.ip4.uint32 = ip_port.ip.ip6.uint32[3];
+        ip_port.ip.family = Family::FAMILY_AF_INET;
+        ip_port.ip.convert_to_v4();
     }
 
     /* NOTE: Current behavior if there are two clients with the same id is
@@ -1188,7 +1189,7 @@ int DHT::addto_lists (IP_Port ip_port, const bitox::PublicKey &public_key)
 /* If public_key is a friend_ or us, update ret_ip_port
  * nodepublic_key is the id of the node that sent us this info.
  */
-int DHT::returnedip_ports (IP_Port ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &nodepublic_key)
+int DHT::returnedip_ports (IPPort ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &nodepublic_key)
 {
     uint32_t i, j;
     uint64_t temp_time = unix_time();
@@ -1196,10 +1197,10 @@ int DHT::returnedip_ports (IP_Port ip_port, const bitox::PublicKey &public_key, 
     uint32_t used = 0;
 
     /* convert IPv4-in-IPv6 to IPv4 */
-    if ( (ip_port.ip.family == AF_INET6) && IPV6_IPV4_IN_V6 (ip_port.ip.ip6))
+    if ( (ip_port.ip.family == Family::FAMILY_AF_INET6) && ip_port.ip.is_v4_mapped())
     {
-        ip_port.ip.family = AF_INET;
-        ip_port.ip.ip4.uint32 = ip_port.ip.ip6.uint32[3];
+        ip_port.ip.family = Family::FAMILY_AF_INET;
+        ip_port.ip.convert_to_v4();
     }
 
     if (public_key == self_public_key)
@@ -1208,12 +1209,12 @@ int DHT::returnedip_ports (IP_Port ip_port, const bitox::PublicKey &public_key, 
         {
             if (nodepublic_key == close_clientlist[i].public_key)
             {
-                if (ip_port.ip.family == AF_INET)
+                if (ip_port.ip.family == Family::FAMILY_AF_INET)
                 {
                     close_clientlist[i].assoc4.ret_ip_port = ip_port;
                     close_clientlist[i].assoc4.ret_timestamp = temp_time;
                 }
-                else if (ip_port.ip.family == AF_INET6)
+                else if (ip_port.ip.family == Family::FAMILY_AF_INET6)
                 {
                     close_clientlist[i].assoc6.ret_ip_port = ip_port;
                     close_clientlist[i].assoc6.ret_timestamp = temp_time;
@@ -1234,12 +1235,12 @@ int DHT::returnedip_ports (IP_Port ip_port, const bitox::PublicKey &public_key, 
                 {
                     if (nodepublic_key == friends_list[i].client_list[j].public_key)
                     {
-                        if (ip_port.ip.family == AF_INET)
+                        if (ip_port.ip.family == Family::FAMILY_AF_INET)
                         {
                             friends_list[i].client_list[j].assoc4.ret_ip_port = ip_port;
                             friends_list[i].client_list[j].assoc4.ret_timestamp = temp_time;
                         }
-                        else if (ip_port.ip.family == AF_INET6)
+                        else if (ip_port.ip.family == Family::FAMILY_AF_INET6)
                         {
                             friends_list[i].client_list[j].assoc6.ret_ip_port = ip_port;
                             friends_list[i].client_list[j].assoc6.ret_timestamp = temp_time;
@@ -1270,7 +1271,7 @@ end:
     return 0;
 }
 
-int DHT::getnodes (IP_Port ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &client_id,
+int DHT::getnodes (IPPort ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &client_id,
                    const Node_format *sendback_node)
 {
     /* Check if packet is going to be sent to ourself. */
@@ -1336,7 +1337,7 @@ int DHT::getnodes (IP_Port ip_port, const bitox::PublicKey &public_key, const bi
 }
 
 /* Send a send nodes response: message for IPv6 nodes */
-static int sendnodes_ipv6 (const DHT *dht, IP_Port ip_port, const bitox::PublicKey &public_key, const uint8_t *client_id,
+static int sendnodes_ipv6 (const DHT *dht, IPPort ip_port, const bitox::PublicKey &public_key, const uint8_t *client_id,
                            const uint8_t *sendback_data, uint16_t length, const uint8_t *shared_encryption_key)
 {
     /* Check if packet is going to be sent to ourself. */
@@ -1395,7 +1396,7 @@ static int sendnodes_ipv6 (const DHT *dht, IP_Port ip_port, const bitox::PublicK
     return sendpacket (dht->net, ip_port, data, 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES + len);
 }
 
-static int handle_getnodes (void *object, IP_Port source, const uint8_t *packet, uint16_t length)
+static int handle_getnodes (void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
 {
     if (length != (1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + sizeof (
                        uint64_t) + crypto_box_MACBYTES))
@@ -1434,7 +1435,7 @@ static int handle_getnodes (void *object, IP_Port source, const uint8_t *packet,
 }
 /* return 0 if no
    return 1 if yes */
-uint8_t DHT::sent_getnode_to_node (const bitox::PublicKey &public_key, IP_Port node_ip_port, uint64_t ping_id,
+uint8_t DHT::sent_getnode_to_node (const bitox::PublicKey &public_key, IPPort node_ip_port, uint64_t ping_id,
                                    Node_format *sendback_node)
 {
     uint8_t data[sizeof (Node_format) * 2];
@@ -1467,7 +1468,7 @@ uint8_t DHT::sent_getnode_to_node (const bitox::PublicKey &public_key, IP_Port n
 static int send_hardening_getnode_res (const DHT *dht, const Node_format *sendto, const uint8_t *queried_client_id,
                                        const uint8_t *nodes_data, uint16_t nodes_data_length);
 
-static int handle_sendnodes_core (void *object, IP_Port source, const uint8_t *packet, uint16_t length,
+static int handle_sendnodes_core (void *object, IPPort source, const uint8_t *packet, uint16_t length,
                                   Node_format *plain_nodes, uint16_t size_plain_nodes, uint32_t *num_nodes_out)
 {
     DHT *dht = reinterpret_cast<DHT *> (object);
@@ -1547,7 +1548,7 @@ static int handle_sendnodes_core (void *object, IP_Port source, const uint8_t *p
     return 0;
 }
 
-static int handle_sendnodes_ipv6 (void *object, IP_Port source, const uint8_t *packet, uint16_t length)
+static int handle_sendnodes_ipv6 (void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
 {
     DHT *dht = reinterpret_cast<DHT *> (object);
     Node_format plain_nodes[MAX_SENT_NODES];
@@ -1581,7 +1582,7 @@ static int handle_sendnodes_ipv6 (void *object, IP_Port source, const uint8_t *p
 /*----------------------------------------------------------------------------------*/
 /*------------------------END of packet handling functions--------------------------*/
 
-bool DHT::addfriend (const bitox::PublicKey &public_key, void (*ip_callback) (void *data, int32_t number, IP_Port),
+bool DHT::addfriend (const bitox::PublicKey &public_key, void (*ip_callback) (void *data, int32_t number, IPPort),
                      void *data, int32_t number, uint16_t *lock_count)
 {
     int friend_num = friend_number (this, public_key);
@@ -1670,7 +1671,7 @@ bool DHT::delfriend (const bitox::PublicKey &public_key, uint16_t lock_count)
 }
 
 /* TODO: Optimize this. */
-int DHT::getfriendip (const bitox::PublicKey &public_key, IP_Port *ip_port) const
+int DHT::getfriendip (const bitox::PublicKey &public_key, IPPort *ip_port) const
 {
     uint32_t i, j;
 
@@ -1848,12 +1849,12 @@ void DHT::do_Close ()
     }
 }
 
-void DHT::getnodes (const IP_Port *from_ipp, const bitox::PublicKey &from_id, const uint8_t *which_id)
+void DHT::getnodes (const IPPort *from_ipp, const bitox::PublicKey &from_id, const uint8_t *which_id)
 {
     getnodes (*from_ipp, from_id, which_id, NULL);
 }
 
-void DHT::bootstrap (IP_Port ip_port, const bitox::PublicKey &public_key)
+void DHT::bootstrap (IPPort ip_port, const bitox::PublicKey &public_key)
 {
     /*#ifdef ENABLE_ASSOC_DHT
        if (dht->assoc) {
@@ -1871,15 +1872,15 @@ void DHT::bootstrap (IP_Port ip_port, const bitox::PublicKey &public_key)
 bool DHT::bootstrap_from_address (const char *address, uint8_t ipv6enabled,
                                   uint16_t port, const bitox::PublicKey &public_key)
 {
-    IP_Port ip_port_v64;
+    IPPort ip_port_v64;
     IP *ip_extra = NULL;
-    IP_Port ip_port_v4;
+    IPPort ip_port_v4;
     ip_init (&ip_port_v64.ip, ipv6enabled);
 
     if (ipv6enabled)
     {
         /* setup for getting BOTH: an IPv6 AND an IPv4 address */
-        ip_port_v64.ip.family = AF_UNSPEC;
+        ip_port_v64.ip.family = Family::FAMILY_NULL;
         ip_reset (&ip_port_v4.ip);
         ip_extra = &ip_port_v4.ip;
     }
@@ -1938,7 +1939,7 @@ int DHT::route_packet (const bitox::PublicKey &public_key, const uint8_t *packet
  *  return 0 if we are connected to friend_ or if no ips were found.
  *  return -1 if no such friend_.
  */
-int DHT::friend_iplist (IP_Port *ip_portlist, uint16_t friend_num) const
+int DHT::friend_iplist (IPPort *ip_portlist, uint16_t friend_num) const
 {
     if (friend_num >= friends_list.size())
     {
@@ -1947,9 +1948,9 @@ int DHT::friend_iplist (IP_Port *ip_portlist, uint16_t friend_num) const
 
     const DHT_Friend *friend_ = &friends_list[friend_num];
     const Client_data *client;
-    IP_Port ipv4s[MAX_FRIEND_CLIENTS];
+    IPPort ipv4s[MAX_FRIEND_CLIENTS];
     int num_ipv4s = 0;
-    IP_Port ipv6s[MAX_FRIEND_CLIENTS];
+    IPPort ipv6s[MAX_FRIEND_CLIENTS];
     int num_ipv6s = 0;
     int i;
 
@@ -1980,7 +1981,7 @@ int DHT::friend_iplist (IP_Port *ip_portlist, uint16_t friend_num) const
     }
 
 #ifdef FRIEND_IPLIST_PAD
-    memcpy (ip_portlist, ipv6s, num_ipv6s * sizeof (IP_Port));
+    memcpy (ip_portlist, ipv6s, num_ipv6s * sizeof (IPPort));
 
     if (num_ipv6s == MAX_FRIEND_CLIENTS)
     {
@@ -1994,7 +1995,7 @@ int DHT::friend_iplist (IP_Port *ip_portlist, uint16_t friend_num) const
         num_ipv4s_used = num_ipv4s;
     }
 
-    memcpy (&ip_portlist[num_ipv6s], ipv4s, num_ipv4s_used * sizeof (IP_Port));
+    memcpy (&ip_portlist[num_ipv6s], ipv4s, num_ipv4s_used * sizeof (IPPort));
     return num_ipv6s + num_ipv4s_used;
 
 #else /* !FRIEND_IPLIST_PAD */
@@ -2004,11 +2005,11 @@ int DHT::friend_iplist (IP_Port *ip_portlist, uint16_t friend_num) const
      */
     if (num_ipv6s >= num_ipv4s)
     {
-        memcpy (ip_portlist, ipv6s, num_ipv6s * sizeof (IP_Port));
+        memcpy (ip_portlist, ipv6s, num_ipv6s * sizeof (IPPort));
         return num_ipv6s;
     }
 
-    memcpy (ip_portlist, ipv4s, num_ipv4s * sizeof (IP_Port));
+    memcpy (ip_portlist, ipv4s, num_ipv4s * sizeof (IPPort));
     return num_ipv4s;
 
 #endif /* !FRIEND_IPLIST_PAD */
@@ -2032,7 +2033,7 @@ int DHT::route_tofriend (const bitox::PublicKey &friend_id, const uint8_t *packe
     uint32_t i, sent = 0;
     uint8_t friend_sent[MAX_FRIEND_CLIENTS] = {0};
 
-    IP_Port ip_list[MAX_FRIEND_CLIENTS];
+    IPPort ip_list[MAX_FRIEND_CLIENTS];
     int ip_num = friend_iplist (ip_list, num);
 
     if (ip_num < (MAX_FRIEND_CLIENTS / 4))
@@ -2100,7 +2101,7 @@ int DHT::routeone_tofriend (const bitox::PublicKey &friend_id, const uint8_t *pa
     DHT_Friend *friend_ = &friends_list[num];
     Client_data *client;
 
-    IP_Port ip_list[MAX_FRIEND_CLIENTS * 2];
+    IPPort ip_list[MAX_FRIEND_CLIENTS * 2];
     int n = 0;
     uint32_t i;
 
@@ -2185,7 +2186,7 @@ int DHT::send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, uin
 }
 
 /* Handle a received ping request for. */
-static int handle_NATping (void *object, IP_Port source, const bitox::PublicKey &source_pubkey, const uint8_t *packet,
+static int handle_NATping (void *object, IPPort source, const bitox::PublicKey &source_pubkey, const uint8_t *packet,
                            uint16_t length)
 {
     if (length != sizeof (uint64_t) + 1)
@@ -2232,7 +2233,7 @@ static int handle_NATping (void *object, IP_Port source, const bitox::PublicKey 
  *
  *  return ip of 0 if failure.
  */
-static IP NAT_commonip (IP_Port *ip_portlist, uint16_t len, uint16_t min_num)
+static IP NAT_commonip (IPPort *ip_portlist, uint16_t len, uint16_t min_num)
 {
     IP zero;
     ip_reset (&zero);
@@ -2270,7 +2271,7 @@ static IP NAT_commonip (IP_Port *ip_portlist, uint16_t len, uint16_t min_num)
  *
  *  return number of ports and puts the list of ports in portlist.
  */
-static uint16_t NAT_getports (uint16_t *portlist, IP_Port *ip_portlist, uint16_t len, IP ip)
+static uint16_t NAT_getports (uint16_t *portlist, IPPort *ip_portlist, uint16_t len, IP ip)
 {
     uint32_t i;
     uint16_t num = 0;
@@ -2308,7 +2309,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
 
     if (i == numports)   /* If all ports are the same, only try that one port. */
     {
-        IP_Port pinging;
+        IPPort pinging;
         ip_copy (&pinging.ip, &ip);
         pinging.port = htons (firstport);
         send_ping_request (ping.get(), pinging, friends_list[friend_num].public_key.data.data());
@@ -2319,7 +2320,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
         {
             /* TODO: Improve port guessing algorithm. */
             uint16_t port = port_list[ (i / 2) % numports] + (i / (2 * numports)) * ( (i % 2) ? -1 : 1);
-            IP_Port pinging;
+            IPPort pinging;
             ip_copy (&pinging.ip, &ip);
             pinging.port = htons (port);
             send_ping_request (ping.get(), pinging, friends_list[friend_num].public_key.data.data());
@@ -2332,7 +2333,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
     {
         top = friends_list[friend_num].nat.punching_index2 + MAX_PUNCHING_PORTS;
         uint16_t port = 1024;
-        IP_Port pinging;
+        IPPort pinging;
         ip_copy (&pinging.ip, &ip);
 
         for (i = friends_list[friend_num].nat.punching_index2; i != top; ++i)
@@ -2354,7 +2355,7 @@ void DHT::do_NAT ()
 
     for (i = 0; i < friends_list.size(); ++i)
     {
-        IP_Port ip_list[MAX_FRIEND_CLIENTS];
+        IPPort ip_list[MAX_FRIEND_CLIENTS];
         int num = friend_iplist (ip_list, i);
 
         /* If already connected or friend_ is not online don't try to hole punch. */
@@ -2460,7 +2461,7 @@ static int send_hardening_getnode_res (const DHT *dht, const Node_format *sendto
 }
 
 /* TODO: improve */
-IPPTsPng *DHT::get_closelist_IPPTsPng (const bitox::PublicKey &public_key, sa_family_t sa_family)
+IPPTsPng *DHT::get_closelist_IPPTsPng (const bitox::PublicKey &public_key, Family sa_family)
 {
     uint32_t i;
 
@@ -2471,11 +2472,11 @@ IPPTsPng *DHT::get_closelist_IPPTsPng (const bitox::PublicKey &public_key, sa_fa
             continue;
         }
 
-        if (sa_family == AF_INET)
+        if (sa_family == Family::FAMILY_AF_INET)
         {
             return &close_clientlist[i].assoc4;
         }
-        else if (sa_family == AF_INET6)
+        else if (sa_family == Family::FAMILY_AF_INET6)
         {
             return &close_clientlist[i].assoc6;
         }
@@ -2520,7 +2521,7 @@ uint32_t DHT::have_nodes_closelist (Node_format *nodes, uint16_t num)
 #define HARDEN_TIMEOUT 1200
 
 /* Handle a received hardening packet */
-static int handle_hardening (void *object, IP_Port source, const bitox::PublicKey &source_pubkey, const uint8_t *packet,
+static int handle_hardening (void *object, IPPort source, const bitox::PublicKey &source_pubkey, const uint8_t *packet,
                              uint16_t length)
 {
     DHT *dht = reinterpret_cast<DHT *> (object);
@@ -2798,7 +2799,7 @@ void DHT::cryptopacket_registerhandler (uint8_t byte, cryptopacket_handler_callb
     cryptopackethandlers[byte].object = object;
 }
 
-static int cryptopacket_handle (void *object, IP_Port source, const uint8_t *packet, uint16_t length)
+static int cryptopacket_handle (void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
 {
     DHT *dht = reinterpret_cast<DHT *> (object);
 

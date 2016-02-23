@@ -35,6 +35,8 @@
 #include "network.hpp"
 #include "util.hpp"
 
+using namespace bitox;
+using namespace bitox::network;
 
 static void set_friend_status(Messenger *m, int32_t friendnumber, uint8_t status);
 static int write_cryptpacket_id(const Messenger *m, int32_t friendnumber, uint8_t packet_id, const uint8_t *data,
@@ -2296,10 +2298,10 @@ void do_messenger(Messenger *m)
 
         if (m->tcp_server) {
             /* Add self tcp server. */
-            IP_Port local_ip_port;
+            IPPort local_ip_port;
             local_ip_port.port = m->options.tcp_server_port;
-            local_ip_port.ip.family = AF_INET;
-            local_ip_port.ip.ip4.uint32 = INADDR_LOOPBACK;
+            local_ip_port.ip.family = Family::FAMILY_AF_INET;
+            local_ip_port.ip.from_uint32(INADDR_LOOPBACK);
             add_tcp_relay(m->net_crypto, local_ip_port, m->tcp_server->public_key);
         }
     }

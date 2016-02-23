@@ -32,6 +32,9 @@
 
 #include "util.hpp"
 
+using namespace bitox;
+using namespace bitox::network;
+
 /* return 1 on success
  * return 0 on failure
  */
@@ -711,17 +714,17 @@ static int rm_connection_index(TCP_Server *TCP_server, TCP_Secure_Connection *co
     }
 }
 
-static int handle_onion_recv_1(void *object, IP_Port dest, const uint8_t *data, uint16_t length)
+static int handle_onion_recv_1(void *object, const IPPort &dest, const uint8_t *data, uint16_t length)
 {
     TCP_Server *TCP_server = (TCP_Server *) object;
-    uint32_t index = dest.ip.ip6.uint32[0];
+    uint32_t index = dest.onion_ip.con_id;
 
     if (index >= TCP_server->size_accepted_connections)
         return 1;
 
     TCP_Secure_Connection *con = &TCP_server->accepted_connection_array[index];
 
-    if (con->identifier != dest.ip.ip6.uint64[1])
+    if (con->identifier != dest.onion_ip.identifier)
         return 1;
 
     uint8_t packet[1 + length];
@@ -808,12 +811,11 @@ static int handle_TCP_packet(TCP_Server *TCP_server, uint32_t con_id, const uint
                 if (length <= 1 + crypto_box_NONCEBYTES + ONION_SEND_BASE * 2)
                     return -1;
 
-                IP_Port source;
+                IPPort source;
                 source.port = 0;  // dummy initialise
-                source.ip.family = TCP_ONION_FAMILY;
-                source.ip.ip6.uint32[0] = con_id;
-                source.ip.ip6.uint32[1] = 0;
-                source.ip.ip6.uint64[1] = con->identifier;
+                source.ip.family = Family::FAMILY_TCP_ONION_FAMILY;
+                source.onion_ip.con_id = con_id;
+                source.onion_ip.identifier = con->identifier;
                 onion_send_1(TCP_server->onion, data + 1 + crypto_box_NONCEBYTES, length - (1 + crypto_box_NONCEBYTES), source,
                              data + 1);
             }

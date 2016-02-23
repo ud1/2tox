@@ -27,7 +27,7 @@
 
 typedef struct {
     DHT     *dht;
-    Networking_Core *net;
+    bitox::network::Networking_Core *net;
     uint8_t secret_symmetric_key[crypto_box_BEFORENMBYTES];
     uint64_t timestamp;
 
@@ -35,7 +35,7 @@ typedef struct {
     Shared_Keys shared_keys_2;
     Shared_Keys shared_keys_3;
 
-    int (*recv_1_function)(void *, IP_Port, const uint8_t *, uint16_t);
+    int (*recv_1_function)(void *, bitox::network::IPPort, const uint8_t *, uint16_t);
     void *callback_object;
 } Onion;
 
@@ -64,13 +64,13 @@ typedef struct {
     uint8_t public_key2[crypto_box_PUBLICKEYBYTES];
     uint8_t public_key3[crypto_box_PUBLICKEYBYTES];
 
-    IP_Port     ip_port1;
+    bitox::network::IPPort     ip_port1;
     bitox::PublicKey node_public_key1;
 
-    IP_Port     ip_port2;
+    bitox::network::IPPort     ip_port2;
     bitox::PublicKey node_public_key2;
 
-    IP_Port     ip_port3;
+    bitox::network::IPPort     ip_port3;
     bitox::PublicKey node_public_key3;
 
     uint32_t path_num;
@@ -103,7 +103,7 @@ int onion_path_to_nodes(Node_format *nodes, unsigned int num_nodes, const Onion_
  * return -1 on failure.
  * return length of created packet on success.
  */
-int create_onion_packet(uint8_t *packet, uint16_t max_packet_length, const Onion_Path *path, IP_Port dest,
+int create_onion_packet(uint8_t *packet, uint16_t max_packet_length, const Onion_Path *path, const bitox::network::IPPort &dest,
                         const uint8_t *data, uint16_t length);
 
 
@@ -116,7 +116,7 @@ int create_onion_packet(uint8_t *packet, uint16_t max_packet_length, const Onion
  * return -1 on failure.
  * return length of created packet on success.
  */
-int create_onion_packet_tcp(uint8_t *packet, uint16_t max_packet_length, const Onion_Path *path, IP_Port dest,
+int create_onion_packet_tcp(uint8_t *packet, uint16_t max_packet_length, const Onion_Path *path, const bitox::network::IPPort &dest,
                             const uint8_t *data, uint16_t length);
 
 /* Create and send a onion packet.
@@ -127,7 +127,7 @@ int create_onion_packet_tcp(uint8_t *packet, uint16_t max_packet_length, const O
  * return -1 on failure.
  * return 0 on success.
  */
-int send_onion_packet(Networking_Core *net, const Onion_Path *path, IP_Port dest, const uint8_t *data, uint16_t length);
+int send_onion_packet(bitox::network::Networking_Core *net, const Onion_Path *path, bitox::network::IPPort dest, const uint8_t *data, uint16_t length);
 
 /* Create and send a onion response sent initially to dest with.
  * Maximum length of data is ONION_RESPONSE_MAX_DATA_SIZE.
@@ -135,7 +135,7 @@ int send_onion_packet(Networking_Core *net, const Onion_Path *path, IP_Port dest
  * return -1 on failure.
  * return 0 on success.
  */
-int send_onion_response(Networking_Core *net, IP_Port dest, const uint8_t *data, uint16_t length, const uint8_t *ret);
+int send_onion_response(bitox::network::Networking_Core *net, bitox::network::IPPort dest, const uint8_t *data, uint16_t length, const uint8_t *ret);
 
 /* Function to handle/send received decrypted versions of the packet sent with send_onion_packet.
  *
@@ -147,13 +147,13 @@ int send_onion_response(Networking_Core *net, IP_Port dest, const uint8_t *data,
  * Source family must be set to something else than AF_INET6 or AF_INET so that the callback gets called
  * when the response is received.
  */
-int onion_send_1(const Onion *onion, const uint8_t *plain, uint16_t len, IP_Port source, const uint8_t *nonce);
+int onion_send_1(const Onion *onion, const uint8_t *plain, uint16_t len, const bitox::network::IPPort &source, const uint8_t *nonce);
 
 /* Set the callback to be called when the dest ip_port doesn't have AF_INET6 or AF_INET as the family.
  *
- * Format: function(void *object, IP_Port dest, uint8_t *data, uint16_t length)
+ * Format: function(void *object, bitox::network::IPPort dest, uint8_t *data, uint16_t length)
  */
-void set_callback_handle_recv_1(Onion *onion, int (*function)(void *, IP_Port, const uint8_t *, uint16_t),
+void set_callback_handle_recv_1(Onion *onion, int (*function)(void *, const bitox::network::IPPort &, const uint8_t *, uint16_t),
                                 void *object);
 
 Onion *new_onion(DHT *dht);

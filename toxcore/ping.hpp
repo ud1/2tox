@@ -34,7 +34,7 @@ struct DHT;
 struct Node_format
 {
     bitox::PublicKey public_key;
-    IP_Port     ip_port;
+    bitox::network::IPPort ip_port;
 };
 
 struct PING {
@@ -58,9 +58,9 @@ struct PING {
  *  return 0 if node was added.
  *  return -1 if node was not added.
  */
-int add_to_ping(PING *ping, const bitox::PublicKey &public_key, IP_Port ip_port);
+int add_to_ping(PING *ping, const bitox::PublicKey &public_key, bitox::network::IPPort ip_port);
 void do_to_ping(PING *ping);
 
-int send_ping_request(PING *ping, IP_Port ipp, const uint8_t *public_key);
+int send_ping_request(PING *ping, bitox::network::IPPort ipp, const uint8_t *public_key);
 
 #endif /* __PING_H__ */

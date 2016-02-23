@@ -38,6 +38,7 @@
 #define DATA_REQUEST_MIN_SIZE_RECV (DATA_REQUEST_MIN_SIZE + ONION_RETURN_3)
 
 using namespace bitox;
+using namespace bitox::network;
 
 /* Create an onion announce request packet in packet of max_packet_length (recommended size ONION_ANNOUNCE_REQUEST_SIZE).
  *
@@ -171,7 +172,7 @@ int send_announce_request(Networking_Core *net, const Onion_Path *path, Node_for
  * return -1 on failure.
  * return 0 on success.
  */
-int send_data_request(Networking_Core *net, const Onion_Path *path, IP_Port dest, const uint8_t *public_key,
+int send_data_request(Networking_Core *net, const Onion_Path *path, IPPort dest, const uint8_t *public_key,
                       const uint8_t *encrypt_public_key, const uint8_t *nonce, const uint8_t *data, uint16_t length)
 {
     uint8_t request[ONION_MAX_DATA_SIZE];
@@ -194,7 +195,7 @@ int send_data_request(Networking_Core *net, const Onion_Path *path, IP_Port dest
 
 /* Generate a ping_id and put it in ping_id */
 static void generate_ping_id(const Onion_Announce *onion_a, uint64_t time, const uint8_t *public_key,
-                             IP_Port ret_ip_port, uint8_t *ping_id)
+                             IPPort ret_ip_port, uint8_t *ping_id)
 {
     time /= PING_ID_TIMEOUT;
     uint8_t data[crypto_box_BEFORENMBYTES + sizeof(time) + crypto_box_PUBLICKEYBYTES + sizeof(ret_ip_port)];
@@ -257,7 +258,7 @@ static int cmp_entry(const void *a, const void *b)
  * return -1 if failure
  * return position if added
  */
-static int add_to_entries(Onion_Announce *onion_a, IP_Port ret_ip_port, const uint8_t *public_key,
+static int add_to_entries(Onion_Announce *onion_a, IPPort ret_ip_port, const uint8_t *public_key,
                           const uint8_t *data_public_key, const uint8_t *ret)
 {
 
@@ -291,7 +292,7 @@ static int add_to_entries(Onion_Announce *onion_a, IP_Port ret_ip_port, const ui
     return in_entries(onion_a, public_key);
 }
 
-static int handle_announce_request(void *object, IP_Port source, const uint8_t *packet, uint16_t length)
+static int handle_announce_request(void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
 {
     Onion_Announce *onion_a = (Onion_Announce *) object;
 
@@ -385,7 +386,7 @@ static int handle_announce_request(void *object, IP_Port source, const uint8_t *
     return 0;
 }
 
-static int handle_data_request(void *object, IP_Port source, const uint8_t *packet, uint16_t length)
+static int handle_data_request(void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
 {
     Onion_Announce *onion_a = (Onion_Announce *) object;
 

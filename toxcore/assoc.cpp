@@ -12,6 +12,7 @@
 
 #include <assert.h>
 #include "util.hpp"
+#include "protocol.hpp"
 
 /*
  *        BASIC OVERVIEW:
@@ -59,6 +60,9 @@ typedef uint16_t usecnt_t;
 typedef Assoc_distance_relative_callback dist_rel_cb;
 typedef Assoc_distance_absolute_callback dist_abs_cb;
 
+using namespace bitox;
+using namespace bitox::network;
+
 /*
  * Client_data wrapped with additional data
  */
@@ -75,8 +79,8 @@ typedef struct Client_entry {
     uint16_t           seen_family;
     uint16_t           heard_family;
 
-    IP_Port            assoc_heard4;
-    IP_Port            assoc_heard6;
+    IPPort            assoc_heard4;
+    IPPort            assoc_heard6;
 
     Client_data        client;
 } Client_entry;
@@ -241,26 +245,26 @@ static hash_t hash_collide(const Assoc *assoc, hash_t hash)
 }
 
 /* returns the "seen" assoc related to the ipp */
-static IPPTsPng *entry_assoc(Client_entry *cl_entry, const IP_Port *ipp)
+static IPPTsPng *entry_assoc(Client_entry *cl_entry, const IPPort *ipp)
 {
     if (!cl_entry)
         return NULL;
 
-    if (ipp->ip.family == AF_INET)
+    if (ipp->ip.family == Family::FAMILY_AF_INET)
         return &cl_entry->client.assoc4;
 
-    if (ipp->ip.family == AF_INET6)
+    if (ipp->ip.family == Family::FAMILY_AF_INET6)
         return &cl_entry->client.assoc6;
 
     return NULL;
 }
 
 /* returns the "heard" assoc related to the ipp */
-static IP_Port *entry_heard_get(Client_entry *entry, const IP_Port *ipp)
+static IPPort *entry_heard_get(Client_entry *entry, const IPPort *ipp)
 {
-    if (ipp->ip.family == AF_INET)
+    if (ipp->ip.family == Family::FAMILY_AF_INET)
         return &entry->assoc_heard4;
-    else if (ipp->ip.family == AF_INET6)
+    else if (ipp->ip.family == Family::FAMILY_AF_INET6)
         return &entry->assoc_heard6;
     else
         return NULL;
@@ -279,12 +283,12 @@ static int entry_heard_store(Client_entry *entry, const IPPTs *ippts)
     if (!ipport_isset(&ippts->ip_port))
         return 0;
 
-    IP_Port  *heard;
-    const IP_Port  *ipp = &ippts->ip_port;
+    IPPort  *heard;
+    const IPPort  *ipp = &ippts->ip_port;
 
-    if (ipp->ip.family == AF_INET)
+    if (ipp->ip.family == Family::FAMILY_AF_INET)
         heard = &entry->assoc_heard4;
-    else if (ipp->ip.family == AF_INET6)
+    else if (ipp->ip.family == Family::FAMILY_AF_INET6)
         heard = &entry->assoc_heard6;
     else
         return 0;
@@ -295,7 +299,7 @@ static int entry_heard_store(Client_entry *entry, const IPPTs *ippts)
     if (!ipport_isset(heard)) {
         *heard = *ipp;
         entry->heard_at = ippts->timestamp;
-        entry->heard_family = ipp->ip.family;
+        entry->heard_family = (uint16_t) ipp->ip.family;
         return 1;
     }
 
@@ -309,7 +313,7 @@ static int entry_heard_store(Client_entry *entry, const IPPTs *ippts)
 
     *heard = *ipp;
     entry->heard_at = ippts->timestamp;
-    entry->heard_family = ipp->ip.family;
+    entry->heard_family = (uint16_t) ipp->ip.family;
 
     return 1;
 }
@@ -367,7 +371,7 @@ static uint8_t candidates_search(const Assoc *assoc, const uint8_t *id, hash_t h
 }
 
 static void candidates_update_assoc(const Assoc *assoc, Client_entry *entry, uint8_t used, const IPPTs *ippts_send,
-                                    const IP_Port *ipp_recv)
+                                    const IPPort *ipp_recv)
 {
     if (!assoc || !entry || !ippts_send)
         return;
@@ -390,7 +394,7 @@ static void candidates_update_assoc(const Assoc *assoc, Client_entry *entry, uin
         ipptsp->ret_timestamp = unix_time();
 
         entry->seen_at = unix_time();
-        entry->seen_family = ippts_send->ip_port.ip.family;
+        entry->seen_family = (uint16_t) ippts_send->ip_port.ip.family;
 
         return;
     }
@@ -456,7 +460,7 @@ static uint8_t candidates_create_internal(const Assoc *assoc, hash_t const hash,
 }
 
 static uint8_t candidates_create_new(const Assoc *assoc, hash_t hash, const uint8_t *id, uint8_t used,
-                                     const IPPTs *ippts_send, const IP_Port *ipp_recv)
+                                     const IPPTs *ippts_send, const IPPort *ipp_recv)
 {
     if (!assoc || !id || !ippts_send)
         return 0;
@@ -486,18 +490,18 @@ static uint8_t candidates_create_new(const Assoc *assoc, hash_t hash, const uint
 
     if (ipp_recv) {
         entry->seen_at = ippts_send->timestamp;
-        entry->seen_family = ippts_send->ip_port.ip.family;
+        entry->seen_family = (uint16_t) ippts_send->ip_port.ip.family;
 
         ipptsp->ip_port = ippts_send->ip_port;
         ipptsp->timestamp = ippts_send->timestamp;
         ipptsp->ret_ip_port = *ipp_recv;
         ipptsp->ret_timestamp = unix_time();
     } else {
-        IP_Port *heard = entry_heard_get(entry, &ippts_send->ip_port);
+        IPPort *heard = entry_heard_get(entry, &ippts_send->ip_port);
 
         if (heard) {
             entry->heard_at = ippts_send->timestamp;
-            entry->heard_family = ippts_send->ip_port.ip.family;
+            entry->heard_family = (uint16_t) ippts_send->ip_port.ip.family;
 
             *heard = ippts_send->ip_port;
         }
@@ -549,7 +553,7 @@ static void client_id_self_update(Assoc *assoc)
  * seen should be 0 (zero), if the candidate was announced by someone else,
  * seen should be 1 (one), if there is confirmed connectivity (a definite response)
  */
-uint8_t Assoc_add_entry(Assoc *assoc, const uint8_t *id, const IPPTs *ippts_send, const IP_Port *ipp_recv, uint8_t used)
+uint8_t Assoc_add_entry(Assoc *assoc, const uint8_t *id, const IPPTs *ippts_send, const IPPort *ipp_recv, uint8_t used)
 {
     if (!assoc || !id || !ippts_send)
         return 0;
@@ -947,7 +951,7 @@ void do_Assoc(Assoc *assoc, DHT *dht)
         }
 
         if (heard && (heard != seen)) {
-            IP_Port *ipp = heard->heard_family == AF_INET ? &heard->assoc_heard4 : &heard->assoc_heard6;
+            IPPort *ipp = heard->heard_family == AF_INET ? &heard->assoc_heard4 : &heard->assoc_heard6;
 
             LOGGER_DEBUG("[%u] => H[%s...] %s:%u", (uint32_t)(candidate % assoc->candidates_bucket_count),
                          idpart2str(heard->client.public_key, 8), ip_ntoa(&ipp->ip), htons(ipp->port));

@@ -73,7 +73,7 @@ typedef struct {
     bool onion;
 
     /* Only used when connection is sleeping. */
-    IP_Port ip_port;
+    bitox::network::IPPort ip_port;
     uint8_t relay_pk[crypto_box_PUBLICKEYBYTES];
     bool unsleep; /* set to 1 to unsleep connection. */
 } TCP_con;
@@ -213,14 +213,14 @@ int add_tcp_number_relay_connection(TCP_Connections *tcp_c, int connections_numb
  * return 0 on success.
  * return -1 on failure.
  */
-int add_tcp_relay_connection(TCP_Connections *tcp_c, int connections_number, IP_Port ip_port, const uint8_t *relay_pk);
+int add_tcp_relay_connection(TCP_Connections *tcp_c, int connections_number, bitox::network::IPPort ip_port, const uint8_t *relay_pk);
 
 /* Add a TCP relay to the instance.
  *
  * return 0 on success.
  * return -1 on failure.
  */
-int add_tcp_relay_global(TCP_Connections *tcp_c, IP_Port ip_port, const uint8_t *relay_pk);
+int add_tcp_relay_global(TCP_Connections *tcp_c, bitox::network::IPPort ip_port, const uint8_t *relay_pk);
 
 /* Copy a maximum of max_num TCP relays we are connected to to tcp_relays.
  * NOTE that the family of the copied ip ports will be set to TCP_INET or TCP_INET6.

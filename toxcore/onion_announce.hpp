@@ -47,7 +47,7 @@
 
 typedef struct {
     uint8_t public_key[crypto_box_PUBLICKEYBYTES];
-    IP_Port ret_ip_port;
+    bitox::network::IPPort ret_ip_port;
     uint8_t ret[ONION_RETURN_3];
     uint8_t data_public_key[crypto_box_PUBLICKEYBYTES];
     uint64_t time;
@@ -55,7 +55,7 @@ typedef struct {
 
 typedef struct {
     DHT     *dht;
-    Networking_Core *net;
+    bitox::network::Networking_Core *net;
     Onion_Announce_Entry entries[ONION_ANNOUNCE_MAX_ENTRIES];
     /* This is crypto_box_KEYBYTES long just so we can use new_symmetric_key() to fill it */
     uint8_t secret_bytes[crypto_box_BEFORENMBYTES];
@@ -107,7 +107,7 @@ int create_data_request(uint8_t *packet, uint16_t max_packet_length, const uint8
  * return -1 on failure.
  * return 0 on success.
  */
-int send_announce_request(Networking_Core *net, const Onion_Path *path, Node_format dest, const uint8_t *public_key,
+int send_announce_request(bitox::network::Networking_Core *net, const Onion_Path *path, Node_format dest, const uint8_t *public_key,
                           const uint8_t *secret_key, const uint8_t *ping_id, const uint8_t *client_id, const uint8_t *data_public_key,
                           uint64_t sendback_data);
 
@@ -127,7 +127,7 @@ int send_announce_request(Networking_Core *net, const Onion_Path *path, Node_for
  * return -1 on failure.
  * return 0 on success.
  */
-int send_data_request(Networking_Core *net, const Onion_Path *path, IP_Port dest, const uint8_t *public_key,
+int send_data_request(bitox::network::Networking_Core *net, const Onion_Path *path, bitox::network::IPPort dest, const uint8_t *public_key,
                       const uint8_t *encrypt_public_key, const uint8_t *nonce, const uint8_t *data, uint16_t length);
 
 

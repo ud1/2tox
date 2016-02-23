@@ -71,7 +71,7 @@ struct Friend_Conn
     uint8_t real_public_key[crypto_box_PUBLICKEYBYTES];
     uint8_t dht_temp_pk[crypto_box_PUBLICKEYBYTES];
     uint16_t dht_lock;
-    IP_Port dht_ip_port;
+    bitox::network::IPPort dht_ip_port;
     uint64_t dht_pk_lastrecv, dht_ip_port_lastrecv;
 
     int onion_friendnum;
@@ -152,7 +152,7 @@ void set_dht_temp_pk(Friend_Connections *fr_c, int friendcon_id, const uint8_t *
  * return -1 on failure.
  * return 0 on success.
  */
-int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, IP_Port ip_port, const uint8_t *public_key);
+int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, bitox::network::IPPort ip_port, const uint8_t *public_key);
 
 /* Set the callbacks for the friend connection.
  * index is the index (0 to (MAX_FRIEND_CONNECTION_CALLBACKS - 1)) we want the callback to set in the array.

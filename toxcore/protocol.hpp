@@ -139,16 +139,71 @@ struct IP
     boost::asio::ip::address address;
     Family family = Family::FAMILY_NULL;
     
-    bool is_valid() const
+    bool operator==(const IP& other) const;
+    
+    bool isset() const
     {
-        return family == Family::FAMILY_AF_INET || family == Family::FAMILY_AF_INET6 || family == Family::FAMILY_TCP_INET || family == Family::FAMILY_TCP_INET6;
+        return family != Family::FAMILY_NULL;
     }
+    
+    in_addr to_in_addr() const;
+    in6_addr to_in6_addr() const;
+    void from_in_addr(in_addr addr);
+    void from_in6_addr(in6_addr addr);
+    void from_uint32(uint32_t ipv4_addr);
+    uint32_t to_uint32() const;
+    void from_string(const std::string &str);
+    
+    bool is_v4_mapped() const
+    {
+        return address.is_v6() && address.to_v6().is_v4_mapped();
+    }
+    
+    void convert_to_v4()
+    {
+        address = address.to_v6().to_v4();
+    }
+    
+    void clear_v6()
+    {
+        address = boost::asio::ip::address_v6();
+    }
+    
+    bool is_unspecified() const
+    {
+        return address.is_v4() && address.to_v4().is_unspecified() || address.is_v6() && address.to_v6().is_unspecified();
+    }
+    
+    static IP create_ip4();
+    static IP create_ip6();
+    static IP create(bool ipv6enabled);
+};
+
+struct OnionIP
+{
+    uint32_t con_id;
+    uint64_t identifier;
 };
 
 struct IPPort
 {
     IP ip;
+    OnionIP onion_ip;
     uint16_t port; // port stored in network byte order
+    
+    sockaddr_storage to_addr_4() const;
+    sockaddr_storage to_addr_6() const;
+    static IPPort from_addr(const sockaddr_storage& addr);
+    
+    bool operator==(const IPPort& other) const
+    {
+        return port == other.port && ip == other.ip;
+    }
+
+    bool isset() const
+    {
+        return port != 0 && ip.isset();
+    }
 };
 
 }

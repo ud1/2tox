@@ -49,173 +49,61 @@
 using namespace bitox;
 using namespace bitox::network;
 
-
-
-
-#define PING_PLAIN_SIZE (1 + sizeof(uint64_t))
-#define DHT_PING_SIZE (1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES + PING_PLAIN_SIZE + crypto_box_MACBYTES)
-#define PING_DATA_SIZE (crypto_box_PUBLICKEYBYTES + sizeof(IPPort))
-
-int send_ping_request(PING *ping, IPPort ipp, const bitox::PublicKey &public_key)
+int PING::send_ping_request(IPPort ipp, const bitox::PublicKey &recepient_public_key)
 {
-    uint8_t   pk[DHT_PING_SIZE];
-    int       rc;
-    uint64_t  ping_id;
-
-    if (public_key == ping->dht->self_public_key)
+    if (recepient_public_key == dht->self_public_key)
         return 1;
 
-    uint8_t shared_key[crypto_box_BEFORENMBYTES];
-
-    // generate key to encrypt ping_id with recipient privkey
-    ping->dht->get_shared_key_sent(shared_key, public_key);
+    PingRequestData ping_request;
+    
+    PING::PingData ping_data;
+    ping_data.public_key = recepient_public_key;
+    ping_data.ip_port = ipp;
     // Generate random ping_id.
-    uint8_t data[PING_DATA_SIZE];
-    id_copy(data, public_key.data.data());
-    memcpy(data + crypto_box_PUBLICKEYBYTES, &ipp, sizeof(IPPort));
-    ping_id = ping->ping_array.add(data, sizeof(data));
+    ping_request.ping_id = ping_array.add(std::move(ping_data));
 
-    if (ping_id == 0)
+    if (ping_request.ping_id == 0)
         return 1;
 
-    uint8_t ping_plain[PING_PLAIN_SIZE];
-    ping_plain[0] = NET_PACKET_PING_REQUEST;
-    memcpy(ping_plain + 1, &ping_id, sizeof(ping_id));
-
-    pk[0] = NET_PACKET_PING_REQUEST;
-    id_copy(pk + 1, ping->dht->self_public_key.data.data());     // Our pubkey
-    new_nonce(pk + 1 + crypto_box_PUBLICKEYBYTES); // Generate new nonce
-
-
-    rc = encrypt_data_symmetric(shared_key,
-                                pk + 1 + crypto_box_PUBLICKEYBYTES,
-                                ping_plain, sizeof(ping_plain),
-                                pk + 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES);
-
-    if (rc != PING_PLAIN_SIZE + crypto_box_MACBYTES)
+    OutputBuffer packet;
+    if (!generateOutgoingPacket(*dht->crypto_manager.get(), recepient_public_key, ping_request, packet))
         return 1;
-
-    return sendpacket(ping->dht->net, ipp, pk, sizeof(pk));
+    
+    return sendpacket(dht->net, ipp, packet.begin(), packet.size());
 }
 
-static int send_ping_response(PING *ping, IPPort ipp, const bitox::PublicKey &public_key, uint64_t ping_id,
-                              uint8_t *shared_encryption_key)
+void PING::onPingRequest (const IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data)
 {
-    uint8_t   pk[DHT_PING_SIZE];
-    int       rc;
-
-    if (public_key == ping->dht->self_public_key)
-        return 1;
-
-    uint8_t ping_plain[PING_PLAIN_SIZE];
-    ping_plain[0] = NET_PACKET_PING_RESPONSE;
-    memcpy(ping_plain + 1, &ping_id, sizeof(ping_id));
-
-    pk[0] = NET_PACKET_PING_RESPONSE;
-    id_copy(pk + 1, ping->dht->self_public_key.data.data());     // Our pubkey
-    new_nonce(pk + 1 + crypto_box_PUBLICKEYBYTES); // Generate new nonce
-
-    // Encrypt ping_id using recipient privkey
-    rc = encrypt_data_symmetric(shared_encryption_key,
-                                pk + 1 + crypto_box_PUBLICKEYBYTES,
-                                ping_plain, sizeof(ping_plain),
-                                pk + 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES );
-
-    if (rc != PING_PLAIN_SIZE + crypto_box_MACBYTES)
-        return 1;
-
-    return sendpacket(ping->dht->net, ipp, pk, sizeof(pk));
+    if (sender_public_key == dht->self_public_key)
+        return;
+    
+    PingResponseData response;
+    response.ping_id = data.ping_id;
+    
+    OutputBuffer packet;
+    if (!generateOutgoingPacket (*dht->crypto_manager.get(), sender_public_key, response, packet))
+        return;
+    
+    sendpacket(dht->net, source, packet.begin(), packet.size());
+    add_to_ping(sender_public_key, source);
 }
 
-static int handle_ping_request(void *_dht, const IPPort &source, const uint8_t *packet, uint16_t length)
+void PING::onPingResponse (const IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::PingResponseData &data)
 {
-    DHT       *dht = reinterpret_cast<DHT *>(_dht);
-    int        rc;
+    if (sender_public_key == dht->self_public_key)
+        return;
+    
+    PING::PingData ping_data;
+    if (!ping_array.check(ping_data, data.ping_id))
+        return;
+    
+    if (sender_public_key != ping_data.public_key)
+        return;
 
-    if (length != DHT_PING_SIZE)
-        return 1;
+    if (!ipport_equal(&ping_data.ip_port, &source))
+        return;
 
-    PING *ping = dht->ping.get();
-
-    if (id_equal(packet + 1, ping->dht->self_public_key.data.data()))
-        return 1;
-
-    uint8_t shared_key[crypto_box_BEFORENMBYTES];
-
-    uint8_t ping_plain[PING_PLAIN_SIZE];
-    // Decrypt ping_id
-    dht->get_shared_key_recv(shared_key, packet + 1);
-    rc = decrypt_data_symmetric(shared_key,
-                                packet + 1 + crypto_box_PUBLICKEYBYTES,
-                                packet + 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES,
-                                PING_PLAIN_SIZE + crypto_box_MACBYTES,
-                                ping_plain );
-
-    if (rc != sizeof(ping_plain))
-        return 1;
-
-    if (ping_plain[0] != NET_PACKET_PING_REQUEST)
-        return 1;
-
-    uint64_t   ping_id;
-    memcpy(&ping_id, ping_plain + 1, sizeof(ping_id));
-    // Send response
-    send_ping_response(ping, source, packet + 1, ping_id, shared_key);
-    add_to_ping(ping, packet + 1, source);
-
-    return 0;
-}
-
-static int handle_ping_response(void *_dht, const IPPort &source, const uint8_t *packet, uint16_t length)
-{
-    DHT      *dht = reinterpret_cast<DHT *>(_dht);
-    int       rc;
-
-    if (length != DHT_PING_SIZE)
-        return 1;
-
-    PING *ping = dht->ping.get();
-
-    if (id_equal(packet + 1, ping->dht->self_public_key.data.data()))
-        return 1;
-
-    uint8_t shared_key[crypto_box_BEFORENMBYTES];
-
-    // generate key to encrypt ping_id with recipient privkey
-    ping->dht->get_shared_key_sent(shared_key, packet + 1);
-
-    uint8_t ping_plain[PING_PLAIN_SIZE];
-    // Decrypt ping_id
-    rc = decrypt_data_symmetric(shared_key,
-                                packet + 1 + crypto_box_PUBLICKEYBYTES,
-                                packet + 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES,
-                                PING_PLAIN_SIZE + crypto_box_MACBYTES,
-                                ping_plain);
-
-    if (rc != sizeof(ping_plain))
-        return 1;
-
-    if (ping_plain[0] != NET_PACKET_PING_RESPONSE)
-        return 1;
-
-    uint64_t   ping_id;
-    memcpy(&ping_id, ping_plain + 1, sizeof(ping_id));
-    uint8_t data[PING_DATA_SIZE];
-
-    if (ping->ping_array.check(data, sizeof(data), ping_id) != sizeof(data))
-        return 1;
-
-    if (!id_equal(packet + 1, data))
-        return 1;
-
-    IPPort ipp;
-    memcpy(&ipp, data + crypto_box_PUBLICKEYBYTES, sizeof(IPPort));
-
-    if (!ipport_equal(&ipp, &source))
-        return 1;
-
-    dht->addto_lists(source, packet + 1);
-    return 0;
+    dht->addto_lists(source, sender_public_key);
 }
 
 /* Check if public_key with ip_port is in the list.
@@ -255,39 +143,39 @@ static int in_list(const Client_data *list, uint16_t length, const bitox::Public
  *  return 0 if node was added.
  *  return -1 if node was not added.
  */
-int add_to_ping(PING *ping, const bitox::PublicKey &public_key, IPPort ip_port)
+int PING::add_to_ping(const bitox::PublicKey &public_key, IPPort ip_port)
 {
     if (!ip_isset(&ip_port.ip))
         return -1;
 
-    if (!ping->dht->node_addable_to_close_list(public_key, ip_port))
+    if (!dht->node_addable_to_close_list(public_key, ip_port))
         return -1;
 
-    if (in_list(ping->dht->close_clientlist, LCLIENT_LIST, public_key, ip_port))
+    if (in_list(dht->close_clientlist, LCLIENT_LIST, public_key, ip_port))
         return -1;
 
     IPPort temp;
 
-    if (ping->dht->getfriendip(public_key, &temp) == 0) {
-        send_ping_request(ping, ip_port, public_key);
+    if (dht->getfriendip(public_key, &temp) == 0) {
+        send_ping_request(ip_port, public_key);
         return -1;
     }
 
     unsigned int i;
 
     for (i = 0; i < MAX_TO_PING; ++i) {
-        if (!ip_isset(&ping->to_ping[i].ip_port.ip)) {
-            ping->to_ping[i].public_key = public_key;
-            ipport_copy(&ping->to_ping[i].ip_port, &ip_port);
+        if (!ip_isset(&to_ping[i].ip_port.ip)) {
+            to_ping[i].public_key = public_key;
+            ipport_copy(&to_ping[i].ip_port, &ip_port);
             return 0;
         }
 
-        if (ping->to_ping[i].public_key == public_key) {
+        if (to_ping[i].public_key == public_key) {
             return -1;
         }
     }
 
-    if (add_to_list(ping->to_ping, MAX_TO_PING, public_key, ip_port, ping->dht->self_public_key.data.data()))
+    if (add_to_list(to_ping, MAX_TO_PING, public_key, ip_port, dht->self_public_key))
         return 0;
 
     return -1;
@@ -297,29 +185,29 @@ int add_to_ping(PING *ping, const bitox::PublicKey &public_key, IPPort ip_port)
 /* Ping all the valid nodes in the to_ping list every TIME_TO_PING seconds.
  * This function must be run at least once every TIME_TO_PING seconds.
  */
-void do_to_ping(PING *ping)
+void PING::do_to_ping()
 {
-    if (!is_timeout(ping->last_to_ping, TIME_TO_PING))
+    if (!is_timeout(last_to_ping, TIME_TO_PING))
         return;
 
-    if (!ip_isset(&ping->to_ping[0].ip_port.ip))
+    if (!ip_isset(&to_ping[0].ip_port.ip))
         return;
 
     unsigned int i;
 
     for (i = 0; i < MAX_TO_PING; ++i) {
-        if (!ip_isset(&ping->to_ping[i].ip_port.ip))
+        if (!ip_isset(&to_ping[i].ip_port.ip))
             break;
 
-        if (!ping->dht->node_addable_to_close_list(ping->to_ping[i].public_key, ping->to_ping[i].ip_port))
+        if (!dht->node_addable_to_close_list(to_ping[i].public_key, to_ping[i].ip_port))
             continue;
 
-        send_ping_request(ping, ping->to_ping[i].ip_port, ping->to_ping[i].public_key.data.data());
-        ip_reset(&ping->to_ping[i].ip_port.ip);
+        send_ping_request(to_ping[i].ip_port, to_ping[i].public_key);
+        ip_reset(&to_ping[i].ip_port.ip);
     }
 
     if (i != 0)
-        ping->last_to_ping = unix_time();
+        last_to_ping = unix_time();
 }
 
 
@@ -327,12 +215,9 @@ PING::PING(DHT *dht) :
     ping_array(PING_NUM_MAX, PING_TIMEOUT)
 {
     this->dht = dht;
-    networking_registerhandler(this->dht->net, NET_PACKET_PING_REQUEST, &handle_ping_request, dht);
-    networking_registerhandler(this->dht->net, NET_PACKET_PING_RESPONSE, &handle_ping_response, dht);
+    dht->subscribe(this);
 }
 
 PING::~PING()
 {
-    networking_registerhandler(dht->net, NET_PACKET_PING_REQUEST, NULL, NULL);
-    networking_registerhandler(dht->net, NET_PACKET_PING_RESPONSE, NULL, NULL);
 }

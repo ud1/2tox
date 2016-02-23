@@ -579,7 +579,7 @@ public:
                 if (!send_result)
                     return send_result;
 
-                networking_poll(m_net);
+                m_net->poll();
             }
             return ::testing::internal::CmpHelperSTREQ("sent", "received", data.c_str(), m_received_data.c_str());
         }

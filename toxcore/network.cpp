@@ -18,8 +18,9 @@
 #include <algorithm>
 
 #include "protocol_impl.hpp"
+#include "DHT.hpp"
 
-static void unix_time_update() { /* FIXME */ }
+//static void unix_time_update() { /* FIXME */ }
 
 static uint64_t current_time_actual(void) { /* FIXME */ return 0; }
 
@@ -341,6 +342,9 @@ void Networking_Core::poll() const
         } else {
             handler.function(handler.object, ip_port, data, length);
         }
+        
+        if (dht)
+            dht->on_data_received(ip_port, data, length);
     }
 }
 
@@ -398,11 +402,6 @@ void networking_registerhandler(Networking_Core* net, uint8_t byte, packet_handl
     Packet_Handler& handler = net->packethandlers[byte];
     handler.function = cb;
     handler.object = object;
-}
-
-void networking_poll(Networking_Core* net)
-{
-    net->poll();
 }
 
 Networking_Core* new_networking(IP ip, uint16_t port)

@@ -21,14 +21,15 @@
  *
  */
 
-#ifndef DHT_H
-#define DHT_H
+#ifndef DHT_HPP
+#define DHT_HPP
 
 #include "crypto_core.hpp"
 #include "network.hpp"
 #include "ping_array.hpp"
 #include "protocol.hpp"
 #include "ping.hpp"
+#include "multicast_packet_listener.hpp"
 
 #include <sodium.h>
 #include <sodium/utils.h>
@@ -210,6 +211,8 @@ struct DHT
 {
     explicit DHT (bitox::network::Networking_Core *net);
     ~DHT();
+    
+    void on_data_received(const bitox::network::IPPort &ip_port, const uint8_t* data, uint16_t len);
 
     bitox::network::Networking_Core *net = nullptr;
 
@@ -230,6 +233,8 @@ struct DHT
 
     Shared_Keys shared_keys_recv;
     Shared_Keys shared_keys_sent;
+    std::unique_ptr<bitox::CryptoManager> crypto_manager;
+    bitox::network::MulticastPacketListener multicast_packet_listener;
 
     std::unique_ptr<PING> ping;
     Ping_Array    dht_ping_array;
@@ -243,6 +248,11 @@ struct DHT
 
     Node_format to_bootstrap[MAX_CLOSE_TO_BOOTSTRAP_NODES] = {};
     unsigned int num_to_bootstrap = 0;
+    
+    void subscribe (bitox::network::IncomingPacketListener *listener)
+    {
+        multicast_packet_listener.subscribe(listener);
+    }
 
     /*
      * Copy shared_key to encrypt/decrypt DHT packet from public_key into shared_key

@@ -249,23 +249,25 @@ struct AnnounceRequestData
     uint64_t sendback_data;
 };
 
+namespace network
+{
 class IncomingPacketListener
 {
 public:
-    virtual void onPingRequest (const PublicKey &sender_public_key, const PingRequestData &data) {}
-    virtual void onPingResponse (const PublicKey &sender_public_key, const PingResponseData &data) {}
-    virtual void onGetNodesRequest (const PublicKey &sender_public_key, const GetNodesRequestData &data) {}
-    virtual void onSendNodes (const PublicKey &sender_public_key, const SendNodesData &data) {}
-    virtual void onAnnounceRequest (const PublicKey &sender_public_key, const AnnounceRequestData &data) {}
+    virtual void onPingRequest (const IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data) {}
+    virtual void onPingResponse (const IPPort &source, const PublicKey &sender_public_key, const PingResponseData &data) {}
+    virtual void onGetNodesRequest (const IPPort &source, const PublicKey &sender_public_key, const GetNodesRequestData &data) {}
+    virtual void onSendNodes (const IPPort &source, const PublicKey &sender_public_key, const SendNodesData &data) {}
+    virtual void onAnnounceRequest (const IPPort &source, const PublicKey &sender_public_key, const AnnounceRequestData &data) {}
 };
-
 
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingRequestData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingResponseData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodesRequestData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const SendNodesData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const AnnounceRequestData &data, OutputBuffer &out_packet);
-bool processIncomingPacket (const CryptoManager &crypto_manager, InputBuffer &&packet, IncomingPacketListener &listener);
+bool processIncomingPacket (const CryptoManager &crypto_manager, InputBuffer &&packet, const IPPort &source, IncomingPacketListener &listener);
+}
 
 }
 #endif

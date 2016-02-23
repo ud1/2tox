@@ -4,6 +4,7 @@
 
 using namespace bitox;
 using namespace bitox::impl;
+using namespace bitox::network;
 
 struct PacketListener : public IncomingPacketListener
 {
@@ -14,28 +15,28 @@ struct PacketListener : public IncomingPacketListener
     SendNodesData send_nodes_data;
     bool called = false;
     
-    virtual void onPingRequest (const PublicKey &sender_public_key, const PingRequestData &data)
+    virtual void onPingRequest (const IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data) override
     {
         this->sender_public_key = sender_public_key;
         this->ping_request_data = data;
         this->called = true;
     }
     
-    virtual void onPingResponse (const PublicKey &sender_public_key, const PingResponseData &data)
+    virtual void onPingResponse (const IPPort &source, const PublicKey &sender_public_key, const PingResponseData &data) override
     {
         this->sender_public_key = sender_public_key;
         this->ping_response_data = data;
         this->called = true;
     }
     
-    virtual void onGetNodesRequest (const PublicKey &sender_public_key, const GetNodesRequestData &data)
+    virtual void onGetNodesRequest (const IPPort &source, const PublicKey &sender_public_key, const GetNodesRequestData &data) override
     {
         this->sender_public_key = sender_public_key;
         this->get_nodes_request_data = data;
         this->called = true;
     }
     
-    virtual void onSendNodes (const PublicKey &sender_public_key, const SendNodesData &data)
+    virtual void onSendNodes (const IPPort &source, const PublicKey &sender_public_key, const SendNodesData &data) override
     {
         this->sender_public_key = sender_public_key;
         this->send_nodes_data = data;
@@ -56,6 +57,8 @@ TEST (protocol, test_packet_serialization_deserialization)
     CryptoManager manager1(secret_key1, public_key1);
     CryptoManager manager2(secret_key2, public_key2);
     
+    IPPort ip_port;
+    
     {
         SCOPED_TRACE ("Test PingRequest");
         
@@ -68,7 +71,7 @@ TEST (protocol, test_packet_serialization_deserialization)
         ASSERT_TRUE(res);
         
         PacketListener listener;
-        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), listener);
+        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), ip_port, listener);
         ASSERT_TRUE(res);
         ASSERT_TRUE(listener.called);
         ASSERT_EQ(12345, listener.ping_request_data.ping_id);
@@ -87,7 +90,7 @@ TEST (protocol, test_packet_serialization_deserialization)
         ASSERT_TRUE(res);
         
         PacketListener listener;
-        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), listener);
+        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), ip_port, listener);
         ASSERT_TRUE(res);
         ASSERT_TRUE(listener.called);
         ASSERT_EQ(54321, listener.ping_response_data.ping_id);
@@ -111,7 +114,7 @@ TEST (protocol, test_packet_serialization_deserialization)
         ASSERT_TRUE(res);
         
         PacketListener listener;
-        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), listener);
+        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), ip_port, listener);
         ASSERT_TRUE(res);
         ASSERT_TRUE(listener.called);
         ASSERT_EQ(222333, listener.get_nodes_request_data.ping_id);
@@ -141,7 +144,7 @@ TEST (protocol, test_packet_serialization_deserialization)
         ASSERT_TRUE(res);
         
         PacketListener listener;
-        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), listener);
+        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), ip_port, listener);
         ASSERT_TRUE(res);
         ASSERT_TRUE(listener.called);
         ASSERT_EQ(666555, listener.send_nodes_data.ping_id);

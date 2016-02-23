@@ -25,7 +25,7 @@
 #define __PING_H__
 
 /* Maximum newly announced nodes to ping per TIME_TO_PING seconds. */
-#define MAX_TO_PING 32
+constexpr size_t MAX_TO_PING = 32;
 
 #include "protocol.hpp"
 
@@ -37,30 +37,42 @@ struct Node_format
     bitox::network::IPPort ip_port;
 };
 
-struct PING {
-    explicit PING(DHT *dht);
+struct PING : public bitox::network::IncomingPacketListener
+{
+    explicit PING (DHT *dht);
     ~PING();
-    
+
     DHT *dht;
 
-    Ping_Array  ping_array;
+    struct PingData
+    {
+        bitox::PublicKey public_key;
+        bitox::network::IPPort ip_port;
+    };
+
+    bitox::PingArray<PingData> ping_array;
     Node_format to_ping[MAX_TO_PING];
     uint64_t    last_to_ping;
+
+    int send_ping_request (bitox::network::IPPort ipp, const bitox::PublicKey &public_key);
+
+    /* Add nodes to the to_ping list.
+    * All nodes in this list are pinged every TIME_TOPING seconds
+    * and are then removed from the list.
+    * If the list is full the nodes farthest from our public_key are replaced.
+    * The purpose of this list is to enable quick integration of new nodes into the
+    * network while preventing amplification attacks.
+    *
+    *  return 0 if node was added.
+    *  return -1 if node was not added.
+    */
+    int add_to_ping (const bitox::PublicKey &public_key, bitox::network::IPPort ip_port);
+    
+    void do_to_ping ();
+
+    virtual void onPingRequest (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::PingRequestData &data) override;
+    virtual void onPingResponse (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::PingResponseData &data) override;
 };
 
-/* Add nodes to the to_ping list.
- * All nodes in this list are pinged every TIME_TOPING seconds
- * and are then removed from the list.
- * If the list is full the nodes farthest from our public_key are replaced.
- * The purpose of this list is to enable quick integration of new nodes into the
- * network while preventing amplification attacks.
- *
- *  return 0 if node was added.
- *  return -1 if node was not added.
- */
-int add_to_ping(PING *ping, const bitox::PublicKey &public_key, bitox::network::IPPort ip_port);
-void do_to_ping(PING *ping);
-
-int send_ping_request(PING *ping, bitox::network::IPPort ipp, const uint8_t *public_key);
 
 #endif /* __PING_H__ */

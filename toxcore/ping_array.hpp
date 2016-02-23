@@ -24,46 +24,182 @@
 #define PING_ARRAY_H
 
 #include "network.hpp"
+#include "util.hpp"
+#include "crypto_core.hpp"
+#include <cstdlib>
 
 #include <vector>
 
-struct Ping_Array
+namespace bitox
 {
-    explicit Ping_Array (size_t size, uint32_t timeout);
-    ~Ping_Array();
-
-    /* Add a data with length to the Ping_Array list and return a ping_id.
-    *
-    * return ping_id on success.
-    * return 0 on failure.
-    */
-    uint64_t add (const uint8_t *data, uint32_t length);
-    
-    /* Check if ping_id is valid and not timed out.
-    *
-    * On success, copies the data into data of length,
-    *
-    * return length of data copied on success.
-    * return -1 on failure.
-    */
-    int check (uint8_t *data, uint32_t length, uint64_t ping_id);
-
-private:
-    void clear_entry(uint32_t index);
-    void clear_timedout();
-    
-    struct Ping_Array_Entry
+    template<typename Data>
+    struct PingArray
     {
-        void *data = nullptr;
-        uint32_t length = 0;
-        uint64_t time = 0;
-        uint64_t ping_id = 0;
-    };
+        PingArray(size_t size, uint32_t timeout) : last_deleted(0), last_added(0), timeout(timeout)
+        {
+            assert(size && "Size must be not 0");
+            assert(timeout && "Timeout must be not 0");
+            entries.resize(size);
+        }
+        
+        uint64_t add(Data &&data)
+        {
+            clear_timedout();
+            uint32_t index = last_added % entries.size();
 
-    std::vector<Ping_Array_Entry> entries;
-    uint32_t last_deleted; /* number representing the next entry to be deleted. */
-    uint32_t last_added; /* number representing the last entry to be added. */
-    uint32_t timeout; /* The timeout after which entries are cleared. */
+            if (entries[index].has_value)
+            {
+                last_deleted = last_added - entries.size();
+                clear_entry(index);
+            }
+
+            PingArrayEntry &entry = entries[index];
+            entry.data = std::move(data);
+            entry.time = unix_time();
+            ++last_added;
+            uint64_t ping_id = random_64b();
+            ping_id /= entries.size();
+            ping_id *= entries.size();
+            ping_id += index;
+
+            if (ping_id == 0)
+                ping_id += entries.size();
+
+            entry.ping_id = ping_id;
+            entry.has_value = true;
+            return ping_id;
+        }
+        
+        bool check(Data &data, uint64_t ping_id)
+        {
+            Data *result = peek(ping_id);
+            if (!result)
+                return false;
+            
+            uint32_t index = ping_id % entries.size();
+
+            data = std::move(entries[index].data);
+            clear_entry(index);
+            return true;
+        }
+        
+        Data *peek(uint64_t ping_id)
+        {
+            if (ping_id == 0)
+                return nullptr;
+
+            uint32_t index = ping_id % entries.size();
+
+            if (entries[index].ping_id != ping_id)
+                return nullptr;
+
+            if (is_timeout(entries[index].time, timeout))
+                return nullptr;
+
+            return &entries[index].data;
+        }
+        
+    private:
+        void clear_entry(uint32_t index)
+        {
+            entries[index] = PingArrayEntry();
+        }
+        
+        void clear_timedout()
+        {
+            while (last_deleted != last_added) {
+                uint32_t index = last_deleted % entries.size();
+
+                if (!is_timeout(entries[index].time, timeout))
+                    break;
+
+                clear_entry(index);
+                ++last_deleted;
+            }
+        }
+        
+        struct PingArrayEntry
+        {
+            Data data;
+            uint64_t time = 0;
+            uint64_t ping_id = 0;
+            bool has_value = false;
+        };
+        
+        std::vector<PingArrayEntry> entries;
+        uint32_t last_deleted; /* number representing the next entry to be deleted. */
+        uint32_t last_added; /* number representing the last entry to be added. */
+        uint32_t timeout; /* The timeout after which entries are cleared. */
+    };
+}
+
+// TODO DEPRECATED
+
+struct DataStore
+{
+    uint8_t *data = nullptr;
+    uint32_t length = 0;
+    
+    DataStore() {}
+    
+    DataStore(const uint8_t *data, uint32_t length)
+    {
+        this->data = (uint8_t *) malloc(length);
+        memcpy((void *)this->data, (void *) data, length);
+        this->length = length;
+    }
+    
+    ~DataStore()
+    {
+        free(data);
+    }
+    
+    DataStore(DataStore &&other)
+    {
+        data = other.data;
+        length = other.length;
+        other.data = nullptr;
+        other.length = 0;
+    }
+    
+    DataStore &operator = (DataStore &&other)
+    {
+        if (this != &other)
+        {
+            free(data);
+            data = other.data;
+            length = other.length;
+            other.data = nullptr;
+            other.length = 0;
+        }
+        return *this;
+    }
+};
+
+struct Ping_Array : public bitox::PingArray<DataStore>
+{
+    explicit Ping_Array (size_t size, uint32_t timeout) : PingArray(size, timeout) {}
+  
+    uint64_t add (const uint8_t *data, uint32_t length)
+    {
+        return PingArray::add(DataStore(data, length));
+    }
+    
+    int check (uint8_t *data, uint32_t length, uint64_t ping_id)
+    {
+        DataStore *peek_data = peek(ping_id);
+        if (!peek_data || length < peek_data->length)
+            return -1;
+            
+        DataStore result;
+        if (PingArray::check(result, ping_id))
+        {
+            memcpy(data, result.data, result.length);
+            return result.length;
+        }
+        
+        return -1;
+    }
 };
 
 #endif

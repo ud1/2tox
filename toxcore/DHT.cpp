@@ -1429,7 +1429,7 @@ static int handle_getnodes (void *object, const IPPort &source, const uint8_t *p
 
     sendnodes_ipv6 (dht, source, packet + 1, plain, plain + crypto_box_PUBLICKEYBYTES, sizeof (uint64_t), shared_key);
 
-    add_to_ping (dht->ping.get(), packet + 1, source);
+    dht->ping->add_to_ping (packet + 1, source);
 
     return 0;
 }
@@ -2312,7 +2312,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
         IPPort pinging;
         ip_copy (&pinging.ip, &ip);
         pinging.port = htons (firstport);
-        send_ping_request (ping.get(), pinging, friends_list[friend_num].public_key.data.data());
+        ping->send_ping_request (pinging, friends_list[friend_num].public_key.data.data());
     }
     else
     {
@@ -2323,7 +2323,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
             IPPort pinging;
             ip_copy (&pinging.ip, &ip);
             pinging.port = htons (port);
-            send_ping_request (ping.get(), pinging, friends_list[friend_num].public_key.data.data());
+            ping->send_ping_request (pinging, friends_list[friend_num].public_key.data.data());
         }
 
         friends_list[friend_num].nat.punching_index = i;
@@ -2339,7 +2339,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
         for (i = friends_list[friend_num].nat.punching_index2; i != top; ++i)
         {
             pinging.port = htons (port + i);
-            send_ping_request (ping.get(), pinging, friends_list[friend_num].public_key.data.data());
+            ping->send_ping_request (pinging, friends_list[friend_num].public_key.data.data());
         }
 
         friends_list[friend_num].nat.punching_index2 = i - (MAX_PUNCHING_PORTS / 2);
@@ -2867,6 +2867,7 @@ DHT::DHT (Networking_Core *net) :
 
     new_symmetric_key (this->secret_symmetric_key);
     crypto_box_keypair (this->self_public_key.data.data(), this->self_secret_key.data.data());
+    crypto_manager = std::unique_ptr<CryptoManager>(new CryptoManager(self_secret_key, self_public_key));
 
 #ifdef ENABLE_ASSOC_DHT
     this->assoc = new_Assoc_default (this->self_public_key);
@@ -2883,11 +2884,8 @@ DHT::DHT (Networking_Core *net) :
             throw std::runtime_error ("Add friend error");
         }
     }
-}
-
-DHT *new_DHT (Networking_Core *net)
-{
-    return new DHT (net);
+    
+    net->set_dht(this);
 }
 
 void DHT::do_DHT ()
@@ -2908,7 +2906,7 @@ void DHT::do_DHT ()
     do_Close ();
     do_DHT_friends ();
     do_NAT ();
-    do_to_ping (ping.get());
+    ping->do_to_ping ();
     //do_hardening(dht);
 #ifdef ENABLE_ASSOC_DHT
 
@@ -3167,4 +3165,9 @@ bool DHT::non_lan_connected() const
     }
 
     return false;
+}
+
+void DHT::on_data_received(const IPPort &ip_port, const uint8_t* data, uint16_t len)
+{
+    processIncomingPacket (*crypto_manager.get(), InputBuffer(data, len), ip_port, multicast_packet_listener);
 }

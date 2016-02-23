@@ -33,65 +33,6 @@
 
 #include "protocol.hpp"
 
-//#include <boost/asio.hpp>
-
-/*struct IP4;
-struct IP6;
-
-struct IP4 {
-    union {
-        uint8_t     uint8[4];
-        uint16_t    uint16[2];
-        uint32_t    uint32;
-        ::in_addr   in_addr;
-    };
-    bool operator==(const IP4& other) const;
-    bool operator==(const IP6& other) const;
-
-    IP6 to_ip6() const;
-};
-
-struct IP6 {
-    union {
-        uint8_t     uint8[16];
-        uint16_t    uint16[8];
-        uint32_t    uint32[4];
-        uint64_t    uint64[2];
-        ::in6_addr  in6_addr;
-    };
-    bool operator==(const IP6& other) const;
-    bool operator==(const IP4& other) const;
-    bool contains_ipv4() const; // IPv4 address in IPv6
-};
-
-struct IP {
-    uint8_t family;
-    union {
-        IP4 ip4;
-        IP6 ip6;
-    };
-
-    bool operator==(const IP& other) const;
-    static IP create_ip4();
-    static IP create_ip6();
-    static IP create(bool ipv6enabled);
-    bool isset() const;
-};
-
-struct IPPort {
-    IP ip;
-    uint16_t port;
-
-    explicit IPPort();
-
-    bool operator==(const IPPort& other) const;
-    bool isset() const;
-
-    static sockaddr_storage to_addr_4(const IPPort& self);
-    static sockaddr_storage to_addr_6(const IPPort& self);
-    static IPPort          from_addr(const sockaddr_storage& addr);
-};*/
-
 /* Does the IP6 struct a contain an IPv4 address in an IPv6 one? */
 #define IPV6_IPV4_IN_V6(a) ((a.uint64[0] == 0) && (a.uint32[2] == htonl (0xffff)))
 
@@ -102,6 +43,8 @@ struct IPPort {
 #define SIZE_IPPORT (SIZE_IP + SIZE_PORT)
 
 #define TOX_ENABLE_IPV6_DEFAULT 1
+
+struct DHT;
 
 namespace bitox
 {
@@ -142,15 +85,21 @@ struct Packet_Handler {
 
 struct Networking_Core {
     Packet_Handler packethandlers[256];
-
     sa_family_t family;
     uint16_t port;
     /* Our UDP socket. */
     int sock;
+    DHT *dht = nullptr;
 
     Networking_Core();
     ~Networking_Core();
+    
+    void set_dht(DHT *dht)
+    {
+        this->dht = dht;
+    }
 
+    /* Call this several times a second. */
     void poll() const;
 };
 
@@ -318,9 +267,6 @@ int sendpacket(Networking_Core* net, IPPort ip_port, const uint8_t* data, uint16
 
 /* Function to call when packet beginning with byte=id is received. */
 void networking_registerhandler(Networking_Core* net, uint8_t id, packet_handler_callback cb, void* object);
-
-/* Call this several times a second. */
-void networking_poll(Networking_Core *net);
 
 /* Initialize networking.
  * bind to ip and port.

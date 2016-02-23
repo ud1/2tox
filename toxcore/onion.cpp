@@ -39,6 +39,7 @@
 
 using namespace bitox;
 using namespace bitox::network;
+using namespace bitox::dht;
 
 /* Change symmetric keys every 2 hours to make paths expire eventually. */
 #define KEY_REFRESH_INTERVAL (2 * 60 * 60)
@@ -116,7 +117,7 @@ static int ipport_unpack(IPPort &target, const uint8_t *data, unsigned int data_
  * return -1 on failure.
  * return 0 on success.
  */
-int create_onion_path(const DHT *dht, Onion_Path *new_path, const Node_format *nodes)
+int create_onion_path(const DHT *dht, Onion_Path *new_path, const NodeFormat *nodes)
 {
     if (!new_path || !nodes)
         return -1;
@@ -151,7 +152,7 @@ int create_onion_path(const DHT *dht, Onion_Path *new_path, const Node_format *n
  * return -1 on failure.
  * return 0 on success.
  */
-int onion_path_to_nodes(Node_format *nodes, unsigned int num_nodes, const Onion_Path *path)
+int onion_path_to_nodes(NodeFormat *nodes, unsigned int num_nodes, const Onion_Path *path)
 {
     if (num_nodes < ONION_PATH_LENGTH)
         return -1;

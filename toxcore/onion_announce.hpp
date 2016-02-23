@@ -34,7 +34,7 @@
 #define ONION_ANNOUNCE_REQUEST_SIZE (1 + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + ONION_PING_ID_SIZE + crypto_box_PUBLICKEYBYTES + crypto_box_PUBLICKEYBYTES + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH + crypto_box_MACBYTES)
 
 #define ONION_ANNOUNCE_RESPONSE_MIN_SIZE (1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH + crypto_box_NONCEBYTES + 1 + ONION_PING_ID_SIZE + crypto_box_MACBYTES)
-#define ONION_ANNOUNCE_RESPONSE_MAX_SIZE (ONION_ANNOUNCE_RESPONSE_MIN_SIZE + sizeof(Node_format)*MAX_SENT_NODES)
+#define ONION_ANNOUNCE_RESPONSE_MAX_SIZE (ONION_ANNOUNCE_RESPONSE_MIN_SIZE + sizeof(bitox::dht::NodeFormat)*MAX_SENT_NODES)
 
 #define ONION_DATA_RESPONSE_MIN_SIZE (1 + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + crypto_box_MACBYTES)
 
@@ -107,7 +107,7 @@ int create_data_request(uint8_t *packet, uint16_t max_packet_length, const uint8
  * return -1 on failure.
  * return 0 on success.
  */
-int send_announce_request(bitox::network::Networking_Core *net, const Onion_Path *path, Node_format dest, const uint8_t *public_key,
+int send_announce_request(bitox::network::Networking_Core *net, const Onion_Path *path, bitox::dht::NodeFormat dest, const uint8_t *public_key,
                           const uint8_t *secret_key, const uint8_t *ping_id, const uint8_t *client_id, const uint8_t *data_public_key,
                           uint64_t sendback_data);
 

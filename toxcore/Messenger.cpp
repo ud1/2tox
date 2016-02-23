@@ -37,6 +37,7 @@
 
 using namespace bitox;
 using namespace bitox::network;
+using namespace bitox::dht;
 
 static void set_friend_status(Messenger *m, int32_t friendnumber, uint8_t status);
 static int write_cryptpacket_id(const Messenger *m, int32_t friendnumber, uint8_t packet_id, const uint8_t *data,
@@ -2622,7 +2623,7 @@ void messenger_save(const Messenger *m, uint8_t *data)
     m->dht->save(data);
     data += len;
 
-    Node_format relays[NUM_SAVED_TCP_RELAYS];
+    NodeFormat relays[NUM_SAVED_TCP_RELAYS];
     type = MESSENGER_STATE_TYPE_TCP_RELAY;
     uint8_t *temp_data = data;
     data = z_state_save_subheader(temp_data, 0, type);
@@ -2635,7 +2636,7 @@ void messenger_save(const Messenger *m, uint8_t *data)
         data += len;
     }
 
-    Node_format nodes[NUM_SAVED_PATH_NODES];
+    NodeFormat nodes[NUM_SAVED_PATH_NODES];
     type = MESSENGER_STATE_TYPE_PATH_NODE;
     temp_data = data;
     data = z_state_save_subheader(data, 0, type);
@@ -2711,7 +2712,7 @@ static int messenger_load_state_callback(void *outer, const uint8_t *data, uint3
         }
 
         case MESSENGER_STATE_TYPE_PATH_NODE: {
-            Node_format nodes[NUM_SAVED_PATH_NODES];
+            NodeFormat nodes[NUM_SAVED_PATH_NODES];
 
             if (length == 0) {
                 break;

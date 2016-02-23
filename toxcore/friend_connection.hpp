@@ -96,7 +96,7 @@ struct Friend_Conn
 
     uint16_t lock_count;
 
-    Node_format tcp_relays[FRIEND_MAX_STORED_TCP_RELAYS];
+    bitox::dht::NodeFormat tcp_relays[FRIEND_MAX_STORED_TCP_RELAYS];
     uint16_t tcp_relay_counter;
 
     bool hosting_tcp_relay;

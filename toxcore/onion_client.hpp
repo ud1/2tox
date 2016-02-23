@@ -149,10 +149,10 @@ struct Onion_Client
 
     Last_Pinged last_pinged[MAX_STORED_PINGED_NODES];
 
-    Node_format path_nodes[MAX_PATH_NODES];
+    bitox::dht::NodeFormat path_nodes[MAX_PATH_NODES];
     uint16_t path_nodes_index;
 
-    Node_format path_nodes_bs[MAX_PATH_NODES];
+    bitox::dht::NodeFormat path_nodes_bs[MAX_PATH_NODES];
     uint16_t path_nodes_index_bs;
 
     Ping_Array announce_ping_array;
@@ -180,7 +180,7 @@ int onion_add_bs_path_node(Onion_Client *onion_c, const bitox::network::IPPort &
  *
  * return the number of nodes.
  */
-uint16_t onion_backup_nodes(const Onion_Client *onion_c, Node_format *nodes, uint16_t max_num);
+uint16_t onion_backup_nodes(const Onion_Client *onion_c, bitox::dht::NodeFormat *nodes, uint16_t max_num);
 
 /* Add a friend who we want to connect to.
  *

@@ -153,7 +153,7 @@ struct DHT_Friend
         int32_t number;
     } callbacks[DHT_FRIEND_MAX_LOCKS];
 
-    Node_format to_bootstrap[bitox::MAX_SENT_NODES];
+    bitox::dht::NodeFormat to_bootstrap[bitox::MAX_SENT_NODES];
     unsigned int num_to_bootstrap;
 };
 
@@ -167,7 +167,7 @@ int packed_node_size (uint8_t ip_family);
  * return length of packed nodes on success.
  * return -1 on failure.
  */
-int pack_nodes (uint8_t *data, uint16_t length, const Node_format *nodes, uint16_t number);
+int pack_nodes (uint8_t *data, uint16_t length, const bitox::dht::NodeFormat *nodes, uint16_t number);
 
 /* Unpack data of length into nodes of size max_num_nodes.
  * Put the length of the data processed in processed_data_len.
@@ -176,7 +176,7 @@ int pack_nodes (uint8_t *data, uint16_t length, const Node_format *nodes, uint16
  * return number of unpacked nodes on success.
  * return -1 on failure.
  */
-int unpack_nodes (Node_format *nodes, uint16_t max_num_nodes, uint16_t *processed_data_len, const uint8_t *data,
+int unpack_nodes (bitox::dht::NodeFormat *nodes, uint16_t max_num_nodes, uint16_t *processed_data_len, const uint8_t *data,
                   uint16_t length, uint8_t tcp_enabled);
 
 
@@ -227,18 +227,25 @@ struct DHT
     bitox::SecretKey self_secret_key;
 
     std::vector<DHT_Friend> friends_list;
-    std::vector<Node_format> loaded_nodes_list;
+    std::vector<bitox::dht::NodeFormat> loaded_nodes_list;
     uint32_t       loaded_num_nodes = 0;
     unsigned int   loaded_nodes_index = 0;
 
     Shared_Keys shared_keys_recv;
     Shared_Keys shared_keys_sent;
-    std::unique_ptr<bitox::CryptoManager> crypto_manager;
+    std::unique_ptr<bitox::CryptoManager> crypto_manager; // TODO currently using only one crypto_manager instead of two Shared_Keys
     bitox::network::MulticastPacketListener multicast_packet_listener;
 
     std::unique_ptr<PING> ping;
-    Ping_Array    dht_ping_array;
-    Ping_Array    dht_harden_ping_array;
+    
+    struct GetNodesHardenData
+    {
+        bitox::dht::NodeFormat receiver;
+        bitox::dht::NodeFormat sendback_node;
+    };
+    
+    bitox::PingArray<bitox::dht::NodeFormat> dht_ping_array;
+    bitox::PingArray<GetNodesHardenData> dht_harden_ping_array;
 #ifdef ENABLE_ASSOC_DHT
     struct Assoc  *assoc = nullptr;
 #endif
@@ -246,7 +253,7 @@ struct DHT
 
     Cryptopacket_Handles cryptopackethandlers[256] = {};
 
-    Node_format to_bootstrap[MAX_CLOSE_TO_BOOTSTRAP_NODES] = {};
+    bitox::dht::NodeFormat to_bootstrap[MAX_CLOSE_TO_BOOTSTRAP_NODES] = {};
     unsigned int num_to_bootstrap = 0;
     
     void subscribe (bitox::network::IncomingPacketListener *listener)
@@ -323,20 +330,20 @@ struct DHT
      * return the number of nodes returned.
      *
      */
-    int get_close_nodes (const bitox::PublicKey &public_key, Node_format *nodes_list, sa_family_t sa_family,
+    int get_close_nodes (const bitox::PublicKey &public_key, bitox::dht::NodeFormat *nodes_list, sa_family_t sa_family,
                          uint8_t is_LAN, uint8_t want_good) const;
 
     /*
      * Put up to max_num nodes in nodes from the random friends.
      * return the number of nodes.
      */
-    uint16_t randfriends_nodes (Node_format *nodes, uint16_t max_num);
+    uint16_t randfriends_nodes (bitox::dht::NodeFormat *nodes, uint16_t max_num);
 
     /*
      * Put up to max_num nodes in nodes from the closelist.
      * return the number of nodes.
      */
-    uint16_t closelist_nodes (Node_format *nodes, uint16_t max_num);
+    uint16_t closelist_nodes (bitox::dht::NodeFormat *nodes, uint16_t max_num);
 
     /*
      * Load the DHT from data of size size.
@@ -421,7 +428,7 @@ struct DHT
      * sendback_node is the node that it will send back the response to (set to NULL to disable this)
      */
     int getnodes (bitox::network::IPPort ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &client_id,
-                  const Node_format *sendback_node);
+                  const bitox::dht::NodeFormat *sendback_node);
 
     uint8_t do_ping_and_sendnode_requests (uint64_t *lastgetnode, const bitox::PublicKey &public_key,
                                            Client_data *list, uint32_t list_count, uint32_t *bootstrap_times, bool sortable);
@@ -432,17 +439,17 @@ struct DHT
     int add_to_close (const bitox::PublicKey &public_key, bitox::network::IPPort ip_port, bool simulate);
     unsigned int ping_node_from_getnodes_ok (const bitox::PublicKey &public_key, bitox::network::IPPort ip_port);
     int friend_iplist (bitox::network::IPPort *ip_portlist, uint16_t friend_num) const;
-    int send_hardening_req (Node_format *sendto, uint8_t type, uint8_t *contents, uint16_t length);
-    int send_hardening_getnode_req (Node_format *dest, Node_format *node_totest, const bitox::PublicKey &search_id);
+    int send_hardening_req (bitox::dht::NodeFormat *sendto, uint8_t type, uint8_t *contents, uint16_t length);
+    int send_hardening_getnode_req (bitox::dht::NodeFormat *dest, bitox::dht::NodeFormat *node_totest, const bitox::PublicKey &search_id);
     int returnedip_ports (bitox::network::IPPort ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &nodepublic_key);
     int routeone_tofriend (const bitox::PublicKey &friend_id, const uint8_t *packet, uint16_t length);
     void punch_holes (bitox::network::IP ip, uint16_t *port_list, uint16_t numports, uint16_t friend_num);
     IPPTsPng *get_closelist_IPPTsPng (const bitox::PublicKey &public_key, bitox::network::Family sa_family);
-    Node_format random_node (sa_family_t sa_family);
+    bitox::dht::NodeFormat random_node (sa_family_t sa_family);
     uint8_t sent_getnode_to_node (const bitox::PublicKey &public_key, bitox::network::IPPort node_ip_port, uint64_t ping_id,
-                                  Node_format *sendback_node);
+                                  bitox::dht::NodeFormat *sendback_node);
     int send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, uint8_t type);
-    uint32_t have_nodes_closelist (Node_format *nodes, uint16_t num);
+    uint32_t have_nodes_closelist (bitox::dht::NodeFormat *nodes, uint16_t num);
 };
 /*----------------------------------------------------------------------------------*/
 
@@ -466,7 +473,7 @@ int id_closest (const bitox::PublicKey &pk, const bitox::PublicKey &pk1, const b
 
 /* Add node to the node list making sure only the nodes closest to cmp_pk are in the list.
  */
-bool add_to_list (Node_format *nodes_list, unsigned int length, const bitox::PublicKey &pk, bitox::network::IPPort ip_port,
+bool add_to_list (bitox::dht::NodeFormat *nodes_list, unsigned int length, const bitox::PublicKey &pk, bitox::network::IPPort ip_port,
                   const bitox::PublicKey &cmp_pk);
 
 

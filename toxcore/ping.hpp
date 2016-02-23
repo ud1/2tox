@@ -31,12 +31,6 @@ constexpr size_t MAX_TO_PING = 32;
 
 struct DHT;
 
-struct Node_format
-{
-    bitox::PublicKey public_key;
-    bitox::network::IPPort ip_port;
-};
-
 struct PING : public bitox::network::IncomingPacketListener
 {
     explicit PING (DHT *dht);
@@ -51,7 +45,7 @@ struct PING : public bitox::network::IncomingPacketListener
     };
 
     bitox::PingArray<PingData> ping_array;
-    Node_format to_ping[MAX_TO_PING];
+    bitox::dht::NodeFormat to_ping[MAX_TO_PING];
     uint64_t    last_to_ping;
 
     int send_ping_request (bitox::network::IPPort ipp, const bitox::PublicKey &public_key);

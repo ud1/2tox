@@ -85,14 +85,14 @@ typedef struct {
  * return -1 on failure.
  * return 0 on success.
  */
-int create_onion_path(const DHT *dht, Onion_Path *new_path, const Node_format *nodes);
+int create_onion_path(const DHT *dht, Onion_Path *new_path, const bitox::dht::NodeFormat *nodes);
 
 /* Dump nodes in onion path to nodes of length num_nodes;
  *
  * return -1 on failure.
  * return 0 on success.
  */
-int onion_path_to_nodes(Node_format *nodes, unsigned int num_nodes, const Onion_Path *path);
+int onion_path_to_nodes(bitox::dht::NodeFormat *nodes, unsigned int num_nodes, const Onion_Path *path);
 
 /* Create a onion packet.
  *

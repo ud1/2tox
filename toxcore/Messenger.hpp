@@ -236,7 +236,7 @@ struct Messenger {
 
 #define NUM_SAVED_TCP_RELAYS 8
     uint8_t has_added_relays; // If the first connection has occurred in do_messenger
-    Node_format loaded_relays[NUM_SAVED_TCP_RELAYS]; // Relays loaded from config
+    bitox::dht::NodeFormat loaded_relays[NUM_SAVED_TCP_RELAYS]; // Relays loaded from config
 
     void (*friend_message)(struct Messenger *m, uint32_t, unsigned int, const uint8_t *, size_t, void *);
     void *friend_message_userdata;

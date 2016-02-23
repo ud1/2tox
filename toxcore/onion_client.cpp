@@ -36,6 +36,7 @@
 
 using namespace bitox;
 using namespace bitox::network;
+using namespace bitox::dht;
 
 /* Add a node to the path_nodes bootstrap array.
  *
@@ -101,7 +102,7 @@ static int onion_add_path_node(Onion_Client *onion_c, bitox::network::IPPort &ip
  *
  * return the number of nodes.
  */
-uint16_t onion_backup_nodes(const Onion_Client *onion_c, Node_format *nodes, uint16_t max_num)
+uint16_t onion_backup_nodes(const Onion_Client *onion_c, NodeFormat *nodes, uint16_t max_num)
 {
     unsigned int i;
 
@@ -127,7 +128,7 @@ uint16_t onion_backup_nodes(const Onion_Client *onion_c, Node_format *nodes, uin
  *
  * return the number of nodes.
  */
-static uint16_t random_nodes_path_onion(const Onion_Client *onion_c, Node_format *nodes, uint16_t max_num)
+static uint16_t random_nodes_path_onion(const Onion_Client *onion_c, NodeFormat *nodes, uint16_t max_num)
 {
     unsigned int i;
 
@@ -181,7 +182,7 @@ static uint16_t random_nodes_path_onion(const Onion_Client *onion_c, Node_format
  * return -1 if nodes are suitable for creating a new path.
  * return path number of already existing similar path if one already exists.
  */
-static int is_path_used(const Onion_Client_Paths *onion_paths, const Node_format *nodes)
+static int is_path_used(const Onion_Client_Paths *onion_paths, const NodeFormat *nodes)
 {
     unsigned int i;
 
@@ -231,7 +232,7 @@ static int random_path(const Onion_Client *onion_c, Onion_Client_Paths *onion_pa
     }
 
     if (path_timed_out(onion_paths, pathnum)) {
-        Node_format nodes[ONION_PATH_LENGTH];
+        NodeFormat nodes[ONION_PATH_LENGTH];
 
         if (random_nodes_path_onion(onion_c, nodes, ONION_PATH_LENGTH) != ONION_PATH_LENGTH)
             return -1;
@@ -292,7 +293,7 @@ static uint32_t set_path_timeouts(Onion_Client *onion_c, uint32_t num, uint32_t 
         onion_paths->last_path_success[path_num % NUMBER_ONION_PATHS] = unix_time();
         onion_paths->last_path_used_times[path_num % NUMBER_ONION_PATHS] = 0;
 
-        Node_format nodes[ONION_PATH_LENGTH];
+        NodeFormat nodes[ONION_PATH_LENGTH];
 
         if (onion_path_to_nodes(nodes, ONION_PATH_LENGTH, &onion_paths->paths[path_num % NUMBER_ONION_PATHS]) == 0) {
             unsigned int i;
@@ -562,7 +563,7 @@ static int good_to_ping(Last_Pinged *last_pinged, uint8_t *last_pinged_index, co
     return 1;
 }
 
-static int client_ping_nodes(Onion_Client *onion_c, uint32_t num, const Node_format *nodes, uint16_t num_nodes,
+static int client_ping_nodes(Onion_Client *onion_c, uint32_t num, const NodeFormat *nodes, uint16_t num_nodes,
                              IPPort source)
 {
     if (num > onion_c->friends_list.size())
@@ -662,7 +663,7 @@ static int handle_announce_response(void *object, const IPPort &source, const ui
         return 1;
 
     if (len_nodes != 0) {
-        Node_format nodes[MAX_SENT_NODES];
+        NodeFormat nodes[MAX_SENT_NODES];
         int num_nodes = unpack_nodes(nodes, MAX_SENT_NODES, 0, plain + 1 + ONION_PING_ID_SIZE, len_nodes, 0);
 
         if (num_nodes <= 0)
@@ -712,7 +713,7 @@ static int handle_data_response(void *object, const IPPort &source, const uint8_
 }
 
 #define DHTPK_DATA_MIN_LENGTH (1 + sizeof(uint64_t) + crypto_box_PUBLICKEYBYTES)
-#define DHTPK_DATA_MAX_LENGTH (DHTPK_DATA_MIN_LENGTH + sizeof(Node_format)*MAX_SENT_NODES)
+#define DHTPK_DATA_MAX_LENGTH (DHTPK_DATA_MIN_LENGTH + sizeof(NodeFormat)*MAX_SENT_NODES)
 static int handle_dhtpk_announce(void *object, const uint8_t *source_pubkey, const uint8_t *data, uint16_t length)
 {
     Onion_Client *onion_c = (Onion_Client *) object;
@@ -747,7 +748,7 @@ static int handle_dhtpk_announce(void *object, const uint8_t *source_pubkey, con
     uint16_t len_nodes = length - DHTPK_DATA_MIN_LENGTH;
 
     if (len_nodes != 0) {
-        Node_format nodes[MAX_SENT_NODES];
+        NodeFormat nodes[MAX_SENT_NODES];
         int num_nodes = unpack_nodes(nodes, MAX_SENT_NODES, 0, data + 1 + sizeof(uint64_t) + crypto_box_PUBLICKEYBYTES,
                                      len_nodes, 1);
 
@@ -944,7 +945,7 @@ static int send_dhtpk_announce(Onion_Client *onion_c, uint16_t friend_num, uint8
     host_to_net((uint8_t *)&no_replay, sizeof(no_replay));
     memcpy(data + 1, &no_replay, sizeof(no_replay));
     memcpy(data + 1 + sizeof(uint64_t), onion_c->dht->self_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
-    Node_format nodes[MAX_SENT_NODES];
+    NodeFormat nodes[MAX_SENT_NODES];
     uint16_t num_relays = copy_connected_tcp_relays(onion_c->c, nodes, (MAX_SENT_NODES / 2));
     uint16_t num_nodes = onion_c->dht->closelist_nodes(&nodes[num_relays], MAX_SENT_NODES - num_relays);
     num_nodes += num_relays;
@@ -1193,7 +1194,7 @@ int onion_set_friend_online(Onion_Client *onion_c, int friend_num, uint8_t is_on
 
 static void populate_path_nodes(Onion_Client *onion_c)
 {
-    Node_format nodes_list[MAX_FRIEND_CLIENTS];
+    NodeFormat nodes_list[MAX_FRIEND_CLIENTS];
 
     unsigned int num_nodes = onion_c->dht->randfriends_nodes(nodes_list, MAX_FRIEND_CLIENTS);
 
@@ -1206,7 +1207,7 @@ static void populate_path_nodes(Onion_Client *onion_c)
 
 static void populate_path_nodes_tcp(Onion_Client *onion_c)
 {
-    Node_format nodes_list[MAX_SENT_NODES];
+    NodeFormat nodes_list[MAX_SENT_NODES];
 
     unsigned int num_nodes = copy_connected_tcp_relays(onion_c->c, nodes_list, MAX_SENT_NODES);;
     unsigned int i;
@@ -1337,7 +1338,7 @@ static void do_announce(Onion_Client *onion_c)
 
     if (count != MAX_ONION_CLIENTS_ANNOUNCE) {
         unsigned int num_nodes;
-        Node_format *path_nodes;
+        NodeFormat *path_nodes;
 
         if (rand() % 2 == 0 || onion_c->path_nodes_index == 0) {
             num_nodes = (onion_c->path_nodes_index_bs < MAX_PATH_NODES) ? onion_c->path_nodes_index_bs : MAX_PATH_NODES;

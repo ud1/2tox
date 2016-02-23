@@ -181,15 +181,15 @@ struct IP
 
 struct OnionIP
 {
-    uint32_t con_id;
-    uint64_t identifier;
+    uint32_t con_id = 0;
+    uint64_t identifier = 0;
 };
 
 struct IPPort
 {
     IP ip;
     OnionIP onion_ip;
-    uint16_t port; // port stored in network byte order
+    uint16_t port = 0; // port stored in network byte order
     
     sockaddr_storage to_addr_4() const;
     sockaddr_storage to_addr_6() const;

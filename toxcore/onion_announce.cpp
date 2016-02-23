@@ -39,6 +39,7 @@
 
 using namespace bitox;
 using namespace bitox::network;
+using namespace bitox::dht;
 
 /* Create an onion announce request packet in packet of max_packet_length (recommended size ONION_ANNOUNCE_REQUEST_SIZE).
  *
@@ -135,7 +136,7 @@ int create_data_request(uint8_t *packet, uint16_t max_packet_length, const uint8
  * return -1 on failure.
  * return 0 on success.
  */
-int send_announce_request(Networking_Core *net, const Onion_Path *path, Node_format dest, const uint8_t *public_key,
+int send_announce_request(Networking_Core *net, const Onion_Path *path, NodeFormat dest, const uint8_t *public_key,
                           const uint8_t *secret_key, const uint8_t *ping_id, const uint8_t *client_id, const uint8_t *data_public_key,
                           uint64_t sendback_data)
 {
@@ -331,7 +332,7 @@ static int handle_announce_request(void *object, const IPPort &source, const uin
     }
 
     /*Respond with a announce response packet*/
-    Node_format nodes_list[MAX_SENT_NODES];
+    NodeFormat nodes_list[MAX_SENT_NODES];
     unsigned int num_nodes = onion_a->dht->get_close_nodes(plain + ONION_PING_ID_SIZE, nodes_list, 0,
                              LAN_ip(source.ip) == 0, 1);
     uint8_t nonce[crypto_box_NONCEBYTES];

@@ -372,7 +372,7 @@ int send_tcp_onion_request(Net_Crypto *c, unsigned int TCP_conn_number, const ui
  * return number of relays copied to tcp_relays on success.
  * return 0 on failure.
  */
-unsigned int copy_connected_tcp_relays(Net_Crypto *c, Node_format *tcp_relays, uint16_t num);
+unsigned int copy_connected_tcp_relays(Net_Crypto *c, bitox::dht::NodeFormat *tcp_relays, uint16_t num);
 
 /* Kill a crypto connection.
  *

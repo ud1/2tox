@@ -30,6 +30,7 @@
 
 using namespace bitox;
 using namespace bitox::network;
+using namespace bitox::dht;
 
 /* return 1 if the friendcon_id is not valid.
  * return 0 if the friendcon_id is valid.
@@ -177,7 +178,7 @@ int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, IPPort ip_p
     for (i = 0; i < FRIEND_MAX_STORED_TCP_RELAYS; ++i) {
         if (friend_con->tcp_relays[i].ip_port.ip.family != Family::FAMILY_NULL
                 && public_key_cmp(friend_con->tcp_relays[i].public_key.data.data(), public_key) == 0) {
-            memset(&friend_con->tcp_relays[i], 0, sizeof(Node_format));
+            memset(&friend_con->tcp_relays[i], 0, sizeof(NodeFormat));
         }
     }
 
@@ -217,7 +218,7 @@ static unsigned int send_relays(Friend_Connections *fr_c, int friendcon_id)
     if (!friend_con)
         return 0;
 
-    Node_format nodes[MAX_SHARED_RELAYS];
+    NodeFormat nodes[MAX_SHARED_RELAYS];
     uint8_t data[1024];
     int n, length;
 
@@ -395,7 +396,7 @@ static int handle_packet(void *object, int number, uint8_t *data, uint16_t lengt
         friend_con->ping_lastrecv = unix_time();
         return 0;
     } else if (data[0] == PACKET_ID_SHARE_RELAYS) {
-        Node_format nodes[MAX_SHARED_RELAYS];
+        NodeFormat nodes[MAX_SHARED_RELAYS];
         int n;
 
         if ((n = unpack_nodes(nodes, MAX_SHARED_RELAYS, NULL, data + 1, length - 1, 1)) == -1)

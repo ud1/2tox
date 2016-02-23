@@ -36,6 +36,7 @@
 
 using namespace bitox;
 using namespace bitox::network;
+using namespace bitox::dht;
 
 template <typename T>
 bool realloc_tox_array(T *&array, size_t num)
@@ -1162,7 +1163,7 @@ unsigned int tcp_connection_to_online_tcp_relays(TCP_Connections *tcp_c, int con
  * return number of relays copied to tcp_relays on success.
  * return 0 on failure.
  */
-unsigned int tcp_copy_connected_relays(TCP_Connections *tcp_c, Node_format *tcp_relays, uint16_t max_num)
+unsigned int tcp_copy_connected_relays(TCP_Connections *tcp_c, NodeFormat *tcp_relays, uint16_t max_num)
 {
     unsigned int i, copied = 0, r = rand();
 

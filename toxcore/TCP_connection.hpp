@@ -228,7 +228,7 @@ int add_tcp_relay_global(TCP_Connections *tcp_c, bitox::network::IPPort ip_port,
  * return number of relays copied to tcp_relays on success.
  * return 0 on failure.
  */
-unsigned int tcp_copy_connected_relays(TCP_Connections *tcp_c, Node_format *tcp_relays, uint16_t max_num);
+unsigned int tcp_copy_connected_relays(TCP_Connections *tcp_c, bitox::dht::NodeFormat *tcp_relays, uint16_t max_num);
 
 /* Returns a new TCP_Connections object associated with the secret_key.
  *

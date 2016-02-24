@@ -224,9 +224,6 @@ static bool processGetNodesRequestDataPacket(const ToxHeader header, InputBuffer
 
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const SendNodesData &data, OutputBuffer &out_packet)
 {
-    if (data.nodes.empty())
-        return false;
-    
     if (data.nodes.size() > MAX_SENT_NODES)
     {
         assert(false && "Invalid SendNodesData");

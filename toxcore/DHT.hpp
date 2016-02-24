@@ -207,7 +207,7 @@ struct Cryptopacket_Handles
     void *object;
 };
 
-struct DHT
+struct DHT : public bitox::network::IncomingPacketListener
 {
     explicit DHT (bitox::network::Networking_Core *net);
     ~DHT();
@@ -238,14 +238,13 @@ struct DHT
 
     std::unique_ptr<PING> ping;
     
-    struct GetNodesHardenData
+    struct GetNodesData
     {
         bitox::dht::NodeFormat receiver;
-        bitox::dht::NodeFormat sendback_node;
+        bitox::dht::NodeFormat sendback_node; // harden data
     };
     
-    bitox::PingArray<bitox::dht::NodeFormat> dht_ping_array;
-    bitox::PingArray<GetNodesHardenData> dht_harden_ping_array;
+    bitox::PingArray<GetNodesData> dht_ping_array;
 #ifdef ENABLE_ASSOC_DHT
     struct Assoc  *assoc = nullptr;
 #endif
@@ -422,6 +421,9 @@ struct DHT
     int addto_lists (bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
     void do_hardening ();
 
+    virtual void onGetNodesRequest (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::GetNodesRequestData &data) override;
+    virtual void onSendNodes (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::SendNodesData &data) override;
+    
 //private:
     /**
      * Send a getnodes request.
@@ -446,10 +448,11 @@ struct DHT
     void punch_holes (bitox::network::IP ip, uint16_t *port_list, uint16_t numports, uint16_t friend_num);
     IPPTsPng *get_closelist_IPPTsPng (const bitox::PublicKey &public_key, bitox::network::Family sa_family);
     bitox::dht::NodeFormat random_node (sa_family_t sa_family);
-    uint8_t sent_getnode_to_node (const bitox::PublicKey &public_key, bitox::network::IPPort node_ip_port, uint64_t ping_id,
+    bool sent_getnode_to_node (const bitox::PublicKey &public_key, bitox::network::IPPort node_ip_port, uint64_t ping_id,
                                   bitox::dht::NodeFormat *sendback_node);
     int send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, uint8_t type);
     uint32_t have_nodes_closelist (bitox::dht::NodeFormat *nodes, uint16_t num);
+    bool sendnodes_ipv6 (bitox::network::IPPort ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &client_id, uint64_t ping_id);
 };
 /*----------------------------------------------------------------------------------*/
 

@@ -2302,7 +2302,7 @@ void do_messenger(Messenger *m)
             IPPort local_ip_port;
             local_ip_port.port = m->options.tcp_server_port;
             local_ip_port.ip.family = Family::FAMILY_AF_INET;
-            local_ip_port.ip.from_uint32(INADDR_LOOPBACK);
+            local_ip_port.ip.from_uint32(INADDR_LOOPBACK); // TODO endianess?
             add_tcp_relay(m->net_crypto, local_ip_port, m->tcp_server->public_key);
         }
     }

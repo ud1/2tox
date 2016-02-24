@@ -201,36 +201,6 @@ void DHT::get_shared_key_sent (uint8_t *shared_key, const bitox::PublicKey &publ
     get_shared_key (&shared_keys_sent, shared_key, self_secret_key, public_key);
 }
 
-/*void to_net_family (IP *ip)
-{
-    if (ip->family == AF_INET)
-    {
-        ip->family = bitox::impl::network::TOX_AF_INET;
-    }
-    else if (ip->family == AF_INET6)
-    {
-        ip->family = bitox::impl::network::TOX_AF_INET6;
-    }
-}
-
-int to_host_family (IP *ip)
-{
-    if (ip->family == bitox::impl::network::TOX_AF_INET)
-    {
-        ip->family = AF_INET;
-        return 0;
-    }
-    else if (ip->family == bitox::impl::network::TOX_AF_INET6)
-    {
-        ip->family = AF_INET6;
-        return 0;
-    }
-    else
-    {
-        return -1;
-    }
-}*/
-
 #define PACKED_NODE_SIZE_IP4 (1 + SIZE_IP4 + sizeof(uint16_t) + crypto_box_PUBLICKEYBYTES)
 #define PACKED_NODE_SIZE_IP6 (1 + SIZE_IP6 + sizeof(uint16_t) + crypto_box_PUBLICKEYBYTES)
 
@@ -1281,23 +1251,15 @@ int DHT::getnodes (IPPort ip_port, const bitox::PublicKey &public_key, const bit
 
     uint64_t ping_id = 0;
     
+    GetNodesData get_nodes_data;
+    get_nodes_data.receiver.public_key = public_key;
+    get_nodes_data.receiver.ip_port = ip_port;
+        
     if (sendback_node)
     {
-        GetNodesHardenData harden_data;
-        harden_data.receiver.public_key = public_key;
-        harden_data.receiver.ip_port = ip_port;
-        harden_data.sendback_node = *sendback_node;
-        
-        ping_id = dht_harden_ping_array.add(std::move(harden_data));
+        get_nodes_data.sendback_node = *sendback_node;
     }
-    else
-    {
-        NodeFormat receiver;
-        receiver.public_key = public_key;
-        receiver.ip_port = ip_port;
-        
-        ping_id = dht_ping_array.add(std::move(receiver));
-    }
+    ping_id = dht_ping_array.add(std::move(get_nodes_data));
     
     if (ping_id == 0)
         return -1;
@@ -1314,246 +1276,87 @@ int DHT::getnodes (IPPort ip_port, const bitox::PublicKey &public_key, const bit
 }
 
 /* Send a send nodes response: message for IPv6 nodes */
-static int sendnodes_ipv6 (const DHT *dht, IPPort ip_port, const bitox::PublicKey &public_key, const uint8_t *client_id,
-                           const uint8_t *sendback_data, uint16_t length, const uint8_t *shared_encryption_key)
+bool DHT::sendnodes_ipv6 (IPPort ip_port, const PublicKey &public_key, const PublicKey &client_id, uint64_t ping_id)
 {
-    /* Check if packet is going to be sent to ourself. */
-    if (public_key == dht->self_public_key)
-    {
-        return -1;
-    }
-
-    if (length != sizeof (uint64_t))
-    {
-        return -1;
-    }
-
-    size_t NodeFormat_size = sizeof (NodeFormat);
-    uint8_t data[1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES
-                 + NodeFormat_size * MAX_SENT_NODES + length + crypto_box_MACBYTES];
-
     NodeFormat nodes_list[MAX_SENT_NODES];
-    uint32_t num_nodes = dht->get_close_nodes (client_id, nodes_list, 0, LAN_ip (ip_port.ip) == 0, 1);
+    uint32_t num_nodes = get_close_nodes (client_id, nodes_list, 0, LAN_ip (ip_port.ip) == 0, 1);
 
-    uint8_t plain[1 + NodeFormat_size * MAX_SENT_NODES + length];
-    uint8_t encrypt[sizeof (plain) + crypto_box_MACBYTES];
-    uint8_t nonce[crypto_box_NONCEBYTES];
-    new_nonce (nonce);
-
-    int nodes_length = 0;
-
-    if (num_nodes)
+    SendNodesData send_nodes_data;
+    
+    for (size_t i = 0; i < num_nodes; ++i)
     {
-        nodes_length = pack_nodes (plain + 1, NodeFormat_size * MAX_SENT_NODES, nodes_list, num_nodes);
-
-        if (nodes_length <= 0)
-        {
-            return -1;
-        }
+        send_nodes_data.nodes.push_back(nodes_list[i]);
     }
-
-    plain[0] = num_nodes;
-    memcpy (plain + 1 + nodes_length, sendback_data, length);
-    int len = encrypt_data_symmetric (shared_encryption_key,
-                                      nonce,
-                                      plain,
-                                      1 + nodes_length + length,
-                                      encrypt);
-
-    if (len != 1 + nodes_length + length + crypto_box_MACBYTES)
-    {
-        return -1;
-    }
-
-    data[0] = NET_PACKET_SEND_NODES_IPV6;
-    memcpy (data + 1, dht->self_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
-    memcpy (data + 1 + crypto_box_PUBLICKEYBYTES, nonce, crypto_box_NONCEBYTES);
-    memcpy (data + 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES, encrypt, len);
-
-    return sendpacket (dht->net, ip_port, data, 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES + len);
+    
+    send_nodes_data.ping_id = ping_id;
+    
+    OutputBuffer packet;
+    if (!generateOutgoingPacket (*crypto_manager.get(), public_key, send_nodes_data, packet))
+        return false;
+    
+    return sendpacket (net, ip_port, packet.begin(), packet.size());
 }
 
-static int handle_getnodes (void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
+void DHT::onGetNodesRequest (const IPPort &source, const PublicKey &sender_public_key, const GetNodesRequestData &data)
 {
-    if (length != (1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + sizeof (
-                       uint64_t) + crypto_box_MACBYTES))
-    {
-        return 1;
-    }
-
-    DHT *dht = reinterpret_cast<DHT *> (object);
-
-    /* Check if packet is from ourself. */
-    if (id_equal (packet + 1, dht->self_public_key.data.data()))
-    {
-        return 1;
-    }
-
-    uint8_t plain[crypto_box_PUBLICKEYBYTES + sizeof (uint64_t)];
-    uint8_t shared_key[crypto_box_BEFORENMBYTES];
-
-    dht->get_shared_key_recv (shared_key, packet + 1);
-    int len = decrypt_data_symmetric (shared_key,
-                                      packet + 1 + crypto_box_PUBLICKEYBYTES,
-                                      packet + 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES,
-                                      crypto_box_PUBLICKEYBYTES + sizeof (uint64_t) + crypto_box_MACBYTES,
-                                      plain);
-
-    if (len != crypto_box_PUBLICKEYBYTES + sizeof (uint64_t))
-    {
-        return 1;
-    }
-
-    sendnodes_ipv6 (dht, source, packet + 1, plain, plain + crypto_box_PUBLICKEYBYTES, sizeof (uint64_t), shared_key);
-
-    dht->ping->add_to_ping (packet + 1, source);
-
-    return 0;
+    if (sender_public_key == self_public_key)
+        return;
+    
+    sendnodes_ipv6(source, sender_public_key, data.client_id, data.ping_id);
+    ping->add_to_ping (sender_public_key, source);
 }
+
 /* return 0 if no
    return 1 if yes */
-uint8_t DHT::sent_getnode_to_node (const bitox::PublicKey &public_key, IPPort node_ip_port, uint64_t ping_id,
+bool DHT::sent_getnode_to_node (const bitox::PublicKey &public_key, IPPort node_ip_port, uint64_t ping_id,
                                    NodeFormat *sendback_node)
 {
     uint8_t data[sizeof (NodeFormat) * 2];
 
-    NodeFormat receiver;
-    GetNodesHardenData harden_data;
-    if (dht_ping_array.check(receiver, ping_id))
-    {
-        *sendback_node = NodeFormat();
-    }
-    else if (dht_harden_ping_array.check(harden_data, ping_id))
-    {
-        receiver = harden_data.receiver;
-        *sendback_node = harden_data.sendback_node;
-    }
-    else
-    {
-        return 0;
-    }
+    GetNodesData get_nodes_data;
+    if (!dht_ping_array.check(get_nodes_data, ping_id))
+        return false;
 
-    if (!ipport_equal (&receiver.ip_port, &node_ip_port) || receiver.public_key != public_key)
-    {
-        return 0;
-    }
+    if (!ipport_equal (&get_nodes_data.receiver.ip_port, &node_ip_port) || get_nodes_data.receiver.public_key != public_key)
+        return false;
 
-    return 1;
+    *sendback_node = get_nodes_data.sendback_node;
+    
+    return true;
 }
 
 /* Function is needed in following functions. */
 static int send_hardening_getnode_res (const DHT *dht, const NodeFormat *sendto, const uint8_t *queried_client_id,
                                        const uint8_t *nodes_data, uint16_t nodes_data_length);
 
-static int handle_sendnodes_core (void *object, IPPort source, const uint8_t *packet, uint16_t length,
-                                  NodeFormat *plain_nodes, uint16_t size_plain_nodes, uint32_t *num_nodes_out)
+void DHT::onSendNodes (const IPPort &source, const PublicKey &sender_public_key, const SendNodesData &data)
 {
-    DHT *dht = reinterpret_cast<DHT *> (object);
-    uint32_t cid_size = 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES + 1 + sizeof (uint64_t) + crypto_box_MACBYTES;
-
-    if (length < cid_size) /* too short */
+    for (size_t i = 0; i < data.nodes.size(); ++i)
     {
-        return 1;
+        Family family = data.nodes[i].ip_port.ip.family;
+        if (family == Family::FAMILY_TCP_INET || family == Family::FAMILY_TCP_INET6)
+            return;
     }
-
-    uint32_t data_size = length - cid_size;
-
-    if (data_size == 0)
-    {
-        return 1;
-    }
-
-    if (data_size > sizeof (NodeFormat) * MAX_SENT_NODES) /* invalid length */
-    {
-        return 1;
-    }
-
-    uint8_t plain[1 + data_size + sizeof (uint64_t)];
-    uint8_t shared_key[crypto_box_BEFORENMBYTES];
-    dht->get_shared_key_sent (shared_key, packet + 1);
-    int len = decrypt_data_symmetric (
-                  shared_key,
-                  packet + 1 + crypto_box_PUBLICKEYBYTES,
-                  packet + 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES,
-                  1 + data_size + sizeof (uint64_t) + crypto_box_MACBYTES,
-                  plain);
-
-    if ( (unsigned int) len != sizeof (plain))
-    {
-        return 1;
-    }
-
-    if (plain[0] > size_plain_nodes)
-    {
-        return 1;
-    }
-
+    
     NodeFormat sendback_node;
-
-    uint64_t ping_id;
-    memcpy (&ping_id, plain + 1 + data_size, sizeof (ping_id));
-
-    if (!dht->sent_getnode_to_node (packet + 1, source, ping_id, &sendback_node))
-    {
-        return 1;
-    }
-
-    uint16_t length_nodes = 0;
-    int num_nodes = unpack_nodes (plain_nodes, plain[0], &length_nodes, plain + 1, data_size, 0);
-
-    if (length_nodes != data_size)
-    {
-        return 1;
-    }
-
-    if (num_nodes != plain[0])
-    {
-        return 1;
-    }
-
-    if (num_nodes < 0)
-    {
-        return 1;
-    }
-
+    
+    if (!sent_getnode_to_node (sender_public_key, source, data.ping_id, &sendback_node))
+        return;
+    
     /* store the address the *request* was sent to */
-    dht->addto_lists (source, packet + 1);
-
-    *num_nodes_out = num_nodes;
-
-    send_hardening_getnode_res (dht, &sendback_node, packet + 1, plain + 1, data_size);
-    return 0;
-}
-
-static int handle_sendnodes_ipv6 (void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
-{
-    DHT *dht = reinterpret_cast<DHT *> (object);
-    NodeFormat plain_nodes[MAX_SENT_NODES];
-    uint32_t num_nodes;
-
-    if (handle_sendnodes_core (object, source, packet, length, plain_nodes, MAX_SENT_NODES, &num_nodes))
+    addto_lists (source, sender_public_key);
+    
+    //send_hardening_getnode_res (this, &sendback_node, sender_public_key, nodes, nodes_size); TODO
+    
+    for (size_t i = 0; i < data.nodes.size(); ++i)
     {
-        return 1;
-    }
-
-    if (num_nodes == 0)
-    {
-        return 0;
-    }
-
-    uint32_t i;
-
-    for (i = 0; i < num_nodes; i++)
-    {
-
-        if (ipport_isset (&plain_nodes[i].ip_port))
+        const NodeFormat &node_format = data.nodes[i];
+        if (ipport_isset (&node_format.ip_port))
         {
-            dht->ping_node_from_getnodes_ok (plain_nodes[i].public_key, plain_nodes[i].ip_port);
-            dht->returnedip_ports (plain_nodes[i].ip_port, plain_nodes[i].public_key, packet + 1);
+            ping_node_from_getnodes_ok (node_format.public_key, node_format.ip_port);
+            returnedip_ports (node_format.ip_port, node_format.public_key, sender_public_key);
         }
     }
-
-    return 0;
 }
 
 /*----------------------------------------------------------------------------------*/
@@ -1828,7 +1631,7 @@ void DHT::do_Close ()
 
 void DHT::getnodes (const IPPort *from_ipp, const bitox::PublicKey &from_id, const uint8_t *which_id)
 {
-    getnodes (*from_ipp, from_id, which_id, NULL);
+    getnodes (*from_ipp, from_id, which_id, nullptr);
 }
 
 void DHT::bootstrap (IPPort ip_port, const bitox::PublicKey &public_key)
@@ -2826,8 +2629,7 @@ static int cryptopacket_handle (void *object, const IPPort &source, const uint8_
 /*----------------------------------------------------------------------------------*/
 
 DHT::DHT (Networking_Core *net) :
-    dht_ping_array (DHT_PING_ARRAY_SIZE, PING_TIMEOUT),
-    dht_harden_ping_array (DHT_PING_ARRAY_SIZE, PING_TIMEOUT)
+    dht_ping_array (DHT_PING_ARRAY_SIZE, PING_TIMEOUT)
 {
     /* init time */
     unix_time_update();
@@ -2836,8 +2638,6 @@ DHT::DHT (Networking_Core *net) :
     this->net = net;
     this->ping = std::unique_ptr<PING> (new PING (this));
 
-    networking_registerhandler (this->net, NET_PACKET_GET_NODES, &handle_getnodes, this);
-    networking_registerhandler (this->net, NET_PACKET_SEND_NODES_IPV6, &handle_sendnodes_ipv6, this);
     networking_registerhandler (this->net, NET_PACKET_CRYPTO, &cryptopacket_handle, this);
     this->cryptopacket_registerhandler (CRYPTO_PACKET_NAT_PING, &handle_NATping, this);
     this->cryptopacket_registerhandler (CRYPTO_PACKET_HARDENING, &handle_hardening, this);
@@ -2863,6 +2663,7 @@ DHT::DHT (Networking_Core *net) :
     }
     
     net->set_dht(this);
+    subscribe(this);
 }
 
 void DHT::do_DHT ()
@@ -2901,8 +2702,6 @@ DHT::~DHT()
 #ifdef ENABLE_ASSOC_DHT
     kill_Assoc (assoc);
 #endif
-    networking_registerhandler (net, NET_PACKET_GET_NODES, NULL, NULL);
-    networking_registerhandler (net, NET_PACKET_SEND_NODES_IPV6, NULL, NULL);
     cryptopacket_registerhandler (CRYPTO_PACKET_NAT_PING, NULL, NULL);
     cryptopacket_registerhandler (CRYPTO_PACKET_HARDENING, NULL, NULL);
 }

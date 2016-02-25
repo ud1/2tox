@@ -356,15 +356,15 @@ static int send_onion_packet_tcp_udp(const Onion_Client *onion_c, const Onion_Pa
  * return 0 on success
  *
  */
-static int new_sendback(Onion_Client *onion_c, uint32_t num, const uint8_t *public_key, const bitox::network::IPPort &ip_port,
-                        uint32_t path_num, uint64_t *sendback)
+int Onion_Client::new_sendback(uint32_t num, const PublicKey &public_key, const bitox::network::IPPort &ip_port, uint32_t path_num, uint64_t *sendback)
 {
-    uint8_t data[sizeof(uint32_t) + crypto_box_PUBLICKEYBYTES + sizeof(IPPort) + sizeof(uint32_t)];
-    memcpy(data, &num, sizeof(uint32_t));
-    memcpy(data + sizeof(uint32_t), public_key, crypto_box_PUBLICKEYBYTES);
-    memcpy(data + sizeof(uint32_t) + crypto_box_PUBLICKEYBYTES, &ip_port, sizeof(IPPort));
-    memcpy(data + sizeof(uint32_t) + crypto_box_PUBLICKEYBYTES + sizeof(IPPort), &path_num, sizeof(uint32_t));
-    *sendback = onion_c->announce_ping_array.add(data, sizeof(data));
+    AnnounceRecord record;
+    record.num = num;
+    record.public_key = public_key;
+    record.ip_port = ip_port;
+    record.path_num = path_num;
+    
+    *sendback = announce_ping_array.add(std::move(record));
 
     if (*sendback == 0)
         return -1;
@@ -382,23 +382,22 @@ static int new_sendback(Onion_Client *onion_c, uint32_t num, const uint8_t *publ
  * return ~0 on failure
  * return num (see new_sendback(...)) on success
  */
-static uint32_t check_sendback(Onion_Client *onion_c, const uint8_t *sendback, uint8_t *ret_pubkey,
-                               IPPort *ret_ip_port, uint32_t *path_num) // TODO
+uint32_t Onion_Client::check_sendback(const uint8_t *sendback, PublicKey &ret_pubkey, IPPort &ret_ip_port, uint32_t &path_num)
 {
-    /*uint64_t sback;
+    uint64_t sback;
     memcpy(&sback, sendback, sizeof(uint64_t));
     uint8_t data[sizeof(uint32_t) + crypto_box_PUBLICKEYBYTES + sizeof(IPPort) + sizeof(uint32_t)];
 
-    if (onion_c->announce_ping_array.check(data, sizeof(data), sback) != sizeof(data))
+    AnnounceRecord record;
+    
+    if (announce_ping_array.check(record, sback))
         return ~0;
 
-    memcpy(ret_pubkey, data + sizeof(uint32_t), crypto_box_PUBLICKEYBYTES);
-    memcpy(ret_ip_port, data + sizeof(uint32_t) + crypto_box_PUBLICKEYBYTES, sizeof(IPPort));
-    memcpy(path_num, data + sizeof(uint32_t) + crypto_box_PUBLICKEYBYTES + sizeof(IPPort), sizeof(uint32_t));
-
-    uint32_t num;
-    memcpy(&num, data, sizeof(uint32_t));
-    return num;*/
+    ret_pubkey = record.public_key;
+    ret_ip_port = record.ip_port;
+    path_num = record.path_num;
+    
+    return record.num;
 }
 
 static int client_send_announce_request(Onion_Client *onion_c, uint32_t num, const IPPort &dest, const uint8_t *dest_pubkey,
@@ -418,7 +417,7 @@ static int client_send_announce_request(Onion_Client *onion_c, uint32_t num, con
             return -1;
     }
 
-    if (new_sendback(onion_c, num, dest_pubkey, dest, path.path_num, &sendback) == -1)
+    if (onion_c->new_sendback(num, dest_pubkey, dest, path.path_num, &sendback) == -1)
         return -1;
 
     uint8_t zero_ping_id[ONION_PING_ID_SIZE] = {0};
@@ -631,10 +630,10 @@ static int handle_announce_response(void *object, const IPPort &source, const ui
 
     uint16_t len_nodes = length - ONION_ANNOUNCE_RESPONSE_MIN_SIZE;
 
-    uint8_t public_key[crypto_box_PUBLICKEYBYTES];
+    PublicKey public_key;
     IPPort ip_port;
     uint32_t path_num;
-    uint32_t num = check_sendback(onion_c, packet + 1, public_key, &ip_port, &path_num);
+    uint32_t num = onion_c->check_sendback(packet + 1, public_key, ip_port, path_num);
 
     if (num > onion_c->friends_list.size())
         return 1;
@@ -643,14 +642,14 @@ static int handle_announce_response(void *object, const IPPort &source, const ui
     int len = -1;
 
     if (num == 0) {
-        len = decrypt_data(public_key, onion_c->c->self_secret_key, packet + 1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH,
+        len = decrypt_data(public_key.data.data(), onion_c->c->self_secret_key, packet + 1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH,
                            packet + 1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH + crypto_box_NONCEBYTES,
                            length - (1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH + crypto_box_NONCEBYTES), plain);
     } else {
         if (onion_c->friends_list[num - 1].status == 0)
             return 1;
 
-        len = decrypt_data(public_key, onion_c->friends_list[num - 1].temp_secret_key,
+        len = decrypt_data(public_key.data.data(), onion_c->friends_list[num - 1].temp_secret_key,
                            packet + 1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH,
                            packet + 1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH + crypto_box_NONCEBYTES,
                            length - (1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH + crypto_box_NONCEBYTES), plain);
@@ -659,7 +658,7 @@ static int handle_announce_response(void *object, const IPPort &source, const ui
     if ((uint32_t)len != sizeof(plain))
         return 1;
 
-    if (client_add_to_list(onion_c, num, public_key, ip_port, plain[0], plain + 1, path_num) == -1)
+    if (client_add_to_list(onion_c, num, public_key.data.data(), ip_port, plain[0], plain + 1, path_num) == -1)
         return 1;
 
     if (len_nodes != 0) {

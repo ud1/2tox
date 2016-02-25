@@ -4,65 +4,58 @@
 TEST(PING_ARRAY, test)
 {
 	{
-		Ping_Array array(2, 1000);
+		bitox::PingArray<std::string> array(2, 1000);
 		
 		std::string data = "Hello world!";
 		std::string data2 = "Hello world2!";
 		std::string data3 = "Hello world3!";
 		
-		uint64_t ping_id = array.add(reinterpret_cast<const uint8_t *>(data.c_str()), data.length());
+		uint64_t ping_id = array.add(std::string(data));
 		ASSERT_NE(0, ping_id);
 		
-		char ret_data[100];
-		
-		{
-			SCOPED_TRACE("too small buffer");
-			int ret_len = array.check(reinterpret_cast<uint8_t *>(ret_data), 3, ping_id);
-			ASSERT_EQ(-1, ret_len);
-		}
+		std::string ret_data;
 		
 		{
 			SCOPED_TRACE("wrong ping_id");
-			int ret_len = array.check(reinterpret_cast<uint8_t *>(ret_data), 100, 12345);
-			ASSERT_EQ(-1, ret_len);
+			bool res = array.check(ret_data, 12345);
+			ASSERT_EQ(false, res);
 		}
 		
 		{
 			SCOPED_TRACE("OK");
-			int ret_len = array.check(reinterpret_cast<uint8_t *>(ret_data), 100, ping_id);
+			bool res = array.check(ret_data, ping_id);
 			
-			ASSERT_EQ(data.length(), ret_len);
-			ASSERT_EQ(data, std::string(ret_data, ret_len));
+			ASSERT_EQ(true, res);
+			ASSERT_EQ(data, ret_data);
 		}
 		
-		int ret_len = array.check(reinterpret_cast<uint8_t *>(ret_data), 100, ping_id);
-		ASSERT_EQ(-1, ret_len);
+		bool res = array.check(ret_data, ping_id);
+		ASSERT_EQ(false, res);
 		
-		ping_id = array.add(reinterpret_cast<const uint8_t *>(data.c_str()), data.length());
+		ping_id = array.add(std::string(data));
 		ASSERT_NE(0, ping_id);
 		
-		uint64_t ping_id2 = array.add(reinterpret_cast<const uint8_t *>(data2.c_str()), data2.length());
+		uint64_t ping_id2 = array.add(std::string(data2));
 		ASSERT_NE(0, ping_id2);
 		ASSERT_NE(ping_id, ping_id2);
 		
-		uint64_t ping_id3 = array.add(reinterpret_cast<const uint8_t *>(data3.c_str()), data3.length());
+		uint64_t ping_id3 = array.add(std::string(data3));
 		ASSERT_NE(0, ping_id3);
 		ASSERT_NE(ping_id2, ping_id3);
 		
 		{
 			SCOPED_TRACE("Old record removed");
-			int ret_len = array.check(reinterpret_cast<uint8_t *>(ret_data), 100, ping_id);
+			bool res = array.check(ret_data, ping_id);
 			
-			ASSERT_EQ(-1, ret_len);
+			ASSERT_EQ(false, res);
 		}
 		
 		{
 			SCOPED_TRACE("Remove second record");
 			
-			int ret_len = array.check(reinterpret_cast<uint8_t *>(ret_data), 100, ping_id2);
+			bool res = array.check(ret_data, ping_id2);
 			
-			ASSERT_EQ(data2.length(), ret_len);
-			ASSERT_EQ(data2, std::string(ret_data, ret_len));
+			ASSERT_EQ(data2, ret_data);
 		}
 	}
 }

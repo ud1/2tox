@@ -155,7 +155,15 @@ struct Onion_Client
     bitox::dht::NodeFormat path_nodes_bs[MAX_PATH_NODES];
     uint16_t path_nodes_index_bs;
 
-    Ping_Array announce_ping_array;
+    struct AnnounceRecord
+    {
+        uint32_t num;
+        bitox::PublicKey public_key;
+        bitox::network::IPPort ip_port;
+        uint32_t path_num;
+    };
+    
+    bitox::PingArray<AnnounceRecord> announce_ping_array;
     uint8_t last_pinged_index;
     struct {
         oniondata_handler_callback function;
@@ -166,6 +174,10 @@ struct Onion_Client
 
     unsigned int onion_connected;
     bool UDP_connected;
+    
+//private:
+    int new_sendback(uint32_t num, const bitox::PublicKey &public_key, const bitox::network::IPPort &ip_port, uint32_t path_num, uint64_t *sendback);
+    uint32_t check_sendback(const uint8_t *sendback, bitox::PublicKey &ret_pubkey, bitox::network::IPPort &ret_ip_port, uint32_t &path_num);
 };
 
 

@@ -60,9 +60,6 @@
 
 #define MAX_NORMAL_PUNCHING_TRIES 5
 
-#define NAT_PING_REQUEST    0
-#define NAT_PING_RESPONSE   1
-
 /* Number of get node requests to send to quickly find close nodes. */
 #define MAX_BOOTSTRAP_TIMES 5
 
@@ -1930,31 +1927,24 @@ int DHT::routeone_tofriend (const bitox::PublicKey &friend_id, const uint8_t *pa
 /*----------------------------------------------------------------------------------*/
 /*---------------------BEGINNING OF NAT PUNCHING FUNCTIONS--------------------------*/
 
-int DHT::send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, uint8_t type)
+int DHT::send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, NATPingCryptoData::Type type)
 {
-    uint8_t data[sizeof (uint64_t) + 1];
-    uint8_t packet[MAX_CRYPTO_REQUEST_SIZE];
-
-    int num = 0;
-
-    data[0] = type;
-    memcpy (data + 1, &ping_id, sizeof (uint64_t));
-    /* 254 is NAT ping request packet id */
-    int len = create_request (self_public_key.data.data(), self_secret_key.data.data(), packet, public_key.data.data(), data,
-                              sizeof (uint64_t) + 1, CRYPTO_PACKET_NAT_PING);
-
-    if (len == -1)
-    {
+    NATPingCryptoData nat_ping;
+    nat_ping.type = type;
+    nat_ping.ping_id = ping_id;
+    
+    OutputBuffer packet;
+    if (!generateOutgoingCryptoPacket (*crypto_manager.get(), public_key, nat_ping, packet))
         return -1;
-    }
-
-    if (type == 0) /* If packet is request use many people to route it. */
+    
+    int num = 0;
+    if (type == NATPingCryptoData::Type::NAT_PING_REQUEST) /* If packet is request use many people to route it. */
     {
-        num = route_tofriend (public_key, packet, len);
+        num = route_tofriend (public_key, packet.begin(), packet.size());
     }
-    else if (type == 1) /* If packet is response use only one person to route it */
+    else if (type == NATPingCryptoData::Type::NAT_PING_RESPONSE) /* If packet is response use only one person to route it */
     {
-        num = routeone_tofriend (public_key, packet, len);
+        num = routeone_tofriend (public_key, packet.begin(), packet.size());
     }
 
     if (num == 0)
@@ -1965,46 +1955,28 @@ int DHT::send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, uin
     return num;
 }
 
-/* Handle a received ping request for. */
-static int handle_NATping (void *object, IPPort source, const bitox::PublicKey &source_pubkey, const uint8_t *packet,
-                           uint16_t length)
+void DHT::onNATPing (const IPPort &source, const PublicKey &sender_public_key, const NATPingCryptoData &data)
 {
-    if (length != sizeof (uint64_t) + 1)
-    {
-        return 1;
-    }
-
-    DHT *dht = reinterpret_cast<DHT *> (object);
-    uint64_t ping_id;
-    memcpy (&ping_id, packet + 1, sizeof (uint64_t));
-
-    int friendnumber = friend_number (dht, source_pubkey);
+    int friendnumber = friend_number (this, sender_public_key);
 
     if (friendnumber == -1)
-    {
-        return 1;
-    }
+        return;
 
-    DHT_Friend *friend_ = &dht->friends_list[friendnumber];
+    DHT_Friend *friend_ = &friends_list[friendnumber];
 
-    if (packet[0] == NAT_PING_REQUEST)
+    if (data.type == NATPingCryptoData::Type::NAT_PING_REQUEST)
     {
-        /* 1 is reply */
-        dht->send_NATping (source_pubkey, ping_id, NAT_PING_RESPONSE);
+        send_NATping (sender_public_key, data.ping_id, NATPingCryptoData::Type::NAT_PING_RESPONSE);
         friend_->nat.recvNATping_timestamp = unix_time();
-        return 0;
     }
-    else if (packet[0] == NAT_PING_RESPONSE)
+    else if (data.type == NATPingCryptoData::Type::NAT_PING_RESPONSE)
     {
-        if (friend_->nat.NATping_id == ping_id)
+        if (friend_->nat.NATping_id == data.ping_id)
         {
             friend_->nat.NATping_id = random_64b();
             friend_->nat.hole_punching = 1;
-            return 0;
         }
     }
-
-    return 1;
 }
 
 /* Get the most common ip in the ip_portlist.
@@ -2146,7 +2118,7 @@ void DHT::do_NAT ()
 
         if (friends_list[i].nat.NATping_timestamp + PUNCH_INTERVAL < temp_time)
         {
-            send_NATping (friends_list[i].public_key, friends_list[i].nat.NATping_id, NAT_PING_REQUEST);
+            send_NATping (friends_list[i].public_key, friends_list[i].nat.NATping_id, NATPingCryptoData::Type::NAT_PING_REQUEST);
             friends_list[i].nat.NATping_timestamp = temp_time;
         }
 
@@ -2579,51 +2551,11 @@ void DHT::cryptopacket_registerhandler (uint8_t byte, cryptopacket_handler_callb
     cryptopackethandlers[byte].object = object;
 }
 
-static int cryptopacket_handle (void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
+
+void DHT::rerouteIncomingPacket(const PublicKey &public_key, InputBuffer &packet)
 {
-    DHT *dht = reinterpret_cast<DHT *> (object);
-
-    if (packet[0] == NET_PACKET_CRYPTO)
-    {
-        if (length <= crypto_box_PUBLICKEYBYTES * 2 + crypto_box_NONCEBYTES + 1 + crypto_box_MACBYTES ||
-                length > MAX_CRYPTO_REQUEST_SIZE + crypto_box_MACBYTES)
-        {
-            return 1;
-        }
-
-        if (public_key_cmp (packet + 1, dht->self_public_key.data.data()) == 0)  // Check if request is for us.
-        {
-            uint8_t public_key[crypto_box_PUBLICKEYBYTES];
-            uint8_t data[MAX_CRYPTO_REQUEST_SIZE];
-            uint8_t number;
-            int len = handle_request (dht->self_public_key.data.data(), dht->self_secret_key.data.data(), public_key, data, &number, packet, length);
-
-            if (len == -1 || len == 0)
-            {
-                return 1;
-            }
-
-            if (!dht->cryptopackethandlers[number].function)
-            {
-                return 1;
-            }
-
-            return dht->cryptopackethandlers[number].function (dht->cryptopackethandlers[number].object, source, public_key,
-                                                               data, len);
-
-        }
-        else     /* If request is not for us, try routing it. */
-        {
-            int retval = dht->route_packet (packet + 1, packet, length);
-
-            if ( (unsigned int) retval == length)
-            {
-                return 0;
-            }
-        }
-    }
-
-    return 1;
+    BufferDataRange buffer_data;
+    route_packet (public_key, buffer_data.first, buffer_data.second - buffer_data.first);
 }
 
 /*----------------------------------------------------------------------------------*/
@@ -2638,8 +2570,6 @@ DHT::DHT (Networking_Core *net) :
     this->net = net;
     this->ping = std::unique_ptr<PING> (new PING (this));
 
-    networking_registerhandler (this->net, NET_PACKET_CRYPTO, &cryptopacket_handle, this);
-    this->cryptopacket_registerhandler (CRYPTO_PACKET_NAT_PING, &handle_NATping, this);
     this->cryptopacket_registerhandler (CRYPTO_PACKET_HARDENING, &handle_hardening, this);
 
     new_symmetric_key (this->secret_symmetric_key);
@@ -2702,7 +2632,6 @@ DHT::~DHT()
 #ifdef ENABLE_ASSOC_DHT
     kill_Assoc (assoc);
 #endif
-    cryptopacket_registerhandler (CRYPTO_PACKET_NAT_PING, NULL, NULL);
     cryptopacket_registerhandler (CRYPTO_PACKET_HARDENING, NULL, NULL);
 }
 

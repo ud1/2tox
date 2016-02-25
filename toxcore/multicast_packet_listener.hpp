@@ -61,6 +61,22 @@ public:
             listener->onAnnounceRequest (source, sender_public_key, data);
         }
     }
+    
+    virtual void onNATPing (const IPPort &source, const PublicKey &sender_public_key, const NATPingCryptoData &data) override
+    {
+        for (IncomingPacketListener * listener : listeners)
+        {
+            listener->onNATPing (source, sender_public_key, data);
+        }
+    }
+    
+    virtual void rerouteIncomingPacket(const PublicKey &public_key, InputBuffer &packet) override
+    {
+        for (IncomingPacketListener * listener : listeners)
+        {
+            listener->rerouteIncomingPacket (public_key, packet);
+        }
+    }
 
 private:
     std::set<IncomingPacketListener *>listeners;

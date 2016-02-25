@@ -98,6 +98,20 @@ inline InputBuffer &operator >> (InputBuffer &buffer, PacketType &packet_type)
     packet_type = (PacketType) b;
     return buffer;
 }
+
+inline OutputBuffer &operator << (OutputBuffer &buffer, const NetCryptoPacketType packet_type)
+{
+    buffer.write_byte(packet_type);
+    return buffer;
+}
+
+inline InputBuffer &operator >> (InputBuffer &buffer, NetCryptoPacketType &packet_type)
+{
+    uint8_t b;
+    buffer.read_byte (b);
+    packet_type = (NetCryptoPacketType) b;
+    return buffer;
+}
     
 inline OutputBuffer &operator << (OutputBuffer &buffer, const PublicKey &public_key)
 {
@@ -141,11 +155,11 @@ struct ToxHeader
     Nonce nonce = Nonce::create_empty();
 };
 
-inline InputBuffer &operator >> (InputBuffer &buffer, ToxHeader &header)
+struct NetCryptoHeader
 {
-    buffer >> header.packet_type >> header.public_key >> header.nonce;
-    return buffer;
-}
+    PublicKey receiver_dht_key, sender_dht_key;
+    Nonce nonce = Nonce::create_empty();
+};
 
 namespace network
 {

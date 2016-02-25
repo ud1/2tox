@@ -424,6 +424,10 @@ struct DHT : public bitox::network::IncomingPacketListener
     virtual void onGetNodesRequest (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::GetNodesRequestData &data) override;
     virtual void onSendNodes (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::SendNodesData &data) override;
     
+    virtual void onNATPing (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::NATPingCryptoData &data) override;
+    
+    virtual void rerouteIncomingPacket(const bitox::PublicKey &public_key, bitox::InputBuffer &packet) override;
+    
 //private:
     /**
      * Send a getnodes request.
@@ -450,7 +454,7 @@ struct DHT : public bitox::network::IncomingPacketListener
     bitox::dht::NodeFormat random_node (sa_family_t sa_family);
     bool sent_getnode_to_node (const bitox::PublicKey &public_key, bitox::network::IPPort node_ip_port, uint64_t ping_id,
                                   bitox::dht::NodeFormat *sendback_node);
-    int send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, uint8_t type);
+    int send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, bitox::NATPingCryptoData::Type type);
     uint32_t have_nodes_closelist (bitox::dht::NodeFormat *nodes, uint16_t num);
     bool sendnodes_ipv6 (bitox::network::IPPort ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &client_id, uint64_t ping_id);
 };

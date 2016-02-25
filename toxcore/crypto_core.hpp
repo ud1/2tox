@@ -91,12 +91,6 @@ void new_symmetric_key(uint8_t* key);
 
 #define MAX_CRYPTO_REQUEST_SIZE 1024
 
-
-#define CRYPTO_PACKET_FRIEND_REQ    32  /* Friend request crypto packet ID. */
-#define CRYPTO_PACKET_HARDENING     48  /* Hardening crypto packet ID. */
-#define CRYPTO_PACKET_DHTPK         156
-#define CRYPTO_PACKET_NAT_PING      254 /* NAT ping crypto packet ID. */
-
 /* Create a request to peer.
  * send_public_key and send_secret_key are the pub/secret keys of the sender.
  * recv_public_key is public key of receiver.

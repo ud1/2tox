@@ -57,6 +57,20 @@ enum PacketType : uint8_t
     NET_PACKET_ONION_RECV_1 = 142,
 };
 
+enum NetCryptoPacketType : uint8_t
+{
+    // Friend request crypto packet ID
+    CRYPTO_PACKET_FRIEND_REQ = 32,
+    
+    // Hardening crypto packet ID
+    CRYPTO_PACKET_HARDENING = 48,
+    
+    CRYPTO_PACKET_DHTPK = 156,
+    
+    // NAT ping crypto packet ID
+    CRYPTO_PACKET_NAT_PING = 254,
+};
+
 constexpr size_t PUBLIC_KEY_LEN = 32;
 constexpr size_t SECRET_KEY_LEN = 32;
 constexpr size_t ONION_PING_ID_LEN = 32;
@@ -249,6 +263,18 @@ struct AnnounceRequestData
     uint64_t sendback_data;
 };
 
+struct NATPingCryptoData
+{
+    enum class Type
+    {
+        NAT_PING_REQUEST = 0,
+        NAT_PING_RESPONSE = 1,
+    };
+    
+    Type type;
+    uint64_t ping_id;
+};
+
 namespace network
 {
 class IncomingPacketListener
@@ -259,6 +285,10 @@ public:
     virtual void onGetNodesRequest (const IPPort &source, const PublicKey &sender_public_key, const GetNodesRequestData &data) {}
     virtual void onSendNodes (const IPPort &source, const PublicKey &sender_public_key, const SendNodesData &data) {}
     virtual void onAnnounceRequest (const IPPort &source, const PublicKey &sender_public_key, const AnnounceRequestData &data) {}
+    
+    virtual void onNATPing (const IPPort &source, const PublicKey &sender_public_key, const NATPingCryptoData &data) {}
+    
+    virtual void rerouteIncomingPacket(const PublicKey &public_key, InputBuffer &packet) {}
 };
 
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingRequestData &data, OutputBuffer &out_packet);
@@ -266,6 +296,7 @@ bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKe
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodesRequestData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const SendNodesData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const AnnounceRequestData &data, OutputBuffer &out_packet);
+bool generateOutgoingCryptoPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const NATPingCryptoData &data, OutputBuffer &out_packet);
 bool processIncomingPacket (const CryptoManager &crypto_manager, InputBuffer &&packet, const IPPort &source, IncomingPacketListener &listener);
 }
 

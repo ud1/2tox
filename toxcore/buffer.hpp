@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <bitset>
 #include <algorithm>
+#include <cassert>
 
 namespace bitox
 {
@@ -68,7 +69,7 @@ public:
     template<typename ByteIter>
     InputBuffer &read_bytes (ByteIter *out, size_t count)
     {
-        if (fail_bit || eof() || count > size())
+        if (fail_bit || count > size())
         {
             fail_bit = true;
             return *this;
@@ -103,6 +104,12 @@ public:
     bool fail() const
     {
         return fail_bit;
+    }
+    
+    void rewind(size_t bytes)
+    {
+        assert(bytes <= offset);
+        offset -= bytes;
     }
     
     BufferDataRange get_buffer_data() const

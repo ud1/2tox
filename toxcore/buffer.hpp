@@ -49,6 +49,11 @@ public:
         return std::make_pair(begin(), end());
     }
 
+    void write_zeros(size_t len)
+    {
+        buffer.insert(buffer.begin(), len, 0);
+    }
+    
 private:
     std::vector<uint8_t> buffer;
 };

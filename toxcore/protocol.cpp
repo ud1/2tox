@@ -333,6 +333,56 @@ static bool processNatPingCryptoPacket(const PublicKey &sender_public_key, Input
     return true;
 }
 
+enum HardeningPacketType : uint8_t
+{
+    //CHECK_TYPE_ROUTE_REQ = 0,
+    //CHECK_TYPE_ROUTE_RES = 1,
+    CHECK_TYPE_GETNODE_REQ = 2,
+    CHECK_TYPE_GETNODE_RES = 3,
+    //CHECK_TYPE_TEST_REQ = 4,
+    //CHECK_TYPE_TEST_RES = 5,
+};
+
+constexpr size_t HARDREQ_DATA_SIZE = 384;
+
+/**
+ * Original TOX Node_Format:
+ * 32 bytes - public_key
+ * 1 byte - family
+ * 7 bytes - padding
+ * 16 bytes - ip4/ip6 bytes
+ * 2 bytes - port
+ * 6 bytes - padding
+ */
+bool generateOutgoingCryptoPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodeHardeningCryptoData &data, OutputBuffer &out_packet)
+{
+    OutputBuffer data_to_encrypt;
+    data_to_encrypt << CRYPTO_PACKET_HARDENING;
+    data_to_encrypt.write_byte(CHECK_TYPE_GETNODE_REQ);
+    
+    // write NodeFormat
+    data_to_encrypt << data.node_to_test.public_key;
+    data_to_encrypt.write_byte((uint8_t) data.node_to_test.ip_port.ip.family);
+    data_to_encrypt.write_zeros(7);
+    if (data.node_to_test.ip_port.ip.address.is_v4())
+    {
+        write_ipv4_address(data_to_encrypt, data.node_to_test.ip_port.ip.address);
+        data_to_encrypt.write_zeros(12);
+    }
+    else
+    {
+        write_ipv6_address(data_to_encrypt, data.node_to_test.ip_port.ip.address);
+    }
+    data_to_encrypt << const_uint16_adapter(data.node_to_test.ip_port.port);
+    data_to_encrypt.write_zeros(6);
+    
+    data_to_encrypt << data.search_id;
+    
+    data_to_encrypt.write_zeros(HARDREQ_DATA_SIZE - 1 - data_to_encrypt.size());
+    
+    return generateOutgoingCryptoPacket(crypto_manager, data_to_encrypt, recipient_public_key, out_packet);
+}
+
 bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &&packet, const IPPort &source, IncomingPacketListener &listener)
 {
     PacketType packet_type;

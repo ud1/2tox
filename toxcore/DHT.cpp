@@ -1323,7 +1323,7 @@ bool DHT::sent_getnode_to_node (const bitox::PublicKey &public_key, IPPort node_
 }
 
 /* Function is needed in following functions. */
-static int send_hardening_getnode_res (const DHT *dht, const NodeFormat *sendto, const uint8_t *queried_client_id,
+static int send_hardening_getnode_res (const DHT *dht, const NodeFormat *sendto, const PublicKey &queried_client_id,
                                        const uint8_t *nodes_data, uint16_t nodes_data_length);
 
 void DHT::onSendNodes (const IPPort &source, const PublicKey &sender_public_key, const SendNodesData &data)
@@ -2149,46 +2149,27 @@ void DHT::do_NAT ()
 
 #define HARDREQ_DATA_SIZE 384 /* Attempt to prevent amplification/other attacks*/
 
-#define CHECK_TYPE_ROUTE_REQ 0
-#define CHECK_TYPE_ROUTE_RES 1
 #define CHECK_TYPE_GETNODE_REQ 2
 #define CHECK_TYPE_GETNODE_RES 3
 #define CHECK_TYPE_TEST_REQ 4
 #define CHECK_TYPE_TEST_RES 5
 
-int DHT::send_hardening_req (NodeFormat *sendto, uint8_t type, uint8_t *contents, uint16_t length)
-{
-    if (length > HARDREQ_DATA_SIZE - 1)
-    {
-        return -1;
-    }
-
-    uint8_t packet[MAX_CRYPTO_REQUEST_SIZE];
-    uint8_t data[HARDREQ_DATA_SIZE] = {0};
-    data[0] = type;
-    memcpy (data + 1, contents, length);
-    int len = create_request (self_public_key.data.data(), self_secret_key.data.data(), packet, sendto->public_key.data.data(), data,
-                              sizeof (data), CRYPTO_PACKET_HARDENING);
-
-    if (len == -1)
-    {
-        return -1;
-    }
-
-    return sendpacket (net, sendto->ip_port, packet, len);
-}
-
 /* Send a get node hardening request */
 int DHT::send_hardening_getnode_req (NodeFormat *dest, NodeFormat *node_totest, const bitox::PublicKey &search_id)
 {
-    uint8_t data[sizeof (NodeFormat) + crypto_box_PUBLICKEYBYTES];
-    memcpy (data, node_totest, sizeof (NodeFormat));
-    memcpy (data + sizeof (NodeFormat), search_id.data.data(), crypto_box_PUBLICKEYBYTES);
-    return send_hardening_req (dest, CHECK_TYPE_GETNODE_REQ, data, sizeof (NodeFormat) + crypto_box_PUBLICKEYBYTES);
+    GetNodeHardeningCryptoData data;
+    data.node_to_test = *node_totest;
+    data.search_id = search_id;
+    
+    OutputBuffer packet;
+    if (!generateOutgoingCryptoPacket (*crypto_manager.get(), dest->public_key, data, packet))
+        return -1;
+    
+    return sendpacket (net, dest->ip_port, packet.begin(), packet.size());
 }
 
 /* Send a get node hardening response */
-static int send_hardening_getnode_res (const DHT *dht, const NodeFormat *sendto, const uint8_t *queried_client_id,
+static int send_hardening_getnode_res (const DHT *dht, const NodeFormat *sendto, const PublicKey &queried_client_id,
                                        const uint8_t *nodes_data, uint16_t nodes_data_length)
 {
     if (!ip_isset (&sendto->ip_port.ip))
@@ -2199,7 +2180,7 @@ static int send_hardening_getnode_res (const DHT *dht, const NodeFormat *sendto,
     uint8_t packet[MAX_CRYPTO_REQUEST_SIZE];
     uint8_t data[1 + crypto_box_PUBLICKEYBYTES + nodes_data_length];
     data[0] = CHECK_TYPE_GETNODE_RES;
-    memcpy (data + 1, queried_client_id, crypto_box_PUBLICKEYBYTES);
+    memcpy (data + 1, queried_client_id.data.data(), crypto_box_PUBLICKEYBYTES);
     memcpy (data + 1 + crypto_box_PUBLICKEYBYTES, nodes_data, nodes_data_length);
     int len = create_request (dht->self_public_key.data.data(), dht->self_secret_key.data.data(), packet, sendto->public_key.data.data(), data,
                               sizeof (data), CRYPTO_PACKET_HARDENING);

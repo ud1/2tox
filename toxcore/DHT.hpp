@@ -445,7 +445,6 @@ struct DHT : public bitox::network::IncomingPacketListener
     int add_to_close (const bitox::PublicKey &public_key, bitox::network::IPPort ip_port, bool simulate);
     unsigned int ping_node_from_getnodes_ok (const bitox::PublicKey &public_key, bitox::network::IPPort ip_port);
     int friend_iplist (bitox::network::IPPort *ip_portlist, uint16_t friend_num) const;
-    int send_hardening_req (bitox::dht::NodeFormat *sendto, uint8_t type, uint8_t *contents, uint16_t length);
     int send_hardening_getnode_req (bitox::dht::NodeFormat *dest, bitox::dht::NodeFormat *node_totest, const bitox::PublicKey &search_id);
     int returnedip_ports (bitox::network::IPPort ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &nodepublic_key);
     int routeone_tofriend (const bitox::PublicKey &friend_id, const uint8_t *packet, uint16_t length);

@@ -275,6 +275,12 @@ struct NATPingCryptoData
     uint64_t ping_id;
 };
 
+struct GetNodeHardeningCryptoData
+{
+    dht::NodeFormat node_to_test;
+    PublicKey search_id;
+};
+
 namespace network
 {
 class IncomingPacketListener
@@ -297,6 +303,7 @@ bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKe
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const SendNodesData &data, OutputBuffer &out_packet);
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const AnnounceRequestData &data, OutputBuffer &out_packet);
 bool generateOutgoingCryptoPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const NATPingCryptoData &data, OutputBuffer &out_packet);
+bool generateOutgoingCryptoPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodeHardeningCryptoData &data, OutputBuffer &out_packet);
 bool processIncomingPacket (const CryptoManager &crypto_manager, InputBuffer &&packet, const IPPort &source, IncomingPacketListener &listener);
 }
 

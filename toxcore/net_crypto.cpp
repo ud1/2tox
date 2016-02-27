@@ -402,22 +402,24 @@ static int add_ip_port_connection(Net_Crypto *c, int crypt_connection_id, IPPort
         return -1;
 
     if (ip_port.ip.family == Family::FAMILY_AF_INET) {
-        if (!ipport_equal(&ip_port, &conn->ip_portv4) && LAN_ip(conn->ip_portv4.ip) != 0) {
-            if (!bs_list_add(&c->ip_port_list, (uint8_t *)&ip_port, crypt_connection_id))
-                return -1;
-
-            bs_list_remove(&c->ip_port_list, (uint8_t *)&conn->ip_portv4, crypt_connection_id);
-            conn->ip_portv4 = ip_port;
-            return 0;
+        if (ip_port != conn->ip_portv4 && LAN_ip(conn->ip_portv4.ip) != 0) {
+            if (!c->ip_port_list.count(ip_port))
+            {
+                c->ip_port_list[ip_port] = crypt_connection_id;
+                c->ip_port_list.erase(conn->ip_portv4);
+                conn->ip_portv4 = ip_port;
+                return 0;
+            }
         }
     } else if (ip_port.ip.family == Family::FAMILY_AF_INET6) {
-        if (!ipport_equal(&ip_port, &conn->ip_portv6)) {
-            if (!bs_list_add(&c->ip_port_list, (uint8_t *)&ip_port, crypt_connection_id))
-                return -1;
-
-            bs_list_remove(&c->ip_port_list, (uint8_t *)&conn->ip_portv6, crypt_connection_id);
-            conn->ip_portv6 = ip_port;
-            return 0;
+        if (&ip_port != &conn->ip_portv6) {
+            if (!c->ip_port_list.count(ip_port))
+            {
+                c->ip_port_list[ip_port] = crypt_connection_id;
+                c->ip_port_list.erase(conn->ip_portv6);
+                conn->ip_portv6 = ip_port;
+                return 0;
+            }
         }
     }
 
@@ -2071,7 +2073,11 @@ int nc_dht_pk_callback(Net_Crypto *c, int crypt_connection_id, void (*function)(
  */
 static int crypto_id_ip_port(const Net_Crypto *c, IPPort ip_port)
 {
-    return bs_list_find(&c->ip_port_list, (uint8_t *)&ip_port);
+    auto it = c->ip_port_list.find(ip_port);
+    if (it == c->ip_port_list.end())
+        return -1;
+    
+    return it->second;
 }
 
 #define CRYPTO_MIN_PACKET_SIZE (1 + sizeof(uint16_t) + crypto_box_MACBYTES)
@@ -2532,8 +2538,8 @@ int crypto_kill(Net_Crypto *c, int crypt_connection_id)
         kill_tcp_connection_to(c->tcp_c, conn->connection_number_tcp);
         pthread_mutex_unlock(&c->tcp_mutex);
 
-        bs_list_remove(&c->ip_port_list, (uint8_t *)&conn->ip_portv4, crypt_connection_id);
-        bs_list_remove(&c->ip_port_list, (uint8_t *)&conn->ip_portv6, crypt_connection_id);
+        c->ip_port_list.erase(conn->ip_portv4);
+        c->ip_port_list.erase(conn->ip_portv6);
         clear_temp_packet(c, crypt_connection_id);
         clear_buffer(&conn->send_array);
         clear_buffer(&conn->recv_array);
@@ -2646,8 +2652,6 @@ Net_Crypto *new_net_crypto(DHT *dht, TCP_Proxy_Info *proxy_info)
     networking_registerhandler(dht->net, NET_PACKET_CRYPTO_HS, &udp_handle_packet, temp);
     networking_registerhandler(dht->net, NET_PACKET_CRYPTO_DATA, &udp_handle_packet, temp);
 
-    bs_list_init(&temp->ip_port_list, sizeof(IPPort), 8);
-
     return temp;
 }
 
@@ -2708,7 +2712,6 @@ void kill_net_crypto(Net_Crypto *c)
     pthread_mutex_destroy(&c->connections_mutex);
 
     kill_tcp_connections(c->tcp_c);
-    bs_list_free(&c->ip_port_list);
     networking_registerhandler(c->dht->net, NET_PACKET_COOKIE_REQUEST, NULL, NULL);
     networking_registerhandler(c->dht->net, NET_PACKET_COOKIE_RESPONSE, NULL, NULL);
     networking_registerhandler(c->dht->net, NET_PACKET_CRYPTO_HS, NULL, NULL);

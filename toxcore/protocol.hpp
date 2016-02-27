@@ -6,7 +6,7 @@
 #include <boost/asio.hpp>
 
 #include "buffer.hpp"
-
+#include <tuple>
 
 namespace bitox
 {
@@ -98,6 +98,11 @@ struct PublicKey
     bool operator != (const PublicKey &o) const
     {
         return data != o.data;
+    }
+    
+    bool operator < (const PublicKey &o) const
+    {
+        return data < o.data;
     }
 };
 
@@ -198,6 +203,11 @@ struct IP
     static IP create_ip4();
     static IP create_ip6();
     static IP create(bool ipv6enabled);
+    
+    bool operator < (const IP &o) const
+    {
+        return std::tie(family, address) < std::tie(o.family, o.address);
+    }
 };
 
 struct OnionIP
@@ -218,12 +228,22 @@ struct IPPort
     
     bool operator==(const IPPort& other) const
     {
-        return port == other.port && ip == other.ip;
+        return port == other.port && ip == other.ip; // TODO onion_ip?
+    }
+    
+    bool operator!=(const IPPort& other) const
+    {
+        return !(*this == other);
     }
 
     bool isset() const
     {
         return port != 0 && ip.isset();
+    }
+    
+    bool operator < (const IPPort &o) const
+    {
+        return std::tie(port, ip) < std::tie(o.port, o.ip); // TODO onion_ip?
     }
 };
 

@@ -102,7 +102,11 @@ static int realloc_connection(TCP_Server *TCP_server, uint32_t num)
  */
 static int get_TCP_connection_index(const TCP_Server *TCP_server, const PublicKey &public_key)
 {
-    return bs_list_find(&TCP_server->accepted_key_list, public_key.data.data());
+    auto it = TCP_server->accepted_key_list.find(public_key);
+    if (it == TCP_server->accepted_key_list.end())
+        return -1;
+    
+    return it->second;
 }
 
 
@@ -143,8 +147,10 @@ static int add_accepted(TCP_Server *TCP_server, const TCP_Secure_Connection *con
         return -1;
     }
 
-    if (!bs_list_add(&TCP_server->accepted_key_list, con->public_key.data.data(), index))
+    if (TCP_server->accepted_key_list.count(con->public_key))
         return -1;
+    
+    TCP_server->accepted_key_list[con->public_key] = index;
 
     memcpy(&TCP_server->accepted_connection_array[index], con, sizeof(TCP_Secure_Connection));
     TCP_server->accepted_connection_array[index].status = TCP_STATUS_CONFIRMED;
@@ -169,8 +175,11 @@ static int del_accepted(TCP_Server *TCP_server, int index)
     if (TCP_server->accepted_connection_array[index].status == TCP_STATUS_NO_STATUS)
         return -1;
 
-    if (!bs_list_remove(&TCP_server->accepted_key_list, TCP_server->accepted_connection_array[index].public_key.data.data(), index))
+    auto it = TCP_server->accepted_key_list.find(TCP_server->accepted_connection_array[index].public_key);
+    if (it == TCP_server->accepted_key_list.end() || it->second != index) // TODO is the index check required?
         return -1;
+    
+    TCP_server->accepted_key_list.erase(it);
 
     sodium_memzero(&TCP_server->accepted_connection_array[index], sizeof(TCP_Secure_Connection));
     --TCP_server->num_accepted_connections;
@@ -1020,8 +1029,6 @@ TCP_Server *new_TCP_server(uint8_t ipv6_enabled, uint16_t num_sockets, const uin
     temp->secret_key = secret_key;
     crypto_scalarmult_curve25519_base(temp->public_key.data.data(), temp->secret_key.data.data());
 
-    bs_list_init(&temp->accepted_key_list, crypto_box_PUBLICKEYBYTES, 8);
-
     return temp;
 }
 
@@ -1331,8 +1338,6 @@ void kill_TCP_server(TCP_Server *TCP_server)
     if (TCP_server->onion) {
         set_callback_handle_recv_1(TCP_server->onion, NULL, NULL);
     }
-
-    bs_list_free(&TCP_server->accepted_key_list);
 
 #ifdef TCP_SERVER_USE_EPOLL
     close(TCP_server->efd);

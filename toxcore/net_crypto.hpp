@@ -28,6 +28,7 @@
 #include "LAN_discovery.hpp"
 #include "TCP_connection.hpp"
 #include <pthread.h>
+#include <map>
 
 #define CRYPTO_CONN_NO_CONNECTION 0
 #define CRYPTO_CONN_COOKIE_REQUESTING 1 //send cookie request packets
@@ -216,7 +217,7 @@ struct Net_Crypto
     /* The current optimal sleep time */
     uint32_t current_sleep_time;
 
-    BS_LIST ip_port_list;
+    std::map<bitox::network::IPPort, int> ip_port_list;
 };
 
 

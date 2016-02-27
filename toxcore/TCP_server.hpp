@@ -25,7 +25,7 @@
 
 #include "crypto_core.hpp"
 #include "onion.hpp"
-#include "list.hpp"
+#include <map>
 
 #ifdef TCP_SERVER_USE_EPOLL
 #include "sys/epoll.h"
@@ -139,7 +139,7 @@ struct TCP_Server
 
     uint64_t counter;
 
-    BS_LIST accepted_key_list;
+    std::map<bitox::PublicKey, int> accepted_key_list;
 };
 
 /* Create new TCP server instance.

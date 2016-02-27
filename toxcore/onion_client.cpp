@@ -238,8 +238,7 @@ static int random_path(const Onion_Client *onion_c, Onion_Client_Paths *onion_pa
         int n = is_path_used(onion_paths, nodes);
 
         if (n == -1) {
-            if (create_onion_path(onion_c->dht, &onion_paths->paths[pathnum], nodes) == -1)
-                return -1;
+            onion_paths->paths[pathnum] = Onion_Path(onion_c->dht, nodes);
 
             onion_paths->last_path_success[pathnum] = unix_time() + ONION_PATH_FIRST_TIMEOUT - ONION_PATH_TIMEOUT;
             onion_paths->path_creation_time[pathnum] = unix_time();

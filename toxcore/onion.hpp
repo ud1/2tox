@@ -25,8 +25,12 @@
 
 #include "DHT.hpp"
 
-typedef struct {
-    DHT     *dht;
+struct Onion
+{
+    Onion(DHT &dht);
+    ~Onion();
+    
+    DHT &dht;
     bitox::network::Networking_Core *net;
     uint8_t secret_symmetric_key[crypto_box_BEFORENMBYTES];
     uint64_t timestamp;
@@ -39,7 +43,7 @@ typedef struct {
     void *callback_object;
 
     void change_symmetric_key();
-} Onion;
+};
 
 #define ONION_MAX_PACKET_SIZE 1400
 
@@ -59,6 +63,13 @@ typedef struct {
 
 struct Onion_Path
 {
+    Onion_Path() {}
+    /* Create a new onion path.
+    *
+    * Create a new onion path out of nodes (nodes is a list of ONION_PATH_LENGTH nodes)
+    */
+    explicit Onion_Path(const DHT *dht, const bitox::dht::NodeFormat *nodes);
+    
     bitox::SharedKey shared_key1;
     bitox::SharedKey shared_key2;
     bitox::SharedKey shared_key3;
@@ -90,17 +101,6 @@ struct Onion_Path
     int create_onion_packet(uint8_t *packet, uint16_t max_packet_length, const bitox::network::IPPort &dest,
                             const uint8_t *data, uint16_t length) const;
 };
-
-/* Create a new onion path.
- *
- * Create a new onion path out of nodes (nodes is a list of ONION_PATH_LENGTH nodes)
- *
- * new_path must be an empty memory location of atleast Onion_Path size.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int create_onion_path(const DHT *dht, Onion_Path *new_path, const bitox::dht::NodeFormat *nodes);
 
 /* Dump nodes in onion path to nodes of length num_nodes;
  *
@@ -158,10 +158,5 @@ int onion_send_1(const Onion *onion, const uint8_t *plain, uint16_t len, const b
  */
 void set_callback_handle_recv_1(Onion *onion, int (*function)(void *, const bitox::network::IPPort &, const uint8_t *, uint16_t),
                                 void *object);
-
-Onion *new_onion(DHT *dht);
-
-void kill_onion(Onion *onion);
-
 
 #endif

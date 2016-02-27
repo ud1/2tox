@@ -117,34 +117,29 @@ static int ipport_unpack(IPPort &target, const uint8_t *data, unsigned int data_
  * return -1 on failure.
  * return 0 on success.
  */
-int create_onion_path(const DHT *dht, Onion_Path *new_path, const NodeFormat *nodes)
+Onion_Path::Onion_Path(const DHT *dht, const NodeFormat *nodes)
 {
-    if (!new_path || !nodes)
-        return -1;
-
-    encrypt_precompute(nodes[0].public_key, dht->self_secret_key, new_path->shared_key1.data.data());
-    new_path->public_key1 = dht->self_public_key;
+    encrypt_precompute(nodes[0].public_key, dht->self_secret_key, shared_key1.data.data());
+    public_key1 = dht->self_public_key;
 
     PublicKey random_public_key;
     SecretKey random_secret_key;
 
     crypto_box_keypair(random_public_key.data.data(), random_secret_key.data.data());
-    encrypt_precompute(nodes[1].public_key, random_secret_key, new_path->shared_key2.data.data());
-    new_path->public_key2 = random_public_key;
+    encrypt_precompute(nodes[1].public_key, random_secret_key, shared_key2.data.data());
+    public_key2 = random_public_key;
 
     crypto_box_keypair(random_public_key.data.data(), random_secret_key.data.data());
-    encrypt_precompute(nodes[2].public_key, random_secret_key, new_path->shared_key3.data.data());
-    new_path->public_key3 = random_public_key;
+    encrypt_precompute(nodes[2].public_key, random_secret_key, shared_key3.data.data());
+    public_key3 = random_public_key;
 
-    new_path->ip_port1 = nodes[0].ip_port;
-    new_path->ip_port2 = nodes[1].ip_port;
-    new_path->ip_port3 = nodes[2].ip_port;
+    ip_port1 = nodes[0].ip_port;
+    ip_port2 = nodes[1].ip_port;
+    ip_port3 = nodes[2].ip_port;
 
-    new_path->node_public_key1 = nodes[0].public_key;
-    new_path->node_public_key2 = nodes[1].public_key;
-    new_path->node_public_key3 = nodes[2].public_key;
-
-    return 0;
+    node_public_key1 = nodes[0].public_key;
+    node_public_key2 = nodes[1].public_key;
+    node_public_key3 = nodes[2].public_key;
 }
 
 /* Dump nodes in onion path to nodes of length num_nodes;
@@ -326,7 +321,7 @@ static int handle_send_initial(void *object, const IPPort &source, const uint8_t
 
     uint8_t plain[ONION_MAX_PACKET_SIZE];
     bitox::SharedKey shared_key;
-    get_shared_key(&onion->shared_keys_1, shared_key, onion->dht->self_secret_key, PublicKey(packet + 1 + crypto_box_NONCEBYTES));
+    get_shared_key(&onion->shared_keys_1, shared_key, onion->dht.self_secret_key, PublicKey(packet + 1 + crypto_box_NONCEBYTES));
     int len = decrypt_data_symmetric(shared_key.data.data(), packet + 1, packet + 1 + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES,
                                      length - (1 + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES), plain);
 
@@ -387,7 +382,7 @@ static int handle_send_1(void *object, const IPPort &source, const uint8_t *pack
 
     uint8_t plain[ONION_MAX_PACKET_SIZE];
     SharedKey shared_key;
-    get_shared_key(&onion->shared_keys_2, shared_key, onion->dht->self_secret_key, PublicKey(packet + 1 + crypto_box_NONCEBYTES));
+    get_shared_key(&onion->shared_keys_2, shared_key, onion->dht.self_secret_key, PublicKey(packet + 1 + crypto_box_NONCEBYTES));
     int len = decrypt_data_symmetric(shared_key.data.data(), packet + 1, packet + 1 + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES,
                                      length - (1 + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + RETURN_1), plain);
 
@@ -437,7 +432,7 @@ static int handle_send_2(void *object, const IPPort &source, const uint8_t *pack
 
     uint8_t plain[ONION_MAX_PACKET_SIZE];
     SharedKey shared_key;
-    get_shared_key(&onion->shared_keys_3, shared_key, onion->dht->self_secret_key, PublicKey(packet + 1 + crypto_box_NONCEBYTES));
+    get_shared_key(&onion->shared_keys_3, shared_key, onion->dht.self_secret_key, PublicKey(packet + 1 + crypto_box_NONCEBYTES));
     int len = decrypt_data_symmetric(shared_key.data.data(), packet + 1, packet + 1 + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES,
                                      length - (1 + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + RETURN_2), plain);
 
@@ -585,44 +580,28 @@ void set_callback_handle_recv_1(Onion *onion, int (*function)(void *, IPPort, co
     onion->callback_object = object;
 }
 
-Onion *new_onion(DHT *dht)
+Onion::Onion(DHT &dht) : dht(dht)
 {
-    if (dht == NULL)
-        return NULL;
+    this->net = dht.net;
+    new_symmetric_key(this->secret_symmetric_key);
+    this->timestamp = unix_time();
 
-    Onion *onion = (Onion *) calloc(1, sizeof(Onion));
+    networking_registerhandler(net, NET_PACKET_ONION_SEND_INITIAL, &handle_send_initial, this);
+    networking_registerhandler(net, NET_PACKET_ONION_SEND_1, &handle_send_1, this);
+    networking_registerhandler(net, NET_PACKET_ONION_SEND_2, &handle_send_2, this);
 
-    if (onion == NULL)
-        return NULL;
-
-    onion->dht = dht;
-    onion->net = dht->net;
-    new_symmetric_key(onion->secret_symmetric_key);
-    onion->timestamp = unix_time();
-
-    networking_registerhandler(onion->net, NET_PACKET_ONION_SEND_INITIAL, &handle_send_initial, onion);
-    networking_registerhandler(onion->net, NET_PACKET_ONION_SEND_1, &handle_send_1, onion);
-    networking_registerhandler(onion->net, NET_PACKET_ONION_SEND_2, &handle_send_2, onion);
-
-    networking_registerhandler(onion->net, NET_PACKET_ONION_RECV_3, &handle_recv_3, onion);
-    networking_registerhandler(onion->net, NET_PACKET_ONION_RECV_2, &handle_recv_2, onion);
-    networking_registerhandler(onion->net, NET_PACKET_ONION_RECV_1, &handle_recv_1, onion);
-
-    return onion;
+    networking_registerhandler(net, NET_PACKET_ONION_RECV_3, &handle_recv_3, this);
+    networking_registerhandler(net, NET_PACKET_ONION_RECV_2, &handle_recv_2, this);
+    networking_registerhandler(net, NET_PACKET_ONION_RECV_1, &handle_recv_1, this);
 }
 
-void kill_onion(Onion *onion)
+Onion::~Onion()
 {
-    if (onion == NULL)
-        return;
+    networking_registerhandler(net, NET_PACKET_ONION_SEND_INITIAL, NULL, NULL);
+    networking_registerhandler(net, NET_PACKET_ONION_SEND_1, NULL, NULL);
+    networking_registerhandler(net, NET_PACKET_ONION_SEND_2, NULL, NULL);
 
-    networking_registerhandler(onion->net, NET_PACKET_ONION_SEND_INITIAL, NULL, NULL);
-    networking_registerhandler(onion->net, NET_PACKET_ONION_SEND_1, NULL, NULL);
-    networking_registerhandler(onion->net, NET_PACKET_ONION_SEND_2, NULL, NULL);
-
-    networking_registerhandler(onion->net, NET_PACKET_ONION_RECV_3, NULL, NULL);
-    networking_registerhandler(onion->net, NET_PACKET_ONION_RECV_2, NULL, NULL);
-    networking_registerhandler(onion->net, NET_PACKET_ONION_RECV_1, NULL, NULL);
-
-    free(onion);
+    networking_registerhandler(net, NET_PACKET_ONION_RECV_3, NULL, NULL);
+    networking_registerhandler(net, NET_PACKET_ONION_RECV_2, NULL, NULL);
+    networking_registerhandler(net, NET_PACKET_ONION_RECV_1, NULL, NULL);
 }

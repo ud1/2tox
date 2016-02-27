@@ -26,6 +26,7 @@
 #include "crypto_core.hpp"
 #include "onion.hpp"
 #include <map>
+#include <vector>
 
 #ifdef TCP_SERVER_USE_EPOLL
 #include "sys/epoll.h"
@@ -49,16 +50,19 @@
 #define NUM_RESERVED_PORTS 16
 #define NUM_CLIENT_CONNECTIONS (256 - NUM_RESERVED_PORTS)
 
-#define TCP_PACKET_ROUTING_REQUEST  0
-#define TCP_PACKET_ROUTING_RESPONSE 1
-#define TCP_PACKET_CONNECTION_NOTIFICATION 2
-#define TCP_PACKET_DISCONNECT_NOTIFICATION 3
-#define TCP_PACKET_PING 4
-#define TCP_PACKET_PONG 5
-#define TCP_PACKET_OOB_SEND 6
-#define TCP_PACKET_OOB_RECV 7
-#define TCP_PACKET_ONION_REQUEST  8
-#define TCP_PACKET_ONION_RESPONSE 9
+enum TCPPacketType
+{
+    TCP_PACKET_ROUTING_REQUEST = 0,
+    TCP_PACKET_ROUTING_RESPONSE = 1,
+    TCP_PACKET_CONNECTION_NOTIFICATION = 2,
+    TCP_PACKET_DISCONNECT_NOTIFICATION = 3,
+    TCP_PACKET_PING = 4,
+    TCP_PACKET_PONG = 5,
+    TCP_PACKET_OOB_SEND = 6,
+    TCP_PACKET_OOB_RECV = 7,
+    TCP_PACKET_ONION_REQUEST = 8,
+    TCP_PACKET_ONION_RESPONSE = 9,
+};
 
 #define ARRAY_ENTRY_SIZE 6
 
@@ -73,31 +77,38 @@
 #define TCP_SOCKET_CONFIRMED 3
 #endif
 
-enum {
+enum class TCP_Secure_Connection_Status
+{
     TCP_STATUS_NO_STATUS,
     TCP_STATUS_CONNECTED,
     TCP_STATUS_UNCONFIRMED,
     TCP_STATUS_CONFIRMED,
 };
 
-typedef struct TCP_Priority_List TCP_Priority_List;
-
-struct TCP_Priority_List {
+struct TCP_Priority_List
+{
     TCP_Priority_List *next;
     uint16_t size, sent;
     uint8_t data[];
 };
 
-typedef struct TCP_Secure_Connection {
-    uint8_t status;
+enum class TCPClientConnectionStatus
+{
+    NOT_USED,
+    OFFLINE,
+    ONLINE
+};
+
+struct TCP_Secure_Connection {
+    TCP_Secure_Connection_Status status = TCP_Secure_Connection_Status::TCP_STATUS_NO_STATUS;
     bitox::network::sock_t  sock;
     bitox::PublicKey public_key;
-    bitox::Nonce recv_nonce; /* Nonce of received packets. */
-    bitox::Nonce sent_nonce; /* Nonce of sent packets. */
+    bitox::Nonce recv_nonce = bitox::Nonce::create_empty(); /* Nonce of received packets. */
+    bitox::Nonce sent_nonce = bitox::Nonce::create_empty(); /* Nonce of sent packets. */
     bitox::SharedKey shared_key;
     uint16_t next_packet_length;
     struct {
-        uint8_t status; /* 0 if not used, 1 if other is offline, 2 if other is online. */
+        TCPClientConnectionStatus status = TCPClientConnectionStatus::NOT_USED;
         bitox::PublicKey public_key;
         uint32_t index;
         uint8_t other_id;
@@ -112,19 +123,24 @@ typedef struct TCP_Secure_Connection {
 
     uint64_t last_pinged;
     uint64_t ping_id;
-} TCP_Secure_Connection;
+};
 
 
 struct TCP_Server
 {
+    TCP_Server(uint8_t ipv6_enabled, uint16_t num_sockets, const uint16_t *ports, const bitox::SecretKey &secret_key, Onion *onion);
+    ~TCP_Server();
+    
+    // Run the TCP_server
+    void do_TCP_server();
+    
     Onion *onion;
 
 #ifdef TCP_SERVER_USE_EPOLL
     int efd;
     uint64_t last_run_pinged;
 #endif
-    bitox::network::sock_t *socks_listening;
-    unsigned int num_listening_socks;
+    std::vector<bitox::network::sock_t> socks_listening;
 
     bitox::PublicKey public_key;
     bitox::SecretKey secret_key;
@@ -133,27 +149,13 @@ struct TCP_Server
     TCP_Secure_Connection unconfirmed_connection_queue[MAX_INCOMMING_CONNECTIONS];
     uint16_t unconfirmed_connection_queue_index;
 
-    TCP_Secure_Connection *accepted_connection_array;
-    uint32_t size_accepted_connections;
+    std::vector<TCP_Secure_Connection> accepted_connection_array;
     uint32_t num_accepted_connections;
 
     uint64_t counter;
 
     std::map<bitox::PublicKey, int> accepted_key_list;
 };
-
-/* Create new TCP server instance.
- */
-TCP_Server *new_TCP_server(uint8_t ipv6_enabled, uint16_t num_sockets, const uint16_t *ports, const bitox::SecretKey &secret_key,
-                           Onion *onion);
-
-/* Run the TCP_server
- */
-void do_TCP_server(TCP_Server *TCP_server);
-
-/* Kill the TCP server
- */
-void kill_TCP_server(TCP_Server *TCP_server);
 
 /* return the amount of data in the tcp recv buffer.
  * return 0 on failure.

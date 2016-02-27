@@ -1799,14 +1799,14 @@ Messenger *new_messenger(Messenger_Options *options, unsigned int *error)
         return NULL;
     }
 
-    m->onion = new_onion(m->dht);
+    m->onion = new Onion(*m->dht);
     m->onion_a = new_onion_announce(m->dht);
     m->onion_c = new Onion_Client(m->net_crypto);
     m->fr_c = new_friend_connections(m->onion_c);
 
     if (!(m->onion && m->onion_a && m->onion_c)) {
         kill_friend_connections(m->fr_c);
-        kill_onion(m->onion);
+        delete m->onion;
         kill_onion_announce(m->onion_a);
         delete m->onion_c;
         kill_net_crypto(m->net_crypto);
@@ -1817,11 +1817,11 @@ Messenger *new_messenger(Messenger_Options *options, unsigned int *error)
     }
 
     if (options->tcp_server_port) {
-        m->tcp_server = new_TCP_server(options->ipv6enabled, 1, &options->tcp_server_port, m->dht->self_secret_key, m->onion);
+        m->tcp_server = new TCP_Server(options->ipv6enabled, 1, &options->tcp_server_port, m->dht->self_secret_key, m->onion);
 
         if (m->tcp_server == NULL) {
             kill_friend_connections(m->fr_c);
-            kill_onion(m->onion);
+            delete m->onion;
             kill_onion_announce(m->onion_a);
             delete m->onion_c;
             kill_net_crypto(m->net_crypto);
@@ -1856,11 +1856,11 @@ void kill_messenger(Messenger *m)
     uint32_t i;
 
     if (m->tcp_server) {
-        kill_TCP_server(m->tcp_server);
+        delete m->tcp_server;
     }
 
     kill_friend_connections(m->fr_c);
-    kill_onion(m->onion);
+    delete m->onion;
     kill_onion_announce(m->onion_a);
     delete m->onion_c;
     kill_net_crypto(m->net_crypto);
@@ -2315,7 +2315,7 @@ void do_messenger(Messenger *m)
     }
 
     if (m->tcp_server) {
-        do_TCP_server(m->tcp_server);
+        m->tcp_server->do_TCP_server();
     }
 
     do_net_crypto(m->net_crypto);

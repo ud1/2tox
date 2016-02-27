@@ -99,21 +99,22 @@ typedef struct {
     uint32_t  buffer_end; /* packet numbers in array: {buffer_start, buffer_end) */
 } Packets_Array;
 
-typedef struct {
-    uint8_t public_key[crypto_box_PUBLICKEYBYTES]; /* The real public key of the peer. */
-    uint8_t recv_nonce[crypto_box_NONCEBYTES]; /* Nonce of received packets. */
-    uint8_t sent_nonce[crypto_box_NONCEBYTES]; /* Nonce of sent packets. */
-    uint8_t sessionpublic_key[crypto_box_PUBLICKEYBYTES]; /* Our public key for this session. */
-    uint8_t sessionsecret_key[crypto_box_SECRETKEYBYTES]; /* Our private key for this session. */
-    uint8_t peersessionpublic_key[crypto_box_PUBLICKEYBYTES]; /* The public key of the peer. */
-    uint8_t shared_key[crypto_box_BEFORENMBYTES]; /* The precomputed shared key from encrypt_precompute. */
+struct Crypto_Connection
+{
+    bitox::PublicKey public_key; /* The real public key of the peer. */
+    bitox::Nonce recv_nonce; /* Nonce of received packets. */
+    bitox::Nonce sent_nonce; /* Nonce of sent packets. */
+    bitox::PublicKey sessionpublic_key; /* Our public key for this session. */
+    bitox::SecretKey sessionsecret_key; /* Our private key for this session. */
+    bitox::PublicKey peersessionpublic_key; /* The public key of the peer. */
+    bitox::SharedKey shared_key; /* The precomputed shared key from encrypt_precompute. */
     uint8_t status; /* 0 if no connection, 1 we are sending cookie request packets,
                      * 2 if we are sending handshake packets
                      * 3 if connection is not confirmed yet (we have received a handshake but no data packets yet),
                      * 4 if the connection is established.
                      */
     uint64_t cookie_request_number; /* number used in the cookie request packets for this connection */
-    uint8_t dht_public_key[crypto_box_PUBLICKEYBYTES]; /* The dht public key of the peer */
+    bitox::PublicKey dht_public_key; /* The dht public key of the peer */
 
     uint8_t *temp_packet; /* Where the cookie request/handshake packet is stored while it is being sent. */
     uint16_t temp_packet_length;
@@ -173,22 +174,24 @@ typedef struct {
 
     pthread_mutex_t mutex;
 
-    void (*dht_pk_callback)(void *data, int32_t number, const uint8_t *dht_public_key);
+    void (*dht_pk_callback)(void *data, int32_t number, const bitox::PublicKey &dht_public_key);
     void *dht_pk_callback_object;
     uint32_t dht_pk_callback_number;
-} Crypto_Connection;
+};
 
-typedef struct {
+struct New_Connection
+{
     bitox::network::IPPort source;
-    uint8_t public_key[crypto_box_PUBLICKEYBYTES]; /* The real public key of the peer. */
-    uint8_t dht_public_key[crypto_box_PUBLICKEYBYTES]; /* The dht public key of the peer. */
-    uint8_t recv_nonce[crypto_box_NONCEBYTES]; /* Nonce of received packets. */
-    uint8_t peersessionpublic_key[crypto_box_PUBLICKEYBYTES]; /* The public key of the peer. */
+    bitox::PublicKey public_key; /* The real public key of the peer. */
+    bitox::PublicKey dht_public_key; /* The dht public key of the peer. */
+    bitox::Nonce recv_nonce = bitox::Nonce::create_empty(); /* Nonce of received packets. */
+    bitox::PublicKey peersessionpublic_key; /* The public key of the peer. */
     uint8_t *cookie;
     uint8_t cookie_length;
-} New_Connection;
+};
 
-typedef struct {
+struct Net_Crypto
+{
     DHT *dht;
     TCP_Connections *tcp_c;
 
@@ -201,11 +204,11 @@ typedef struct {
     uint32_t crypto_connections_length; /* Length of connections array. */
 
     /* Our public and secret keys. */
-    uint8_t self_public_key[crypto_box_PUBLICKEYBYTES];
-    uint8_t self_secret_key[crypto_box_SECRETKEYBYTES];
+    bitox::PublicKey self_public_key;
+    bitox::SecretKey self_secret_key;
 
     /* The secret key used for cookies */
-    uint8_t secret_symmetric_key[crypto_box_BEFORENMBYTES];
+    bitox::SharedKey secret_symmetric_key;
 
     int (*new_connection_callback)(void *object, New_Connection *n_c);
     void *new_connection_callback_object;
@@ -214,7 +217,7 @@ typedef struct {
     uint32_t current_sleep_time;
 
     BS_LIST ip_port_list;
-} Net_Crypto;
+};
 
 
 /* Set function to be called when someone requests a new connection to us.
@@ -239,7 +242,7 @@ int accept_crypto_connection(Net_Crypto *c, New_Connection *n_c);
  * return -1 on failure.
  * return connection id on success.
  */
-int new_crypto_connection(Net_Crypto *c, const uint8_t *real_public_key, const uint8_t *dht_public_key);
+int new_crypto_connection(Net_Crypto *c, const bitox::PublicKey &real_public_key, const bitox::PublicKey &dht_public_key);
 
 /* Set the direct ip of the crypto connection.
  *
@@ -298,7 +301,7 @@ int connection_lossy_data_handler(Net_Crypto *c, int crypt_connection_id,
  * return 0 on success.
  */
 int nc_dht_pk_callback(Net_Crypto *c, int crypt_connection_id, void (*function)(void *data, int32_t number,
-                       const uint8_t *dht_public_key), void *object, uint32_t number);
+                       const bitox::PublicKey &dht_public_key), void *object, uint32_t number);
 
 /* returns the number of packet slots left in the sendbuffer.
  * return 0 if failure.
@@ -343,14 +346,14 @@ int send_lossy_cryptpacket(Net_Crypto *c, int crypt_connection_id, const uint8_t
  * return 0 if it was added.
  * return -1 if it wasn't.
  */
-int add_tcp_relay_peer(Net_Crypto *c, int crypt_connection_id, bitox::network::IPPort ip_port, const uint8_t *public_key);
+int add_tcp_relay_peer(Net_Crypto *c, int crypt_connection_id, bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
 
 /* Add a tcp relay to the array.
  *
  * return 0 if it was added.
  * return -1 if it wasn't.
  */
-int add_tcp_relay(Net_Crypto *c, bitox::network::IPPort ip_port, const uint8_t *public_key);
+int add_tcp_relay(Net_Crypto *c, bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
 
 /* Return a random TCP connection number for use in send_tcp_onion_request.
  *

@@ -40,9 +40,10 @@ enum {
 
 #define MAX_LOSSY_COUNT 256
 
-typedef struct {
-    uint8_t     real_pk[crypto_box_PUBLICKEYBYTES];
-    uint8_t     temp_pk[crypto_box_PUBLICKEYBYTES];
+struct Group_Peer
+{
+    bitox::PublicKey real_pk;
+    bitox::PublicKey temp_pk;
 
     uint64_t    last_recv;
     uint32_t    last_message_number;
@@ -56,7 +57,7 @@ typedef struct {
     uint16_t bottom_lossy_number, top_lossy_number;
 
     void *object;
-} Group_Peer;
+};
 
 #define DESIRED_CLOSE_CONNECTIONS 4
 #define MAX_GROUP_CONNECTIONS 16
@@ -81,11 +82,11 @@ typedef struct {
         uint16_t group_number;
     } close[MAX_GROUP_CONNECTIONS];
 
-    uint8_t real_pk[crypto_box_PUBLICKEYBYTES];
+    bitox::PublicKey real_pk;
     struct {
         uint8_t entry;
-        uint8_t real_pk[crypto_box_PUBLICKEYBYTES];
-        uint8_t temp_pk[crypto_box_PUBLICKEYBYTES];
+        bitox::PublicKey real_pk;
+        bitox::PublicKey temp_pk;
     } closest_peers[DESIRED_CLOSE_CONNECTIONS];
     uint8_t changed;
 
@@ -198,7 +199,7 @@ int del_groupchat(Group_Chats *g_c, int groupnumber);
  * returns 0 on success
  * returns -1 on failure
  */
-int group_peer_pubkey(const Group_Chats *g_c, int groupnumber, int peernumber, uint8_t *pk);
+int group_peer_pubkey(const Group_Chats *g_c, int groupnumber, int peernumber, bitox::PublicKey &pk);
 
 /* Copy the name of peernumber who is in groupnumber to name.
  * name must be at least MAX_NAME_LENGTH long.

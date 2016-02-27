@@ -35,7 +35,7 @@ typedef struct {
     void *handle_friendrequest_object;
     void *handle_friendrequest_userdata;
 
-    int (*filter_function)(const uint8_t *, void *);
+    int (*filter_function)(const bitox::PublicKey &, void *);
     void *filter_function_userdata;
     /* NOTE: The following is just a temporary fix for the multiple friend requests received at the same time problem.
      *  TODO: Make this better (This will most likely tie in with the way we will handle spam.)
@@ -43,7 +43,7 @@ typedef struct {
 
 #define MAX_RECEIVED_STORED 32
 
-    uint8_t received_requests[MAX_RECEIVED_STORED][crypto_box_PUBLICKEYBYTES];
+    bitox::PublicKey received_requests[MAX_RECEIVED_STORED];
     uint16_t received_requests_index;
 } Friend_Requests;
 
@@ -56,7 +56,7 @@ uint32_t get_nospam(const Friend_Requests *fr);
  *  return 0 if it removed it successfully.
  *  return -1 if it didn't find it.
  */
-int remove_request_received(Friend_Requests *fr, const uint8_t *real_pk);
+int remove_request_received(Friend_Requests *fr, const bitox::PublicKey &real_pk);
 
 /* Set the function that will be executed when a friend request for us is received.
  *  Function format is function(uint8_t * public_key, uint8_t * data, size_t length, void * userdata)
@@ -68,7 +68,7 @@ void callback_friendrequest(Friend_Requests *fr, void (*function)(void *, const 
  * Function format is int function(uint8_t * public_key, void * userdata)
  * It must return 0 if the request is ok (anything else if it is bad.)
  */
-void set_filter_function(Friend_Requests *fr, int (*function)(const uint8_t *, void *), void *userdata);
+void set_filter_function(Friend_Requests *fr, int (*function)(const bitox::PublicKey &, void *), void *userdata);
 
 /* Sets up friendreq packet handlers. */
 void friendreq_init(Friend_Requests *fr, Friend_Connections *fr_c);

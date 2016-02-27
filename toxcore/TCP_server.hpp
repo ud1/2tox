@@ -91,14 +91,14 @@ struct TCP_Priority_List {
 typedef struct TCP_Secure_Connection {
     uint8_t status;
     bitox::network::sock_t  sock;
-    uint8_t public_key[crypto_box_PUBLICKEYBYTES];
-    uint8_t recv_nonce[crypto_box_NONCEBYTES]; /* Nonce of received packets. */
-    uint8_t sent_nonce[crypto_box_NONCEBYTES]; /* Nonce of sent packets. */
-    uint8_t shared_key[crypto_box_BEFORENMBYTES];
+    bitox::PublicKey public_key;
+    bitox::Nonce recv_nonce; /* Nonce of received packets. */
+    bitox::Nonce sent_nonce; /* Nonce of sent packets. */
+    bitox::SharedKey shared_key;
     uint16_t next_packet_length;
     struct {
         uint8_t status; /* 0 if not used, 1 if other is offline, 2 if other is online. */
-        uint8_t public_key[crypto_box_PUBLICKEYBYTES];
+        bitox::PublicKey public_key;
         uint32_t index;
         uint8_t other_id;
     } connections[NUM_CLIENT_CONNECTIONS];
@@ -115,7 +115,8 @@ typedef struct TCP_Secure_Connection {
 } TCP_Secure_Connection;
 
 
-typedef struct {
+struct TCP_Server
+{
     Onion *onion;
 
 #ifdef TCP_SERVER_USE_EPOLL
@@ -125,8 +126,8 @@ typedef struct {
     bitox::network::sock_t *socks_listening;
     unsigned int num_listening_socks;
 
-    uint8_t public_key[crypto_box_PUBLICKEYBYTES];
-    uint8_t secret_key[crypto_box_SECRETKEYBYTES];
+    bitox::PublicKey public_key;
+    bitox::SecretKey secret_key;
     TCP_Secure_Connection incomming_connection_queue[MAX_INCOMMING_CONNECTIONS];
     uint16_t incomming_connection_queue_index;
     TCP_Secure_Connection unconfirmed_connection_queue[MAX_INCOMMING_CONNECTIONS];
@@ -139,11 +140,11 @@ typedef struct {
     uint64_t counter;
 
     BS_LIST accepted_key_list;
-} TCP_Server;
+};
 
 /* Create new TCP server instance.
  */
-TCP_Server *new_TCP_server(uint8_t ipv6_enabled, uint16_t num_sockets, const uint16_t *ports, const uint8_t *secret_key,
+TCP_Server *new_TCP_server(uint8_t ipv6_enabled, uint16_t num_sockets, const uint16_t *ports, const bitox::SecretKey &secret_key,
                            Onion *onion);
 
 /* Run the TCP_server
@@ -179,8 +180,8 @@ int read_TCP_packet(bitox::network::sock_t sock, uint8_t *data, uint16_t length)
  * return 0 if could not read any packet.
  * return -1 on failure (connection must be killed).
  */
-int read_packet_TCP_secure_connection(bitox::network::sock_t sock, uint16_t *next_packet_length, const uint8_t *shared_key,
-                                      uint8_t *recv_nonce, uint8_t *data, uint16_t max_len);
+int read_packet_TCP_secure_connection(bitox::network::sock_t sock, uint16_t *next_packet_length, const bitox::SharedKey &shared_key,
+                                      bitox::Nonce &recv_nonce, uint8_t *data, uint16_t max_len);
 
 
 #endif

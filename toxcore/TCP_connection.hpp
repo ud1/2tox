@@ -53,7 +53,7 @@
 
 typedef struct {
     uint8_t status;
-    uint8_t public_key[crypto_box_PUBLICKEYBYTES]; /* The dht public key of the peer */
+    bitox::PublicKey public_key; /* The dht public key of the peer */
 
     struct {
         uint32_t tcp_connection;
@@ -64,7 +64,8 @@ typedef struct {
     int id; /* id used in callbacks. */
 } TCP_Connection_to;
 
-typedef struct {
+struct TCP_con
+{
     uint8_t status;
     TCP_Client_Connection *connection;
     uint64_t connected_time;
@@ -74,15 +75,15 @@ typedef struct {
 
     /* Only used when connection is sleeping. */
     bitox::network::IPPort ip_port;
-    uint8_t relay_pk[crypto_box_PUBLICKEYBYTES];
+    bitox::PublicKey relay_pk;
     bool unsleep; /* set to 1 to unsleep connection. */
-} TCP_con;
+};
 
 typedef struct {
     DHT *dht;
 
-    uint8_t self_public_key[crypto_box_PUBLICKEYBYTES];
-    uint8_t self_secret_key[crypto_box_SECRETKEYBYTES];
+    bitox::PublicKey self_public_key;
+    bitox::SecretKey self_secret_key;
 
     TCP_Connection_to *connections;
     uint32_t connections_length; /* Length of connections array. */
@@ -93,7 +94,7 @@ typedef struct {
     int (*tcp_data_callback)(void *object, int id, const uint8_t *data, uint16_t length);
     void *tcp_data_callback_object;
 
-    int (*tcp_oob_callback)(void *object, const uint8_t *public_key, unsigned int tcp_connections_number,
+    int (*tcp_oob_callback)(void *object, const bitox::PublicKey &public_key, unsigned int tcp_connections_number,
                             const uint8_t *data, uint16_t length);
     void *tcp_oob_callback_object;
 
@@ -145,7 +146,7 @@ int set_tcp_onion_status(TCP_Connections *tcp_c, bool status);
  * return 0 on success.
  * return -1 on failure.
  */
-int tcp_send_oob_packet(TCP_Connections *tcp_c, unsigned int tcp_connections_number, const uint8_t *public_key,
+int tcp_send_oob_packet(TCP_Connections *tcp_c, unsigned int tcp_connections_number, const bitox::PublicKey &public_key,
                         const uint8_t *packet, uint16_t length);
 
 /* Set the callback for TCP data packets.
@@ -161,7 +162,7 @@ void set_onion_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_
 /* Set the callback for TCP oob data packets.
  */
 void set_oob_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_oob_callback)(void *object,
-        const uint8_t *public_key, unsigned int tcp_connections_number, const uint8_t *data, uint16_t length), void *object);
+        const bitox::PublicKey &public_key, unsigned int tcp_connections_number, const uint8_t *data, uint16_t length), void *object);
 
 /* Create a new TCP connection to public_key.
  *
@@ -172,7 +173,7 @@ void set_oob_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_oo
  * return connections_number on success.
  * return -1 on failure.
  */
-int new_tcp_connection_to(TCP_Connections *tcp_c, const uint8_t *public_key, int id);
+int new_tcp_connection_to(TCP_Connections *tcp_c, const bitox::PublicKey &public_key, int id);
 
 /* return 0 on success.
  * return -1 on failure.
@@ -237,7 +238,7 @@ unsigned int tcp_copy_connected_relays(TCP_Connections *tcp_c, bitox::dht::NodeF
  *
  * Returns NULL on failure.
  */
-TCP_Connections *new_tcp_connections(const uint8_t *secret_key, TCP_Proxy_Info *proxy_info);
+TCP_Connections *new_tcp_connections(const bitox::SecretKey &secret_key, TCP_Proxy_Info *proxy_info);
 
 void do_tcp_connections(TCP_Connections *tcp_c);
 void kill_tcp_connections(TCP_Connections *tcp_c);

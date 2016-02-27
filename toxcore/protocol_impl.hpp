@@ -8,7 +8,6 @@ namespace bitox
 namespace impl
 {
 
-constexpr size_t SHARED_KEY_LEN = 32;
 constexpr size_t MAC_BYTES_LEN = 16;
 
 struct const_uint64_adapter
@@ -142,11 +141,6 @@ inline InputBuffer &operator >> (InputBuffer &buffer, OnionPingId &ping_id)
 {
     return buffer >> ping_id.data;
 }
-
-struct SharedKey
-{
-    std::array<uint8_t, SHARED_KEY_LEN> data = {};
-};
 
 struct ToxHeader
 {

@@ -79,13 +79,13 @@ int realloc_friendlist(Messenger *m, uint32_t num)
 /*  return the friend id associated to that public key.
  *  return -1 if no such friend.
  */
-int32_t getfriend_id(const Messenger *m, const uint8_t *real_pk)
+int32_t getfriend_id(const Messenger *m, const PublicKey &real_pk)
 {
     uint32_t i;
 
     for (i = 0; i < m->numfriends; ++i) {
         if (m->friendlist[i].status > 0)
-            if (id_equal(real_pk, m->friendlist[i].real_pk))
+            if (real_pk == m->friendlist[i].real_pk)
                 return i;
     }
 
@@ -98,12 +98,12 @@ int32_t getfriend_id(const Messenger *m, const uint8_t *real_pk)
  *  return 0 if success.
  *  return -1 if failure.
  */
-int get_real_pk(const Messenger *m, int32_t friendnumber, uint8_t *real_pk)
+int get_real_pk(const Messenger *m, int32_t friendnumber, PublicKey &real_pk)
 {
     if (friend_not_valid(m, friendnumber))
         return -1;
 
-    memcpy(real_pk, m->friendlist[friendnumber].real_pk, crypto_box_PUBLICKEYBYTES);
+    real_pk = m->friendlist[friendnumber].real_pk;
     return 0;
 }
 
@@ -140,7 +140,7 @@ static uint16_t address_checksum(const uint8_t *address, uint32_t len)
  */
 void getaddress(const Messenger *m, uint8_t *address)
 {
-    id_copy(address, m->net_crypto->self_public_key);
+    id_copy(address, m->net_crypto->self_public_key.data.data());
     uint32_t nospam = get_nospam(&(m->fr));
     memcpy(address + crypto_box_PUBLICKEYBYTES, &nospam, sizeof(nospam));
     uint16_t checksum = address_checksum(address, FRIEND_ADDRESS_SIZE - sizeof(checksum));
@@ -168,7 +168,7 @@ static int handle_status(void *object, int i, uint8_t status);
 static int handle_packet(void *object, int i, uint8_t *temp, uint16_t len);
 static int handle_custom_lossy_packet(void *object, int friend_num, const uint8_t *packet, uint16_t length);
 
-static int32_t init_new_friend(Messenger *m, const uint8_t *real_pk, uint8_t status)
+static int32_t init_new_friend(Messenger *m, const PublicKey &real_pk, uint8_t status)
 {
     /* Resize the friend list if necessary. */
     if (realloc_friendlist(m, m->numfriends + 1) != 0)
@@ -188,7 +188,7 @@ static int32_t init_new_friend(Messenger *m, const uint8_t *real_pk, uint8_t sta
             m->friendlist[i].status = status;
             m->friendlist[i].friendcon_id = friendcon_id;
             m->friendlist[i].friendrequest_lastsent = 0;
-            id_copy(m->friendlist[i].real_pk, real_pk);
+            m->friendlist[i].real_pk = real_pk;
             m->friendlist[i].statusmessage_length = 0;
             m->friendlist[i].userstatus = USERSTATUS_NONE;
             m->friendlist[i].is_typing = 0;
@@ -231,8 +231,8 @@ int32_t m_addfriend(Messenger *m, const uint8_t *address, const uint8_t *data, u
     if (length > MAX_FRIEND_REQUEST_DATA_SIZE)
         return FAERR_TOOLONG;
 
-    uint8_t real_pk[crypto_box_PUBLICKEYBYTES];
-    id_copy(real_pk, address);
+    PublicKey real_pk;
+    id_copy(real_pk.data.data(), address);
 
     if (!public_key_valid(real_pk))
         return FAERR_BADCHECKSUM;
@@ -246,7 +246,7 @@ int32_t m_addfriend(Messenger *m, const uint8_t *address, const uint8_t *data, u
     if (length < 1)
         return FAERR_NOMESSAGE;
 
-    if (id_equal(real_pk, m->net_crypto->self_public_key))
+    if (real_pk == m->net_crypto->self_public_key)
         return FAERR_OWNKEY;
 
     int32_t friend_id = getfriend_id(m, real_pk);
@@ -279,7 +279,7 @@ int32_t m_addfriend(Messenger *m, const uint8_t *address, const uint8_t *data, u
     return ret;
 }
 
-int32_t m_addfriend_norequest(Messenger *m, const uint8_t *real_pk)
+int32_t m_addfriend_norequest(Messenger *m, const PublicKey &real_pk)
 {
     if (getfriend_id(m, real_pk) != -1)
         return FAERR_ALREADYSENT;
@@ -287,7 +287,7 @@ int32_t m_addfriend_norequest(Messenger *m, const uint8_t *real_pk)
     if (!public_key_valid(real_pk))
         return FAERR_BADCHECKSUM;
 
-    if (id_equal(real_pk, m->net_crypto->self_public_key))
+    if (real_pk == m->net_crypto->self_public_key)
         return FAERR_OWNKEY;
 
     return init_new_friend(m, real_pk, FRIEND_CONFIRMED);
@@ -1740,7 +1740,7 @@ int send_custom_lossless_packet(const Messenger *m, int32_t friendnumber, const 
 }
 
 /* Function to filter out some friend requests*/
-static int friend_already_added(const uint8_t *real_pk, void *data)
+static int friend_already_added(const PublicKey &real_pk, void *data)
 {
     const Messenger *m = (const Messenger *) data;
 
@@ -1817,7 +1817,7 @@ Messenger *new_messenger(Messenger_Options *options, unsigned int *error)
     }
 
     if (options->tcp_server_port) {
-        m->tcp_server = new_TCP_server(options->ipv6enabled, 1, &options->tcp_server_port, m->dht->self_secret_key.data.data(), m->onion);
+        m->tcp_server = new_TCP_server(options->ipv6enabled, 1, &options->tcp_server_port, m->dht->self_secret_key, m->onion);
 
         if (m->tcp_server == NULL) {
             kill_friend_connections(m->fr_c);
@@ -2445,7 +2445,7 @@ void do_messenger(Messenger *m)
 #define NUM_SAVED_PATH_NODES 8
 struct SAVED_FRIEND {
     uint8_t status;
-    uint8_t real_pk[crypto_box_PUBLICKEYBYTES];
+    PublicKey real_pk;
     uint8_t info[SAVED_FRIEND_REQUEST_SIZE]; // the data that is sent during the friend requests we do.
     uint16_t info_size; // Length of the info.
     uint8_t name[MAX_NAME_LENGTH];
@@ -2472,7 +2472,7 @@ static uint32_t friends_list_save(const Messenger *m, uint8_t *data)
             struct SAVED_FRIEND temp;
             memset(&temp, 0, sizeof(struct SAVED_FRIEND));
             temp.status = m->friendlist[i].status;
-            memcpy(temp.real_pk, m->friendlist[i].real_pk, crypto_box_PUBLICKEYBYTES);
+            temp.real_pk = m->friendlist[i].real_pk;
 
             if (temp.status < 3) {
                 if (m->friendlist[i].info_size > SAVED_FRIEND_REQUEST_SIZE) {
@@ -2533,7 +2533,7 @@ static int friends_list_load(Messenger *m, const uint8_t *data, uint32_t length)
         } else if (temp.status != 0) {
             /* TODO: This is not a good way to do this. */
             uint8_t address[FRIEND_ADDRESS_SIZE];
-            id_copy(address, temp.real_pk);
+            id_copy(address, temp.real_pk.data.data());
             memcpy(address + crypto_box_PUBLICKEYBYTES, &(temp.friendrequest_nospam), sizeof(uint32_t));
             uint16_t checksum = address_checksum(address, FRIEND_ADDRESS_SIZE - sizeof(checksum));
             memcpy(address + crypto_box_PUBLICKEYBYTES + sizeof(uint32_t), &checksum, sizeof(checksum));
@@ -2663,7 +2663,7 @@ static int messenger_load_state_callback(void *outer, const uint8_t *data, uint3
                 set_nospam(&(m->fr), *(uint32_t *)data);
                 load_secret_key(m->net_crypto, (&data[sizeof(uint32_t)]) + crypto_box_PUBLICKEYBYTES);
 
-                if (public_key_cmp((&data[sizeof(uint32_t)]), m->net_crypto->self_public_key) != 0) {
+                if (public_key_cmp((&data[sizeof(uint32_t)]), m->net_crypto->self_public_key.data.data()) != 0) {
                     return -1;
                 }
             } else

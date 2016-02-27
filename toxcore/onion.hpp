@@ -37,6 +37,8 @@ typedef struct {
 
     int (*recv_1_function)(void *, bitox::network::IPPort, const uint8_t *, uint16_t);
     void *callback_object;
+
+    void change_symmetric_key();
 } Onion;
 
 #define ONION_MAX_PACKET_SIZE 1400
@@ -55,14 +57,15 @@ typedef struct {
 
 #define ONION_PATH_LENGTH 3
 
-typedef struct {
-    uint8_t shared_key1[crypto_box_BEFORENMBYTES];
-    uint8_t shared_key2[crypto_box_BEFORENMBYTES];
-    uint8_t shared_key3[crypto_box_BEFORENMBYTES];
+struct Onion_Path
+{
+    bitox::SharedKey shared_key1;
+    bitox::SharedKey shared_key2;
+    bitox::SharedKey shared_key3;
 
-    uint8_t public_key1[crypto_box_PUBLICKEYBYTES];
-    uint8_t public_key2[crypto_box_PUBLICKEYBYTES];
-    uint8_t public_key3[crypto_box_PUBLICKEYBYTES];
+    bitox::PublicKey public_key1;
+    bitox::PublicKey public_key2;
+    bitox::PublicKey public_key3;
 
     bitox::network::IPPort     ip_port1;
     bitox::PublicKey node_public_key1;
@@ -74,7 +77,19 @@ typedef struct {
     bitox::PublicKey node_public_key3;
 
     uint32_t path_num;
-} Onion_Path;
+
+    /* Create a onion packet.
+     *
+     * Use Onion_Path path to create packet for data of length to dest.
+     * Maximum length of data is ONION_MAX_DATA_SIZE.
+     * packet should be at least ONION_MAX_PACKET_SIZE big.
+     *
+     * return -1 on failure.
+     * return length of created packet on success.
+     */
+    int create_onion_packet(uint8_t *packet, uint16_t max_packet_length, const bitox::network::IPPort &dest,
+                            const uint8_t *data, uint16_t length) const;
+};
 
 /* Create a new onion path.
  *
@@ -93,18 +108,6 @@ int create_onion_path(const DHT *dht, Onion_Path *new_path, const bitox::dht::No
  * return 0 on success.
  */
 int onion_path_to_nodes(bitox::dht::NodeFormat *nodes, unsigned int num_nodes, const Onion_Path *path);
-
-/* Create a onion packet.
- *
- * Use Onion_Path path to create packet for data of length to dest.
- * Maximum length of data is ONION_MAX_DATA_SIZE.
- * packet should be at least ONION_MAX_PACKET_SIZE big.
- *
- * return -1 on failure.
- * return length of created packet on success.
- */
-int create_onion_packet(uint8_t *packet, uint16_t max_packet_length, const Onion_Path *path, const bitox::network::IPPort &dest,
-                        const uint8_t *data, uint16_t length);
 
 
 /* Create a onion packet to be sent over tcp.

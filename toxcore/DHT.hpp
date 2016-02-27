@@ -189,7 +189,7 @@ struct Shared_Keys
     struct
     {
         bitox::PublicKey public_key;
-        uint8_t shared_key[crypto_box_BEFORENMBYTES];
+        bitox::SharedKey shared_key;
         uint32_t times_requested;
         uint8_t  stored; /* 0 if not, 1 if is */
         uint64_t time_last_requested;
@@ -210,7 +210,7 @@ struct Cryptopacket_Handles
 struct DHT : public bitox::network::IncomingPacketListener
 {
     explicit DHT (bitox::network::Networking_Core *net);
-    ~DHT();
+    virtual ~DHT();
     
     void on_data_received(const bitox::network::IPPort &ip_port, const uint8_t* data, uint16_t len);
 
@@ -264,15 +264,15 @@ struct DHT : public bitox::network::IncomingPacketListener
      * Copy shared_key to encrypt/decrypt DHT packet from public_key into shared_key
      * for packets that we receive.
      */
-    void get_shared_key_recv (uint8_t *shared_key, const bitox::PublicKey &public_key);
+    void get_shared_key_recv (bitox::SharedKey &shared_key, const bitox::PublicKey &public_key);
 
     /*
      * Copy shared_key to encrypt/decrypt DHT packet from public_key into shared_key
      * for packets that we send.
      */
-    void get_shared_key_sent (uint8_t *shared_key, const bitox::PublicKey &public_key);
+    void get_shared_key_sent (bitox::SharedKey &shared_key, const bitox::PublicKey &public_key);
 
-    void getnodes (const bitox::network::IPPort *from_ipp, const bitox::PublicKey &from_id, const uint8_t *which_id);
+    void getnodes (const bitox::network::IPPort *from_ipp, const bitox::PublicKey &from_id, const bitox::PublicKey &which_id);
 
     /*
      * Add a new friend_ to the friends list.
@@ -465,7 +465,7 @@ struct DHT : public bitox::network::IncomingPacketListener
  * If shared key is already in shared_keys, copy it to shared_key.
  * else generate it into shared_key and copy it to shared_keys
  */
-void get_shared_key (Shared_Keys *shared_keys, uint8_t *shared_key, const bitox::SecretKey &secret_key,
+void get_shared_key (Shared_Keys *shared_keys, bitox::SharedKey &shared_key, const bitox::SecretKey &secret_key,
                      const bitox::PublicKey &public_key);
 
 

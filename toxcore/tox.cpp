@@ -438,7 +438,7 @@ void tox_self_get_public_key(const Tox *tox, uint8_t *public_key)
     const Messenger *m = tox;
 
     if (public_key)
-        memcpy(public_key, m->net_crypto->self_public_key, crypto_box_PUBLICKEYBYTES);
+        memcpy(public_key, m->net_crypto->self_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
 }
 
 void tox_self_get_secret_key(const Tox *tox, uint8_t *secret_key)
@@ -446,7 +446,7 @@ void tox_self_get_secret_key(const Tox *tox, uint8_t *secret_key)
     const Messenger *m = tox;
 
     if (secret_key)
-        memcpy(secret_key, m->net_crypto->self_secret_key, crypto_box_SECRETKEYBYTES);
+        memcpy(secret_key, m->net_crypto->self_secret_key.data.data(), crypto_box_SECRETKEYBYTES);
 }
 
 bool tox_self_set_name(Tox *tox, const uint8_t *name, size_t length, TOX_ERR_SET_INFO *error)
@@ -637,7 +637,7 @@ uint32_t tox_friend_by_public_key(const Tox *tox, const uint8_t *public_key, TOX
 bool tox_friend_get_public_key(const Tox *tox, uint32_t friend_number, uint8_t *public_key,
                                TOX_ERR_FRIEND_GET_PUBLIC_KEY *error)
 {
-    if (!public_key) {
+    /*if (!public_key) {//TODO
         return 0;
     }
 
@@ -648,7 +648,7 @@ bool tox_friend_get_public_key(const Tox *tox, uint32_t friend_number, uint8_t *
         return 0;
     }
 
-    SET_ERROR_PARAMETER(error, TOX_ERR_FRIEND_GET_PUBLIC_KEY_OK);
+    SET_ERROR_PARAMETER(error, TOX_ERR_FRIEND_GET_PUBLIC_KEY_OK);*/
     return 1;
 }
 

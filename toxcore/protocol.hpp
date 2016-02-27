@@ -75,6 +75,7 @@ constexpr size_t PUBLIC_KEY_LEN = 32;
 constexpr size_t SECRET_KEY_LEN = 32;
 constexpr size_t ONION_PING_ID_LEN = 32;
 constexpr size_t NONCE_LEN = 24;
+constexpr size_t SHARED_KEY_LEN = 32;
 
 /* The max number of nodes to send with send nodes. */
 constexpr size_t MAX_SENT_NODES = 4;
@@ -114,6 +115,12 @@ struct SecretKey
 {
     std::array<uint8_t, SECRET_KEY_LEN> data = {};
 };
+
+struct SharedKey
+{
+    std::array<uint8_t, SHARED_KEY_LEN> data = {};
+};
+
 
 struct OnionPingId
 {

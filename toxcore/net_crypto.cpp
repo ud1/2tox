@@ -69,23 +69,22 @@ static uint8_t crypt_connection_id_not_valid(const Net_Crypto *c, int crypt_conn
  * return -1 on failure.
  * return COOKIE_REQUEST_LENGTH on success.
  */
-static int create_cookie_request(const Net_Crypto *c, uint8_t *packet, uint8_t *dht_public_key, uint64_t number,
-                                 uint8_t *shared_key)
+static int create_cookie_request(const Net_Crypto *c, uint8_t *packet, PublicKey &dht_public_key, uint64_t number,
+                                 SharedKey &shared_key)
 {
     uint8_t plain[COOKIE_REQUEST_PLAIN_LENGTH];
     uint8_t padding[crypto_box_PUBLICKEYBYTES] = {0};
 
-    memcpy(plain, c->self_public_key, crypto_box_PUBLICKEYBYTES);
+    memcpy(plain, c->self_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
     memcpy(plain + crypto_box_PUBLICKEYBYTES, padding, crypto_box_PUBLICKEYBYTES);
     memcpy(plain + (crypto_box_PUBLICKEYBYTES * 2), &number, sizeof(uint64_t));
 
     c->dht->get_shared_key_sent(shared_key, dht_public_key);
-    uint8_t nonce[crypto_box_NONCEBYTES];
-    new_nonce(nonce);
+    Nonce nonce = Nonce::create_random();
     packet[0] = NET_PACKET_COOKIE_REQUEST;
     memcpy(packet + 1, c->dht->self_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
-    memcpy(packet + 1 + crypto_box_PUBLICKEYBYTES, nonce, crypto_box_NONCEBYTES);
-    int len = encrypt_data_symmetric(shared_key, nonce, plain, sizeof(plain),
+    memcpy(packet + 1 + crypto_box_PUBLICKEYBYTES, nonce.data.data(), crypto_box_NONCEBYTES);
+    int len = encrypt_data_symmetric(shared_key.data.data(), nonce.data.data(), plain, sizeof(plain),
                                      packet + 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES);
 
     if (len != COOKIE_REQUEST_PLAIN_LENGTH + crypto_box_MACBYTES)
@@ -99,14 +98,14 @@ static int create_cookie_request(const Net_Crypto *c, uint8_t *packet, uint8_t *
  * return -1 on failure.
  * return 0 on success.
  */
-static int create_cookie(uint8_t *cookie, const uint8_t *bytes, const uint8_t *encryption_key)
+static int create_cookie(uint8_t *cookie, const uint8_t *bytes, const SharedKey &encryption_key)
 {
     uint8_t contents[COOKIE_CONTENTS_LENGTH];
     uint64_t temp_time = unix_time();
     memcpy(contents, &temp_time, sizeof(temp_time));
     memcpy(contents + sizeof(temp_time), bytes, COOKIE_DATA_LENGTH);
     new_nonce(cookie);
-    int len = encrypt_data_symmetric(encryption_key, cookie, contents, sizeof(contents), cookie + crypto_box_NONCEBYTES);
+    int len = encrypt_data_symmetric(encryption_key.data.data(), cookie, contents, sizeof(contents), cookie + crypto_box_NONCEBYTES);
 
     if (len != COOKIE_LENGTH - crypto_box_NONCEBYTES)
         return -1;
@@ -119,10 +118,10 @@ static int create_cookie(uint8_t *cookie, const uint8_t *bytes, const uint8_t *e
  * return -1 on failure.
  * return 0 on success.
  */
-static int open_cookie(uint8_t *bytes, const uint8_t *cookie, const uint8_t *encryption_key)
+static int open_cookie(uint8_t *bytes, const uint8_t *cookie, const SharedKey &encryption_key)
 {
     uint8_t contents[COOKIE_CONTENTS_LENGTH];
-    int len = decrypt_data_symmetric(encryption_key, cookie, cookie + crypto_box_NONCEBYTES,
+    int len = decrypt_data_symmetric(encryption_key.data.data(), cookie, cookie + crypto_box_NONCEBYTES,
                                      COOKIE_LENGTH - crypto_box_NONCEBYTES, contents);
 
     if (len != sizeof(contents))
@@ -148,11 +147,11 @@ static int open_cookie(uint8_t *bytes, const uint8_t *cookie, const uint8_t *enc
  * return COOKIE_RESPONSE_LENGTH on success.
  */
 static int create_cookie_response(const Net_Crypto *c, uint8_t *packet, const uint8_t *request_plain,
-                                  const uint8_t *shared_key, const uint8_t *dht_public_key)
+                                  const SharedKey &shared_key, const PublicKey &dht_public_key)
 {
     uint8_t cookie_plain[COOKIE_DATA_LENGTH];
     memcpy(cookie_plain, request_plain, crypto_box_PUBLICKEYBYTES);
-    memcpy(cookie_plain + crypto_box_PUBLICKEYBYTES, dht_public_key, crypto_box_PUBLICKEYBYTES);
+    memcpy(cookie_plain + crypto_box_PUBLICKEYBYTES, dht_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
     uint8_t plain[COOKIE_LENGTH + sizeof(uint64_t)];
 
     if (create_cookie(plain, cookie_plain, c->secret_symmetric_key) != 0)
@@ -161,7 +160,7 @@ static int create_cookie_response(const Net_Crypto *c, uint8_t *packet, const ui
     memcpy(plain + COOKIE_LENGTH, request_plain + COOKIE_DATA_LENGTH, sizeof(uint64_t));
     packet[0] = NET_PACKET_COOKIE_RESPONSE;
     new_nonce(packet + 1);
-    int len = encrypt_data_symmetric(shared_key, packet + 1, plain, sizeof(plain), packet + 1 + crypto_box_NONCEBYTES);
+    int len = encrypt_data_symmetric(shared_key.data.data(), packet + 1, plain, sizeof(plain), packet + 1 + crypto_box_NONCEBYTES);
 
     if (len != COOKIE_RESPONSE_LENGTH - (1 + crypto_box_NONCEBYTES))
         return -1;
@@ -176,15 +175,15 @@ static int create_cookie_response(const Net_Crypto *c, uint8_t *packet, const ui
  * return -1 on failure.
  * return 0 on success.
  */
-static int handle_cookie_request(const Net_Crypto *c, uint8_t *request_plain, uint8_t *shared_key,
-                                 uint8_t *dht_public_key, const uint8_t *packet, uint16_t length)
+static int handle_cookie_request(const Net_Crypto *c, uint8_t *request_plain, SharedKey &shared_key,
+                                 PublicKey &dht_public_key, const uint8_t *packet, uint16_t length)
 {
     if (length != COOKIE_REQUEST_LENGTH)
         return -1;
 
-    memcpy(dht_public_key, packet + 1, crypto_box_PUBLICKEYBYTES);
+    memcpy(dht_public_key.data.data(), packet + 1, crypto_box_PUBLICKEYBYTES);
     c->dht->get_shared_key_sent(shared_key, dht_public_key);
-    int len = decrypt_data_symmetric(shared_key, packet + 1 + crypto_box_PUBLICKEYBYTES,
+    int len = decrypt_data_symmetric(shared_key.data.data(), packet + 1 + crypto_box_PUBLICKEYBYTES,
                                      packet + 1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES, COOKIE_REQUEST_PLAIN_LENGTH + crypto_box_MACBYTES,
                                      request_plain);
 
@@ -200,8 +199,8 @@ static int udp_handle_cookie_request(void *object, const IPPort &source, const u
 {
     Net_Crypto *c = (Net_Crypto *) object;
     uint8_t request_plain[COOKIE_REQUEST_PLAIN_LENGTH];
-    uint8_t shared_key[crypto_box_BEFORENMBYTES];
-    uint8_t dht_public_key[crypto_box_PUBLICKEYBYTES];
+    SharedKey shared_key;
+    PublicKey dht_public_key;
 
     if (handle_cookie_request(c, request_plain, shared_key, dht_public_key, packet, length) != 0)
         return 1;
@@ -222,8 +221,8 @@ static int udp_handle_cookie_request(void *object, const IPPort &source, const u
 static int tcp_handle_cookie_request(Net_Crypto *c, int connections_number, const uint8_t *packet, uint16_t length)
 {
     uint8_t request_plain[COOKIE_REQUEST_PLAIN_LENGTH];
-    uint8_t shared_key[crypto_box_BEFORENMBYTES];
-    uint8_t dht_public_key[crypto_box_PUBLICKEYBYTES];
+    SharedKey shared_key;
+    PublicKey dht_public_key;
 
     if (handle_cookie_request(c, request_plain, shared_key, dht_public_key, packet, length) != 0)
         return -1;
@@ -240,16 +239,16 @@ static int tcp_handle_cookie_request(Net_Crypto *c, int connections_number, cons
 /* Handle the cookie request packet (for TCP oob packets)
  */
 static int tcp_oob_handle_cookie_request(const Net_Crypto *c, unsigned int tcp_connections_number,
-        const uint8_t *dht_public_key, const uint8_t *packet, uint16_t length)
+        const PublicKey &dht_public_key, const uint8_t *packet, uint16_t length)
 {
     uint8_t request_plain[COOKIE_REQUEST_PLAIN_LENGTH];
-    uint8_t shared_key[crypto_box_BEFORENMBYTES];
-    uint8_t dht_public_key_temp[crypto_box_PUBLICKEYBYTES];
+    SharedKey shared_key;
+    PublicKey dht_public_key_temp;
 
     if (handle_cookie_request(c, request_plain, shared_key, dht_public_key_temp, packet, length) != 0)
         return -1;
 
-    if (public_key_cmp(dht_public_key, dht_public_key_temp) != 0)
+    if (dht_public_key != dht_public_key_temp)
         return -1;
 
     uint8_t data[COOKIE_RESPONSE_LENGTH];
@@ -270,13 +269,13 @@ static int tcp_oob_handle_cookie_request(const Net_Crypto *c, unsigned int tcp_c
  * return COOKIE_LENGTH on success.
  */
 static int handle_cookie_response(uint8_t *cookie, uint64_t *number, const uint8_t *packet, uint16_t length,
-                                  const uint8_t *shared_key)
+                                  const SharedKey &shared_key)
 {
     if (length != COOKIE_RESPONSE_LENGTH)
         return -1;
 
     uint8_t plain[COOKIE_LENGTH + sizeof(uint64_t)];
-    int len = decrypt_data_symmetric(shared_key, packet + 1, packet + 1 + crypto_box_NONCEBYTES,
+    int len = decrypt_data_symmetric(shared_key.data.data(), packet + 1, packet + 1 + crypto_box_NONCEBYTES,
                                      length - (1 + crypto_box_NONCEBYTES), plain);
 
     if (len != sizeof(plain))
@@ -296,16 +295,16 @@ static int handle_cookie_response(uint8_t *cookie, uint64_t *number, const uint8
  * return -1 on failure.
  * return HANDSHAKE_PACKET_LENGTH on success.
  */
-static int create_crypto_handshake(const Net_Crypto *c, uint8_t *packet, const uint8_t *cookie, const uint8_t *nonce,
-                                   const uint8_t *session_pk, const uint8_t *peer_real_pk, const uint8_t *peer_dht_pubkey)
+static int create_crypto_handshake(const Net_Crypto *c, uint8_t *packet, const uint8_t *cookie, const Nonce &nonce,
+                                   const PublicKey &session_pk, const PublicKey &peer_real_pk, const PublicKey &peer_dht_pubkey)
 {
     uint8_t plain[crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + crypto_hash_sha512_BYTES + COOKIE_LENGTH];
-    memcpy(plain, nonce, crypto_box_NONCEBYTES);
-    memcpy(plain + crypto_box_NONCEBYTES, session_pk, crypto_box_PUBLICKEYBYTES);
+    memcpy(plain, nonce.data.data(), crypto_box_NONCEBYTES);
+    memcpy(plain + crypto_box_NONCEBYTES, session_pk.data.data(), crypto_box_PUBLICKEYBYTES);
     crypto_hash_sha512(plain + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES, cookie, COOKIE_LENGTH);
     uint8_t cookie_plain[COOKIE_DATA_LENGTH];
-    memcpy(cookie_plain, peer_real_pk, crypto_box_PUBLICKEYBYTES);
-    memcpy(cookie_plain + crypto_box_PUBLICKEYBYTES, peer_dht_pubkey, crypto_box_PUBLICKEYBYTES);
+    memcpy(cookie_plain, peer_real_pk.data.data(), crypto_box_PUBLICKEYBYTES);
+    memcpy(cookie_plain + crypto_box_PUBLICKEYBYTES, peer_dht_pubkey.data.data(), crypto_box_PUBLICKEYBYTES);
 
     if (create_cookie(plain + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + crypto_hash_sha512_BYTES, cookie_plain,
                       c->secret_symmetric_key) != 0)
@@ -342,8 +341,8 @@ static int create_crypto_handshake(const Net_Crypto *c, uint8_t *packet, const u
  * return -1 on failure.
  * return 0 on success.
  */
-static int handle_crypto_handshake(const Net_Crypto *c, uint8_t *nonce, uint8_t *session_pk, uint8_t *peer_real_pk,
-                                   uint8_t *dht_public_key, uint8_t *cookie, const uint8_t *packet, uint16_t length, const uint8_t *expected_real_pk)
+static int handle_crypto_handshake(const Net_Crypto *c, Nonce &nonce, PublicKey &session_pk, PublicKey &peer_real_pk,
+                                   PublicKey &dht_public_key, uint8_t *cookie, const uint8_t *packet, uint16_t length, const PublicKey *expected_real_pk)
 {
     if (length != HANDSHAKE_PACKET_LENGTH)
         return -1;
@@ -354,7 +353,7 @@ static int handle_crypto_handshake(const Net_Crypto *c, uint8_t *nonce, uint8_t 
         return -1;
 
     if (expected_real_pk)
-        if (public_key_cmp(cookie_plain, expected_real_pk) != 0)
+        if (public_key_cmp(cookie_plain, expected_real_pk->data.data()) != 0)
             return -1;
 
     uint8_t cookie_hash[crypto_hash_sha512_BYTES];
@@ -372,11 +371,11 @@ static int handle_crypto_handshake(const Net_Crypto *c, uint8_t *nonce, uint8_t 
                       crypto_hash_sha512_BYTES) != 0)
         return -1;
 
-    memcpy(nonce, plain, crypto_box_NONCEBYTES);
-    memcpy(session_pk, plain + crypto_box_NONCEBYTES, crypto_box_PUBLICKEYBYTES);
+    memcpy(nonce.data.data(), plain, crypto_box_NONCEBYTES);
+    memcpy(session_pk.data.data(), plain + crypto_box_NONCEBYTES, crypto_box_PUBLICKEYBYTES);
     memcpy(cookie, plain + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + crypto_hash_sha512_BYTES, COOKIE_LENGTH);
-    memcpy(peer_real_pk, cookie_plain, crypto_box_PUBLICKEYBYTES);
-    memcpy(dht_public_key, cookie_plain + crypto_box_PUBLICKEYBYTES, crypto_box_PUBLICKEYBYTES);
+    memcpy(peer_real_pk.data.data(), cookie_plain, crypto_box_PUBLICKEYBYTES);
+    memcpy(dht_public_key.data.data(), cookie_plain + crypto_box_PUBLICKEYBYTES, crypto_box_PUBLICKEYBYTES);
     return 0;
 }
 
@@ -843,15 +842,15 @@ static int send_data_packet(Net_Crypto *c, int crypt_connection_id, const uint8_
     pthread_mutex_lock(&conn->mutex);
     uint8_t packet[1 + sizeof(uint16_t) + length + crypto_box_MACBYTES];
     packet[0] = NET_PACKET_CRYPTO_DATA;
-    memcpy(packet + 1, conn->sent_nonce + (crypto_box_NONCEBYTES - sizeof(uint16_t)), sizeof(uint16_t));
-    int len = encrypt_data_symmetric(conn->shared_key, conn->sent_nonce, data, length, packet + 1 + sizeof(uint16_t));
+    memcpy(packet + 1, conn->sent_nonce.data.data() + (crypto_box_NONCEBYTES - sizeof(uint16_t)), sizeof(uint16_t));
+    int len = encrypt_data_symmetric(conn->shared_key.data.data(), conn->sent_nonce.data.data(), data, length, packet + 1 + sizeof(uint16_t));
 
     if (len + 1 + sizeof(uint16_t) != sizeof(packet)) {
         pthread_mutex_unlock(&conn->mutex);
         return -1;
     }
 
-    increment_nonce(conn->sent_nonce);
+    increment_nonce(conn->sent_nonce.data.data());
     pthread_mutex_unlock(&conn->mutex);
 
     return send_packet_to(c, crypt_connection_id, packet, sizeof(packet));
@@ -970,10 +969,10 @@ static int64_t send_lossless_packet(Net_Crypto *c, int crypt_connection_id, cons
 /* Get the lowest 2 bytes from the nonce and convert
  * them to host byte format before returning them.
  */
-static uint16_t get_nonce_uint16(const uint8_t *nonce)
+static uint16_t get_nonce_uint16(const Nonce &nonce)
 {
     uint16_t num;
-    memcpy(&num, nonce + (crypto_box_NONCEBYTES - sizeof(uint16_t)), sizeof(uint16_t));
+    memcpy(&num, nonce.data.data() + (crypto_box_NONCEBYTES - sizeof(uint16_t)), sizeof(uint16_t));
     return ntohs(num);
 }
 
@@ -997,22 +996,21 @@ static int handle_data_packet(const Net_Crypto *c, int crypt_connection_id, uint
     if (conn == 0)
         return -1;
 
-    uint8_t nonce[crypto_box_NONCEBYTES];
-    memcpy(nonce, conn->recv_nonce, crypto_box_NONCEBYTES);
+    Nonce nonce = conn->recv_nonce;
     uint16_t num_cur_nonce = get_nonce_uint16(nonce);
     uint16_t num;
     memcpy(&num, packet + 1, sizeof(uint16_t));
     num = ntohs(num);
     uint16_t diff = num - num_cur_nonce;
-    increment_nonce_number(nonce, diff);
-    int len = decrypt_data_symmetric(conn->shared_key, nonce, packet + 1 + sizeof(uint16_t),
+    increment_nonce_number(nonce.data.data(), diff);
+    int len = decrypt_data_symmetric(conn->shared_key.data.data(), nonce.data.data(), packet + 1 + sizeof(uint16_t),
                                      length - (1 + sizeof(uint16_t)), data);
 
     if ((unsigned int)len != length - (1 + sizeof(uint16_t) + crypto_box_MACBYTES))
         return -1;
 
     if (diff > DATA_NUM_THRESHOLD * 2) {
-        increment_nonce_number(conn->recv_nonce, DATA_NUM_THRESHOLD);
+        increment_nonce_number(conn->recv_nonce.data.data(), DATA_NUM_THRESHOLD);
     }
 
     return len;
@@ -1171,7 +1169,7 @@ static int send_temp_packet(Net_Crypto *c, int crypt_connection_id)
  * return 0 on success.
  */
 static int create_send_handshake(Net_Crypto *c, int crypt_connection_id, const uint8_t *cookie,
-                                 const uint8_t *dht_public_key)
+                                 const PublicKey &dht_public_key)
 {
     Crypto_Connection *conn = get_crypto_connection(c, crypt_connection_id);
 
@@ -1399,16 +1397,16 @@ static int handle_packet_connection(Net_Crypto *c, int crypt_connection_id, cons
         case NET_PACKET_CRYPTO_HS: {
             if (conn->status == CRYPTO_CONN_COOKIE_REQUESTING || conn->status == CRYPTO_CONN_HANDSHAKE_SENT
                     || conn->status == CRYPTO_CONN_NOT_CONFIRMED) {
-                uint8_t peer_real_pk[crypto_box_PUBLICKEYBYTES];
-                uint8_t dht_public_key[crypto_box_PUBLICKEYBYTES];
+                PublicKey peer_real_pk;
+                PublicKey dht_public_key;
                 uint8_t cookie[COOKIE_LENGTH];
 
                 if (handle_crypto_handshake(c, conn->recv_nonce, conn->peersessionpublic_key, peer_real_pk, dht_public_key, cookie,
-                                            packet, length, conn->public_key) != 0)
+                                            packet, length, &conn->public_key) != 0)
                     return -1;
 
-                if (public_key_cmp(dht_public_key, conn->dht_public_key) == 0) {
-                    encrypt_precompute(conn->peersessionpublic_key, conn->sessionsecret_key, conn->shared_key);
+                if (dht_public_key == conn->dht_public_key) {
+                    encrypt_precompute(conn->peersessionpublic_key, conn->sessionsecret_key, conn->shared_key.data.data());
 
                     if (conn->status == CRYPTO_CONN_COOKIE_REQUESTING) {
                         if (create_send_handshake(c, crypt_connection_id, cookie, dht_public_key) != 0)
@@ -1548,13 +1546,13 @@ static int wipe_crypto_connection(Net_Crypto *c, int crypt_connection_id)
  *  return -1 if there are no connections like we are looking for.
  *  return id if it found it.
  */
-static int getcryptconnection_id(const Net_Crypto *c, const uint8_t *public_key)
+static int getcryptconnection_id(const Net_Crypto *c, const PublicKey &public_key)
 {
     uint32_t i;
 
     for (i = 0; i < c->crypto_connections_length; ++i) {
         if (c->crypto_connections[i].status != CRYPTO_CONN_NO_CONNECTION)
-            if (public_key_cmp(public_key, c->crypto_connections[i].public_key) == 0)
+            if (public_key == c->crypto_connections[i].public_key)
                 return i;
     }
 
@@ -1636,15 +1634,15 @@ static int handle_new_connection_handshake(Net_Crypto *c, IPPort source, const u
     if (crypt_connection_id != -1) {
         Crypto_Connection *conn = get_crypto_connection(c, crypt_connection_id);
 
-        if (public_key_cmp(n_c.dht_public_key, conn->dht_public_key) != 0) {
+        if (n_c.dht_public_key != conn->dht_public_key) {
             connection_kill(c, crypt_connection_id);
         } else {
             int ret = -1;
 
             if (conn && (conn->status == CRYPTO_CONN_COOKIE_REQUESTING || conn->status == CRYPTO_CONN_HANDSHAKE_SENT)) {
-                memcpy(conn->recv_nonce, n_c.recv_nonce, crypto_box_NONCEBYTES);
-                memcpy(conn->peersessionpublic_key, n_c.peersessionpublic_key, crypto_box_PUBLICKEYBYTES);
-                encrypt_precompute(conn->peersessionpublic_key, conn->sessionsecret_key, conn->shared_key);
+                conn->recv_nonce = n_c.recv_nonce;
+                conn->peersessionpublic_key = n_c.peersessionpublic_key;
+                encrypt_precompute(conn->peersessionpublic_key, conn->sessionsecret_key, conn->shared_key.data.data());
 
                 crypto_connection_add_source(c, crypt_connection_id, source);
 
@@ -1692,12 +1690,12 @@ int accept_crypto_connection(Net_Crypto *c, New_Connection *n_c)
         return -1;
 
     conn->connection_number_tcp = connection_number_tcp;
-    memcpy(conn->public_key, n_c->public_key, crypto_box_PUBLICKEYBYTES);
-    memcpy(conn->recv_nonce, n_c->recv_nonce, crypto_box_NONCEBYTES);
-    memcpy(conn->peersessionpublic_key, n_c->peersessionpublic_key, crypto_box_PUBLICKEYBYTES);
-    random_nonce(conn->sent_nonce);
-    crypto_box_keypair(conn->sessionpublic_key, conn->sessionsecret_key);
-    encrypt_precompute(conn->peersessionpublic_key, conn->sessionsecret_key, conn->shared_key);
+    conn->public_key = n_c->public_key;
+    conn->recv_nonce = n_c->recv_nonce;
+    conn->peersessionpublic_key = n_c->peersessionpublic_key;
+    random_nonce(conn->sent_nonce.data.data());
+    crypto_box_keypair(conn->sessionpublic_key.data.data(), conn->sessionsecret_key.data.data());
+    encrypt_precompute(conn->peersessionpublic_key, conn->sessionsecret_key, conn->shared_key.data.data());
     conn->status = CRYPTO_CONN_NOT_CONFIRMED;
 
     if (create_send_handshake(c, crypt_connection_id, n_c->cookie, n_c->dht_public_key) != 0) {
@@ -1708,7 +1706,7 @@ int accept_crypto_connection(Net_Crypto *c, New_Connection *n_c)
         return -1;
     }
 
-    memcpy(conn->dht_public_key, n_c->dht_public_key, crypto_box_PUBLICKEYBYTES);
+    conn->dht_public_key = n_c->dht_public_key;
     conn->packet_send_rate = CRYPTO_PACKET_MIN_RATE;
     conn->packet_send_rate_requested = CRYPTO_PACKET_MIN_RATE;
     conn->packets_left = CRYPTO_MIN_QUEUE_LENGTH;
@@ -1723,7 +1721,7 @@ int accept_crypto_connection(Net_Crypto *c, New_Connection *n_c)
  * return -1 on failure.
  * return connection id on success.
  */
-int new_crypto_connection(Net_Crypto *c, const uint8_t *real_public_key, const uint8_t *dht_public_key)
+int new_crypto_connection(Net_Crypto *c, const PublicKey &real_public_key, const PublicKey &dht_public_key)
 {
     int crypt_connection_id = getcryptconnection_id(c, real_public_key);
 
@@ -1748,15 +1746,15 @@ int new_crypto_connection(Net_Crypto *c, const uint8_t *real_public_key, const u
         return -1;
 
     conn->connection_number_tcp = connection_number_tcp;
-    memcpy(conn->public_key, real_public_key, crypto_box_PUBLICKEYBYTES);
-    random_nonce(conn->sent_nonce);
-    crypto_box_keypair(conn->sessionpublic_key, conn->sessionsecret_key);
+    conn->public_key = real_public_key;
+    conn->sent_nonce = Nonce::create_random();
+    crypto_box_keypair(conn->sessionpublic_key.data.data(), conn->sessionsecret_key.data.data());
     conn->status = CRYPTO_CONN_COOKIE_REQUESTING;
     conn->packet_send_rate = CRYPTO_PACKET_MIN_RATE;
     conn->packet_send_rate_requested = CRYPTO_PACKET_MIN_RATE;
     conn->packets_left = CRYPTO_MIN_QUEUE_LENGTH;
     conn->rtt_time = DEFAULT_PING_CONNECTION;
-    memcpy(conn->dht_public_key, dht_public_key, crypto_box_PUBLICKEYBYTES);
+    conn->dht_public_key = dht_public_key;
 
     conn->cookie_request_number = random_64b();
     uint8_t cookie_request[COOKIE_REQUEST_LENGTH];
@@ -1837,7 +1835,7 @@ static int tcp_data_callback(void *object, int id, const uint8_t *data, uint16_t
     return 0;
 }
 
-static int tcp_oob_callback(void *object, const uint8_t *public_key, unsigned int tcp_connections_number,
+static int tcp_oob_callback(void *object, const PublicKey &public_key, unsigned int tcp_connections_number,
                             const uint8_t *data, uint16_t length)
 {
     if (length == 0 || length > MAX_CRYPTO_PACKET_SIZE)
@@ -2053,7 +2051,7 @@ int connection_lossy_data_handler(Net_Crypto *c, int crypt_connection_id,
  * return 0 on success.
  */
 int nc_dht_pk_callback(Net_Crypto *c, int crypt_connection_id, void (*function)(void *data, int32_t number,
-                       const uint8_t *dht_public_key), void *object, uint32_t number)
+                       const PublicKey &dht_public_key), void *object, uint32_t number)
 {
     Crypto_Connection *conn = get_crypto_connection(c, crypt_connection_id);
 
@@ -2581,7 +2579,7 @@ unsigned int crypto_connection_status(const Net_Crypto *c, int crypt_connection_
 
 void new_keys(Net_Crypto *c)
 {
-    crypto_box_keypair(c->self_public_key, c->self_secret_key);
+    crypto_box_keypair(c->self_public_key.data.data(), c->self_secret_key.data.data());
 }
 
 /* Save the public and private keys to the keys array.
@@ -2591,8 +2589,8 @@ void new_keys(Net_Crypto *c)
  */
 void save_keys(const Net_Crypto *c, uint8_t *keys)
 {
-    memcpy(keys, c->self_public_key, crypto_box_PUBLICKEYBYTES);
-    memcpy(keys + crypto_box_PUBLICKEYBYTES, c->self_secret_key, crypto_box_SECRETKEYBYTES);
+    memcpy(keys, c->self_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
+    memcpy(keys + crypto_box_PUBLICKEYBYTES, c->self_secret_key.data.data(), crypto_box_SECRETKEYBYTES);
 }
 
 /* Load the secret key.
@@ -2600,8 +2598,8 @@ void save_keys(const Net_Crypto *c, uint8_t *keys)
  */
 void load_secret_key(Net_Crypto *c, const uint8_t *sk)
 {
-    memcpy(c->self_secret_key, sk, crypto_box_SECRETKEYBYTES);
-    crypto_scalarmult_curve25519_base(c->self_public_key, c->self_secret_key);
+    memcpy(c->self_secret_key.data.data(), sk, crypto_box_SECRETKEYBYTES);
+    crypto_scalarmult_curve25519_base(c->self_public_key.data.data(), c->self_secret_key.data.data());
 }
 
 /* Run this to (re)initialize net_crypto.
@@ -2619,7 +2617,7 @@ Net_Crypto *new_net_crypto(DHT *dht, TCP_Proxy_Info *proxy_info)
     if (temp == NULL)
         return NULL;
 
-    temp->tcp_c = new_tcp_connections(dht->self_secret_key.data.data(), proxy_info);
+    temp->tcp_c = new_tcp_connections(dht->self_secret_key, proxy_info);
 
     if (temp->tcp_c == NULL) {
         free(temp);
@@ -2639,7 +2637,7 @@ Net_Crypto *new_net_crypto(DHT *dht, TCP_Proxy_Info *proxy_info)
     temp->dht = dht;
 
     new_keys(temp);
-    new_symmetric_key(temp->secret_symmetric_key);
+    new_symmetric_key(temp->secret_symmetric_key.data.data());
 
     temp->current_sleep_time = CRYPTO_SEND_PACKET_INTERVAL;
 

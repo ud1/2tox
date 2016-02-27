@@ -27,6 +27,10 @@
 
 #include "friend_requests.hpp"
 #include "util.hpp"
+#include "protocol.hpp"
+
+using namespace bitox;
+using namespace bitox::dht;
 
 
 /* Set and get the nospam variable used to prevent one type of friend request spam. */
@@ -51,19 +55,19 @@ void callback_friendrequest(Friend_Requests *fr, void (*function)(void *, const 
     fr->handle_friendrequest_userdata = userdata;
 }
 /* Set the function used to check if a friend request should be displayed to the user or not. */
-void set_filter_function(Friend_Requests *fr, int (*function)(const uint8_t *, void *), void *userdata)
+void set_filter_function(Friend_Requests *fr, int (*function)(const PublicKey &, void *), void *userdata)
 {
     fr->filter_function = function;
     fr->filter_function_userdata = userdata;
 }
 
 /* Add to list of received friend requests. */
-static void addto_receivedlist(Friend_Requests *fr, const uint8_t *real_pk)
+static void addto_receivedlist(Friend_Requests *fr, const PublicKey &real_pk)
 {
     if (fr->received_requests_index >= MAX_RECEIVED_STORED)
         fr->received_requests_index = 0;
 
-    id_copy(fr->received_requests[fr->received_requests_index], real_pk);
+    fr->received_requests[fr->received_requests_index] = real_pk;
     ++fr->received_requests_index;
 }
 
@@ -72,12 +76,12 @@ static void addto_receivedlist(Friend_Requests *fr, const uint8_t *real_pk)
  *  return 0 if it did not.
  *  return 1 if it did.
  */
-static int request_received(Friend_Requests *fr, const uint8_t *real_pk)
+static int request_received(Friend_Requests *fr, const PublicKey &real_pk)
 {
     uint32_t i;
 
     for (i = 0; i < MAX_RECEIVED_STORED; ++i)
-        if (id_equal(fr->received_requests[i], real_pk))
+        if (fr->received_requests[i] == real_pk)
             return 1;
 
     return 0;
@@ -88,13 +92,13 @@ static int request_received(Friend_Requests *fr, const uint8_t *real_pk)
  *  return 0 if it removed it successfully.
  *  return -1 if it didn't find it.
  */
-int remove_request_received(Friend_Requests *fr, const uint8_t *real_pk)
+int remove_request_received(Friend_Requests *fr, const PublicKey &real_pk)
 {
     uint32_t i;
 
     for (i = 0; i < MAX_RECEIVED_STORED; ++i) {
-        if (id_equal(fr->received_requests[i], real_pk)) {
-            sodium_memzero(fr->received_requests[i], crypto_box_PUBLICKEYBYTES);
+        if (fr->received_requests[i] == real_pk) {
+            sodium_memzero(fr->received_requests[i].data.data(), crypto_box_PUBLICKEYBYTES);
             return 0;
         }
     }
@@ -103,7 +107,7 @@ int remove_request_received(Friend_Requests *fr, const uint8_t *real_pk)
 }
 
 
-static int friendreq_handlepacket(void *object, const uint8_t *source_pubkey, const uint8_t *packet, uint16_t length)
+static int friendreq_handlepacket(void *object, const PublicKey &source_pubkey, const uint8_t *packet, uint16_t length)
 {
     Friend_Requests *fr = (Friend_Requests *) object;
 
@@ -133,7 +137,7 @@ static int friendreq_handlepacket(void *object, const uint8_t *source_pubkey, co
     memcpy(message, packet + sizeof(fr->nospam), message_len);
     message[sizeof(message) - 1] = 0; /* Be sure the message is null terminated. */
 
-    (*fr->handle_friendrequest)(fr->handle_friendrequest_object, source_pubkey, message, message_len,
+    (*fr->handle_friendrequest)(fr->handle_friendrequest_object, source_pubkey.data.data(), message, message_len,
                                 fr->handle_friendrequest_userdata);
     return 0;
 }

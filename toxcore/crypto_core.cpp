@@ -45,23 +45,20 @@ uint64_t random_64b(void)
     return result;
 }
 
-int public_key_valid(const uint8_t* public_key)
+int public_key_valid(const PublicKey &public_key)
 {
     return 0;
 }
 
-void encrypt_precompute(const uint8_t* public_key, const uint8_t* secret_key, uint8_t* precomputed_key)
+void encrypt_precompute(const PublicKey &public_key, const SecretKey &secret_key, uint8_t* precomputed_key)
 {
-    crypto_box_beforenm(precomputed_key, public_key, secret_key);
+    crypto_box_beforenm(precomputed_key, public_key.data.data(), secret_key.data.data());
 }
 
 
-int encrypt_data(const uint8_t* public_key, const uint8_t* secret_key, const uint8_t* nonce,
+int encrypt_data(const PublicKey &public_key, const SecretKey &secret_key, const uint8_t* nonce,
                  const uint8_t* plain, uint32_t length, uint8_t* encrypted)
 {
-    if (!public_key || !secret_key)
-        return -1;
-
     Secret_Stack_Buffer<crypto_box_BEFORENMBYTES> precomputed_key;
     encrypt_precompute(public_key, secret_key, precomputed_key.ptr);
 
@@ -83,12 +80,9 @@ int encrypt_data_symmetric(const uint8_t* precomputed_key, const uint8_t* nonce,
 }
 
 
-int decrypt_data(const uint8_t* public_key, const uint8_t* secret_key, const uint8_t* nonce,
+int decrypt_data(const PublicKey &public_key, const SecretKey &secret_key, const uint8_t* nonce,
                  const uint8_t* encrypted, uint32_t length, uint8_t* plain)
 {
-    if (!public_key || !secret_key)
-        return -1;
-
     Secret_Stack_Buffer<crypto_box_BEFORENMBYTES> precomputed_key;
     encrypt_precompute(public_key, secret_key, precomputed_key.ptr);
 
@@ -187,18 +181,18 @@ private:
     Packet_Pointers& operator= (const Packet_Pointers&); // = delete
 };
 
-int create_request(const uint8_t* send_public_key, const uint8_t* send_secret_key, uint8_t* packet,
-                   const uint8_t* recv_public_key, const uint8_t* data, uint32_t length, uint8_t request_id)
+int create_request(const PublicKey &send_public_key, const SecretKey &send_secret_key, uint8_t* packet,
+                   const PublicKey &recv_public_key, const uint8_t* data, uint32_t length, uint8_t request_id)
 {
     if (MAX_CRYPTO_REQUEST_SIZE < length + 1 + crypto_box_PUBLICKEYBYTES * 2 + crypto_box_NONCEBYTES + 1 + crypto_box_MACBYTES
-        || !send_public_key || !packet || !recv_public_key || !data)
+        || !packet || !data)
         return -1;
 
     Packet_Pointers<uint8_t*> packet_ptr(packet);
 
     *packet_ptr.type = NET_PACKET_CRYPTO;
-    memcpy(packet_ptr.recv_public_key, recv_public_key, crypto_box_PUBLICKEYBYTES);
-    memcpy(packet_ptr.send_public_key, send_public_key, crypto_box_PUBLICKEYBYTES);
+    memcpy(packet_ptr.recv_public_key, recv_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
+    memcpy(packet_ptr.send_public_key, send_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
     new_nonce(packet_ptr.nonce);
 
     Secret_Stack_Buffer<MAX_CRYPTO_REQUEST_SIZE> message;
@@ -217,19 +211,19 @@ int create_request(const uint8_t* send_public_key, const uint8_t* send_secret_ke
     return len + 1 /*packet type*/ + crypto_box_PUBLICKEYBYTES * 2 + crypto_box_NONCEBYTES;
 }
 
-int handle_request(const uint8_t* self_public_key, const uint8_t* self_secret_key, uint8_t* public_key, uint8_t* data,
+int handle_request(const PublicKey &self_public_key, const SecretKey &self_secret_key, PublicKey &public_key, uint8_t* data,
                    uint8_t* request_id, const uint8_t* packet, uint16_t length)
 {
     if (length <= 1 /*packet type*/ + crypto_box_PUBLICKEYBYTES * 2 + crypto_box_NONCEBYTES + crypto_box_MACBYTES
-        || length > MAX_CRYPTO_REQUEST_SIZE || !self_public_key || !public_key || !data || !request_id || !packet)
+        || length > MAX_CRYPTO_REQUEST_SIZE || !data || !request_id || !packet)
         return -1;
 
     Packet_Pointers<const uint8_t*> packet_ptr(packet);
 
-    if ( public_key_cmp(packet_ptr.recv_public_key, self_public_key) != 0)
+    if ( public_key_cmp(packet_ptr.recv_public_key, self_public_key.data.data()) != 0)
         return -1;
 
-    memcpy(public_key, packet_ptr.send_public_key, crypto_box_PUBLICKEYBYTES);
+    public_key = packet_ptr.send_public_key;
 
     Secret_Stack_Buffer<MAX_CRYPTO_REQUEST_SIZE> message;
     uint8_t* const message_request_id = message.ptr + 0;

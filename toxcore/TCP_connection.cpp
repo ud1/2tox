@@ -372,7 +372,7 @@ void set_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_data_c
 /* Set the callback for TCP onion packets.
  */
 void set_oob_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_oob_callback)(void *object,
-        const uint8_t *public_key, unsigned int tcp_connections_number, const uint8_t *data, uint16_t length), void *object)
+        const PublicKey &public_key, unsigned int tcp_connections_number, const uint8_t *data, uint16_t length), void *object)
 {
     tcp_c->tcp_oob_callback = tcp_oob_callback;
     tcp_c->tcp_oob_callback_object = object;
@@ -393,7 +393,7 @@ void set_onion_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_
  * return connections_number on success.
  * return -1 on failure.
  */
-static int find_tcp_connection_to(TCP_Connections *tcp_c, const uint8_t *public_key)
+static int find_tcp_connection_to(TCP_Connections *tcp_c, const bitox::PublicKey &public_key)
 {
     unsigned int i;
 
@@ -401,7 +401,7 @@ static int find_tcp_connection_to(TCP_Connections *tcp_c, const uint8_t *public_
         TCP_Connection_to *con_to = get_connection(tcp_c, i);
 
         if (con_to) {
-            if (public_key_cmp(con_to->public_key, public_key) == 0) {
+            if (con_to->public_key == public_key) {
                 return i;
             }
         }
@@ -415,7 +415,7 @@ static int find_tcp_connection_to(TCP_Connections *tcp_c, const uint8_t *public_
  * return connections_number on success.
  * return -1 on failure.
  */
-static int find_tcp_connection_relay(TCP_Connections *tcp_c, const uint8_t *relay_pk)
+static int find_tcp_connection_relay(TCP_Connections *tcp_c, const PublicKey &relay_pk)
 {
     unsigned int i;
 
@@ -424,11 +424,11 @@ static int find_tcp_connection_relay(TCP_Connections *tcp_c, const uint8_t *rela
 
         if (tcp_con) {
             if (tcp_con->status == TCP_CONN_SLEEPING) {
-                if (public_key_cmp(tcp_con->relay_pk, relay_pk) == 0) {
+                if (tcp_con->relay_pk == relay_pk) {
                     return i;
                 }
             } else {
-                if (public_key_cmp(tcp_con->connection->public_key, relay_pk) == 0) {
+                if (tcp_con->connection->public_key == relay_pk) {
                     return i;
                 }
             }
@@ -447,7 +447,7 @@ static int find_tcp_connection_relay(TCP_Connections *tcp_c, const uint8_t *rela
  * return connections_number on success.
  * return -1 on failure.
  */
-int new_tcp_connection_to(TCP_Connections *tcp_c, const uint8_t *public_key, int id)
+int new_tcp_connection_to(TCP_Connections *tcp_c, const bitox::PublicKey &public_key, int id)
 {
     if (find_tcp_connection_to(tcp_c, public_key) != -1)
         return -1;
@@ -460,7 +460,7 @@ int new_tcp_connection_to(TCP_Connections *tcp_c, const uint8_t *public_key, int
     TCP_Connection_to *con_to = &tcp_c->connections[connections_number];
 
     con_to->status = TCP_CONN_VALID;
-    memcpy(con_to->public_key, public_key, crypto_box_PUBLICKEYBYTES);
+    con_to->public_key = public_key;
     con_to->id = id;
 
     return connections_number;
@@ -707,8 +707,7 @@ static int reconnect_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connec
         return -1;
 
     IPPort ip_port = tcp_con->connection->ip_port;
-    uint8_t relay_pk[crypto_box_PUBLICKEYBYTES];
-    memcpy(relay_pk, tcp_con->connection->public_key, crypto_box_PUBLICKEYBYTES);
+    PublicKey relay_pk = tcp_con->connection->public_key;
     kill_TCP_connection(tcp_con->connection);
     tcp_con->connection = new_TCP_connection(ip_port, relay_pk, tcp_c->self_public_key, tcp_c->self_secret_key,
                           &tcp_c->proxy_info);
@@ -756,7 +755,7 @@ static int sleep_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connection
         return -1;
 
     tcp_con->ip_port = tcp_con->connection->ip_port;
-    memcpy(tcp_con->relay_pk, tcp_con->connection->public_key, crypto_box_PUBLICKEYBYTES);
+    tcp_con->relay_pk = tcp_con->connection->public_key;
 
     kill_TCP_connection(tcp_con->connection);
     tcp_con->connection = NULL;
@@ -816,7 +815,7 @@ static int unsleep_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connecti
  * return 0 on success.
  * return -1 on failure.
  */
-static int send_tcp_relay_routing_request(TCP_Connections *tcp_c, int tcp_connections_number, uint8_t *public_key)
+static int send_tcp_relay_routing_request(TCP_Connections *tcp_c, int tcp_connections_number, bitox::PublicKey &public_key)
 {
     TCP_con *tcp_con = get_tcp_connection(tcp_c, tcp_connections_number);
 
@@ -832,7 +831,7 @@ static int send_tcp_relay_routing_request(TCP_Connections *tcp_c, int tcp_connec
     return 0;
 }
 
-static int tcp_response_callback(void *object, uint8_t connection_id, const uint8_t *public_key)
+static int tcp_response_callback(void *object, uint8_t connection_id, const bitox::PublicKey &public_key)
 {
     TCP_Client_Connection *TCP_client_con = (TCP_Client_Connection *) object;
     TCP_Connections *tcp_c = (TCP_Connections *) TCP_client_con->custom_object;
@@ -922,7 +921,7 @@ static int tcp_data_callback(void *object, uint32_t number, uint8_t connection_i
     return 0;
 }
 
-static int tcp_oob_callback(void *object, const uint8_t *public_key, const uint8_t *data, uint16_t length)
+static int tcp_oob_callback(void *object, const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length)
 {
     if (length == 0)
         return -1;
@@ -1175,7 +1174,7 @@ unsigned int tcp_copy_connected_relays(TCP_Connections *tcp_c, NodeFormat *tcp_r
         }
 
         if (tcp_con->status == TCP_CONN_CONNECTED) {
-            memcpy(tcp_relays[copied].public_key.data.data(), tcp_con->connection->public_key, crypto_box_PUBLICKEYBYTES);
+            tcp_relays[copied].public_key = tcp_con->connection->public_key;
             tcp_relays[copied].ip_port = tcp_con->connection->ip_port;
 
             if (tcp_relays[copied].ip_port.ip.family == Family::FAMILY_AF_INET) {
@@ -1265,18 +1264,15 @@ int set_tcp_onion_status(TCP_Connections *tcp_c, _Bool status)
  *
  * Returns NULL on failure.
  */
-TCP_Connections *new_tcp_connections(const uint8_t *secret_key, TCP_Proxy_Info *proxy_info)
+TCP_Connections *new_tcp_connections(const SecretKey &secret_key, TCP_Proxy_Info *proxy_info)
 {
-    if (secret_key == NULL)
-        return NULL;
-
     TCP_Connections *temp = (TCP_Connections *) calloc(1, sizeof(TCP_Connections));
 
     if (temp == NULL)
         return NULL;
 
-    memcpy(temp->self_secret_key, secret_key, crypto_box_SECRETKEYBYTES);
-    crypto_scalarmult_curve25519_base(temp->self_public_key, temp->self_secret_key);
+    temp->self_secret_key = secret_key;
+    crypto_scalarmult_curve25519_base(temp->self_public_key.data.data(), temp->self_secret_key.data.data());
     temp->proxy_info = *proxy_info;
 
     return temp;

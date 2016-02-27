@@ -131,7 +131,7 @@ static unsigned int bit_by_bit_cmp (const bitox::PublicKey &pk1, const bitox::Pu
  * If shared key is already in shared_keys, copy it to shared_key.
  * else generate it into shared_key and copy it to shared_keys
  */
-void get_shared_key (Shared_Keys *shared_keys, uint8_t *shared_key, const bitox::SecretKey &secret_key, const bitox::PublicKey &public_key)
+void get_shared_key (Shared_Keys *shared_keys, bitox::SharedKey &shared_key, const bitox::SecretKey &secret_key, const bitox::PublicKey &public_key)
 {
     uint32_t i, num = ~0, curr = 0;
 
@@ -143,7 +143,7 @@ void get_shared_key (Shared_Keys *shared_keys, uint8_t *shared_key, const bitox:
         {
             if (public_key == shared_keys->keys[index].public_key)
             {
-                memcpy (shared_key, shared_keys->keys[index].shared_key, crypto_box_BEFORENMBYTES);
+                shared_key = shared_keys->keys[index].shared_key;
                 ++shared_keys->keys[index].times_requested;
                 shared_keys->keys[index].time_last_requested = unix_time();
                 return;
@@ -173,14 +173,14 @@ void get_shared_key (Shared_Keys *shared_keys, uint8_t *shared_key, const bitox:
         }
     }
 
-    encrypt_precompute (public_key.data.data(), secret_key.data.data(), shared_key);
+    encrypt_precompute (public_key, secret_key, shared_key.data.data());
 
     if (num != (uint32_t) ~0)
     {
         shared_keys->keys[curr].stored = 1;
         shared_keys->keys[curr].times_requested = 1;
         shared_keys->keys[curr].public_key = public_key;
-        memcpy (shared_keys->keys[curr].shared_key, shared_key, crypto_box_BEFORENMBYTES);
+        shared_keys->keys[curr].shared_key = shared_key;
         shared_keys->keys[curr].time_last_requested = unix_time();
     }
 }
@@ -188,12 +188,12 @@ void get_shared_key (Shared_Keys *shared_keys, uint8_t *shared_key, const bitox:
 /* Copy shared_key to encrypt/decrypt DHT packet from public_key into shared_key
  * for packets that we receive.
  */
-void DHT::get_shared_key_recv (uint8_t *shared_key, const bitox::PublicKey &public_key)
+void DHT::get_shared_key_recv (bitox::SharedKey &shared_key, const bitox::PublicKey &public_key)
 {
     get_shared_key (&shared_keys_recv, shared_key, self_secret_key, public_key);
 }
 
-void DHT::get_shared_key_sent (uint8_t *shared_key, const bitox::PublicKey &public_key)
+void DHT::get_shared_key_sent (bitox::SharedKey &shared_key, const bitox::PublicKey &public_key)
 {
     get_shared_key (&shared_keys_sent, shared_key, self_secret_key, public_key);
 }
@@ -1626,7 +1626,7 @@ void DHT::do_Close ()
     }
 }
 
-void DHT::getnodes (const IPPort *from_ipp, const bitox::PublicKey &from_id, const uint8_t *which_id)
+void DHT::getnodes (const IPPort *from_ipp, const bitox::PublicKey &from_id, const PublicKey &which_id)
 {
     getnodes (*from_ipp, from_id, which_id, nullptr);
 }
@@ -2182,7 +2182,7 @@ static int send_hardening_getnode_res (const DHT *dht, const NodeFormat *sendto,
     data[0] = CHECK_TYPE_GETNODE_RES;
     memcpy (data + 1, queried_client_id.data.data(), crypto_box_PUBLICKEYBYTES);
     memcpy (data + 1 + crypto_box_PUBLICKEYBYTES, nodes_data, nodes_data_length);
-    int len = create_request (dht->self_public_key.data.data(), dht->self_secret_key.data.data(), packet, sendto->public_key.data.data(), data,
+    int len = create_request (dht->self_public_key, dht->self_secret_key, packet, sendto->public_key, data,
                               sizeof (data), CRYPTO_PACKET_HARDENING);
 
     if (len == -1)

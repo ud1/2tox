@@ -171,7 +171,7 @@ enum {
 struct Messenger;
 
 typedef struct {
-    uint8_t real_pk[crypto_box_PUBLICKEYBYTES];
+    bitox::PublicKey real_pk;
     int friendcon_id;
 
     uint64_t friendrequest_lastsent; // Time at which the last friend request was sent.
@@ -315,12 +315,12 @@ int32_t m_addfriend(Messenger *m, const uint8_t *address, const uint8_t *data, u
  *  return -6 if bad checksum in address.
  *  return -8 if increasing the friend list size fails.
  */
-int32_t m_addfriend_norequest(Messenger *m, const uint8_t *real_pk);
+int32_t m_addfriend_norequest(Messenger *m, const bitox::PublicKey &real_pk);
 
 /*  return the friend number associated to that client id.
  *  return -1 if no such friend.
  */
-int32_t getfriend_id(const Messenger *m, const uint8_t *real_pk);
+int32_t getfriend_id(const Messenger *m, const bitox::PublicKey &real_pk);
 
 /* Copies the public key associated to that friend id into real_pk buffer.
  * Make sure that real_pk is of size crypto_box_PUBLICKEYBYTES.
@@ -328,7 +328,7 @@ int32_t getfriend_id(const Messenger *m, const uint8_t *real_pk);
  *  return 0 if success
  *  return -1 if failure
  */
-int get_real_pk(const Messenger *m, int32_t friendnumber, uint8_t *real_pk);
+int get_real_pk(const Messenger *m, int32_t friendnumber, bitox::PublicKey &real_pk);
 
 /*  return friend connection id on success.
  *  return -1 if failure.

@@ -98,11 +98,11 @@ int tox_group_peername(const Tox *tox, int groupnumber, int peernumber, uint8_t 
  * returns 0 on success
  * returns -1 on failure
  */
-int tox_group_peer_pubkey(const Tox *tox, int groupnumber, int peernumber, uint8_t *public_key)
+/*int tox_group_peer_pubkey(const Tox *tox, int groupnumber, int peernumber, uint8_t *public_key) // TODO
 {
     const Messenger *m = tox;
     return group_peer_pubkey(m->group_chat_object, groupnumber, peernumber, public_key);
-}
+}*/
 
 /* invite friendnumber to groupnumber
  * return 0 on success

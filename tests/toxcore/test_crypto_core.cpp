@@ -138,17 +138,16 @@ TEST(pub_key, cmp)
 
 TEST(encrypt_decrypt, alice_bob)
 {
-    uint8_t alice_publickey[crypto_box_PUBLICKEYBYTES] = {0};
-    uint8_t alice_secretkey[crypto_box_SECRETKEYBYTES] = {0};
+    PublicKey alice_publickey;
+    SecretKey alice_secretkey;
 
-    uint8_t bob_publickey[crypto_box_PUBLICKEYBYTES] = {0};
-    uint8_t bob_secretkey[crypto_box_SECRETKEYBYTES] = {0};
+    PublicKey bob_publickey;
+    SecretKey bob_secretkey;
 
-    crypto_box_keypair(alice_publickey, alice_secretkey);
-    crypto_box_keypair(bob_publickey, bob_secretkey);
+    crypto_box_keypair(alice_publickey.data.data(), alice_secretkey.data.data());
+    crypto_box_keypair(bob_publickey.data.data(), bob_secretkey.data.data());
 
-    uint8_t nonce[crypto_box_NONCEBYTES] = {0};
-    new_nonce(nonce);
+    Nonce nonce = Nonce::create_random();
 
     std::string data = "Hello world!";
 
@@ -162,57 +161,49 @@ TEST(encrypt_decrypt, alice_bob)
         SCOPED_TRACE("bad args for encryption");
         {
             SCOPED_TRACE("empty data");
-            ASSERT_EQ(-1, encrypt_data(bob_publickey, alice_secretkey, nonce, reinterpret_cast<const uint8_t*>(data.c_str()), 0, cyphertext) );
+            ASSERT_EQ(-1, encrypt_data(bob_publickey, alice_secretkey, nonce.data.data(), reinterpret_cast<const uint8_t*>(data.c_str()), 0, cyphertext) );
         }
         {
             SCOPED_TRACE("null ptrs");
-            ASSERT_EQ(-1, encrypt_data(bob_publickey, alice_secretkey, nonce, reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), NULL) );
-            ASSERT_EQ(-1, encrypt_data(bob_publickey, alice_secretkey, nonce, NULL, data.length(), cyphertext) );
-            ASSERT_EQ(-1, encrypt_data(bob_publickey, alice_secretkey, NULL, reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), cyphertext) );
-            ASSERT_EQ(-1, encrypt_data(bob_publickey, NULL, nonce, reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), cyphertext) );
-            ASSERT_EQ(-1, encrypt_data(NULL, alice_secretkey, nonce, reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), cyphertext) );
+            ASSERT_EQ(-1, encrypt_data(bob_publickey, alice_secretkey, nonce.data.data(), reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), NULL) );
+            ASSERT_EQ(-1, encrypt_data(bob_publickey, alice_secretkey, nonce.data.data(), NULL, data.length(), cyphertext) );
         }
     }
 
-    ASSERT_EQ(cyphertext_len, encrypt_data(bob_publickey, alice_secretkey, nonce, reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), cyphertext) );
+    ASSERT_EQ(cyphertext_len, encrypt_data(bob_publickey, alice_secretkey, nonce.data.data(), reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), cyphertext) );
 
     {
         SCOPED_TRACE("bad args for decryption");
         {
             SCOPED_TRACE("bad keys");
-            ASSERT_EQ(-1, decrypt_data(alice_publickey, alice_secretkey, nonce, cyphertext, cyphertext_len, message) );
-            ASSERT_EQ(-1, decrypt_data(bob_publickey, bob_secretkey, nonce, cyphertext, cyphertext_len, message) );
+            ASSERT_EQ(-1, decrypt_data(alice_publickey, alice_secretkey, nonce.data.data(), cyphertext, cyphertext_len, message) );
+            ASSERT_EQ(-1, decrypt_data(bob_publickey, bob_secretkey, nonce.data.data(), cyphertext, cyphertext_len, message) );
         }
         {
             SCOPED_TRACE("bad nonce");
-            uint8_t bad_nonce[crypto_box_NONCEBYTES] = {0};
-            new_nonce(bad_nonce);
-            ASSERT_EQ(-1, decrypt_data(alice_publickey, bob_secretkey, bad_nonce, cyphertext, cyphertext_len, message) );
-            ASSERT_EQ(-1, decrypt_data(bob_publickey, alice_secretkey, bad_nonce, cyphertext, cyphertext_len, message) );
+            Nonce bad_nonce = Nonce::create_random();
+            ASSERT_EQ(-1, decrypt_data(alice_publickey, bob_secretkey, bad_nonce.data.data(), cyphertext, cyphertext_len, message) );
+            ASSERT_EQ(-1, decrypt_data(bob_publickey, alice_secretkey, bad_nonce.data.data(), cyphertext, cyphertext_len, message) );
         }
         {
             SCOPED_TRACE("empty cyphertext");
-            ASSERT_EQ(-1, decrypt_data(alice_publickey, bob_secretkey, nonce, cyphertext, 0, message) );
-            ASSERT_EQ(-1, decrypt_data(bob_publickey, alice_secretkey, nonce, cyphertext, 0, message) );
+            ASSERT_EQ(-1, decrypt_data(alice_publickey, bob_secretkey, nonce.data.data(), cyphertext, 0, message) );
+            ASSERT_EQ(-1, decrypt_data(bob_publickey, alice_secretkey, nonce.data.data(), cyphertext, 0, message) );
         }
         {
             SCOPED_TRACE("null ptrs");
-            ASSERT_EQ(-1, decrypt_data(alice_publickey, bob_secretkey, nonce, cyphertext, cyphertext_len, NULL) );
-            ASSERT_EQ(-1, decrypt_data(bob_publickey, alice_secretkey, nonce, cyphertext, cyphertext_len, NULL) );
-            ASSERT_EQ(-1, decrypt_data(alice_publickey, bob_secretkey, nonce, NULL, cyphertext_len, message) );
-            ASSERT_EQ(-1, decrypt_data(bob_publickey, alice_secretkey, nonce, NULL, cyphertext_len, message) );
+            ASSERT_EQ(-1, decrypt_data(alice_publickey, bob_secretkey, nonce.data.data(), cyphertext, cyphertext_len, NULL) );
+            ASSERT_EQ(-1, decrypt_data(bob_publickey, alice_secretkey, nonce.data.data(), cyphertext, cyphertext_len, NULL) );
+            ASSERT_EQ(-1, decrypt_data(alice_publickey, bob_secretkey, nonce.data.data(), NULL, cyphertext_len, message) );
+            ASSERT_EQ(-1, decrypt_data(bob_publickey, alice_secretkey, nonce.data.data(), NULL, cyphertext_len, message) );
             ASSERT_EQ(-1, decrypt_data(alice_publickey, bob_secretkey, NULL, cyphertext, cyphertext_len, message) );
             ASSERT_EQ(-1, decrypt_data(bob_publickey, alice_secretkey, NULL, cyphertext, cyphertext_len, message) );
-            ASSERT_EQ(-1, decrypt_data(alice_publickey, NULL, nonce, cyphertext, cyphertext_len, message) );
-            ASSERT_EQ(-1, decrypt_data(bob_publickey, NULL, nonce, cyphertext, cyphertext_len, message) );
-            ASSERT_EQ(-1, decrypt_data(NULL, bob_secretkey, nonce, cyphertext, cyphertext_len, message) );
-            ASSERT_EQ(-1, decrypt_data(NULL, alice_secretkey, nonce, cyphertext, cyphertext_len, message) );
         }
     }
     {
         SCOPED_TRACE("good args for symmetric decryption");
-        ASSERT_EQ(message_len, decrypt_data(alice_publickey, bob_secretkey, nonce, cyphertext, cyphertext_len, message) );
-        ASSERT_EQ(message_len, decrypt_data(bob_publickey, alice_secretkey, nonce, cyphertext, cyphertext_len, message) );
+        ASSERT_EQ(message_len, decrypt_data(alice_publickey, bob_secretkey, nonce.data.data(), cyphertext, cyphertext_len, message) );
+        ASSERT_EQ(message_len, decrypt_data(bob_publickey, alice_secretkey, nonce.data.data(), cyphertext, cyphertext_len, message) );
     }
 
     std::string message_str(reinterpret_cast<const char*>(message), message_len);
@@ -224,17 +215,16 @@ TEST(encrypt_decrypt, alice_bob)
 
 TEST(request, create_and_handle)
 {
-    uint8_t alice_publickey[crypto_box_PUBLICKEYBYTES] = {0};
-    uint8_t alice_secretkey[crypto_box_SECRETKEYBYTES] = {0};
+    PublicKey alice_publickey;
+    SecretKey alice_secretkey;
 
-    uint8_t bob_publickey[crypto_box_PUBLICKEYBYTES] = {0};
-    uint8_t bob_secretkey[crypto_box_SECRETKEYBYTES] = {0};
+    PublicKey bob_publickey;
+    SecretKey bob_secretkey;
 
-    crypto_box_keypair(alice_publickey, alice_secretkey);
-    crypto_box_keypair(bob_publickey, bob_secretkey);
+    crypto_box_keypair(alice_publickey.data.data(), alice_secretkey.data.data());
+    crypto_box_keypair(bob_publickey.data.data(), bob_secretkey.data.data());
 
-    uint8_t nonce[crypto_box_NONCEBYTES] = {0};
-    new_nonce(nonce);
+    Nonce nonce = Nonce::create_random();
 
     std::string data = "Hello world!";
 
@@ -255,10 +245,7 @@ TEST(request, create_and_handle)
         {
             SCOPED_TRACE("null ptrs");
             ASSERT_EQ(-1, create_request(alice_publickey, alice_secretkey, packet, bob_publickey, NULL, data.length(), request_id));
-            ASSERT_EQ(-1, create_request(alice_publickey, alice_secretkey, packet, NULL, reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), request_id));
             ASSERT_EQ(-1, create_request(alice_publickey, alice_secretkey, NULL, bob_publickey, reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), request_id));
-            ASSERT_EQ(-1, create_request(alice_publickey, NULL, packet, bob_publickey, reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), request_id));
-            ASSERT_EQ(-1, create_request(NULL, alice_secretkey, packet, bob_publickey, reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), request_id));
         }
     }
     ASSERT_EQ(packet_len, create_request(alice_publickey, alice_secretkey, packet, bob_publickey, reinterpret_cast<const uint8_t*>(data.c_str()), data.length(), request_id));
@@ -268,25 +255,22 @@ TEST(request, create_and_handle)
         {
             SCOPED_TRACE("packet length");
             uint8_t handled_request_id = 0;
-            uint8_t handled_publickey[crypto_box_PUBLICKEYBYTES] = {0};
+            PublicKey handled_publickey;
             ASSERT_EQ(-1, handle_request(bob_publickey, bob_secretkey, handled_publickey, message, &handled_request_id, packet, MAX_CRYPTO_REQUEST_SIZE + 42));
             ASSERT_EQ(-1, handle_request(bob_publickey, bob_secretkey, handled_publickey, message, &handled_request_id, packet, 0));
         }
         {
             SCOPED_TRACE("null ptrs");
             uint8_t handled_request_id = 0;
-            uint8_t handled_publickey[crypto_box_PUBLICKEYBYTES] = {0};
+            PublicKey handled_publickey;
             ASSERT_EQ(-1, handle_request(bob_publickey, bob_secretkey, handled_publickey, message, &handled_request_id, NULL, packet_len));
             ASSERT_EQ(-1, handle_request(bob_publickey, bob_secretkey, handled_publickey, message, NULL, packet, packet_len));
             ASSERT_EQ(-1, handle_request(bob_publickey, bob_secretkey, handled_publickey, NULL, &handled_request_id, packet, packet_len));
-            ASSERT_EQ(-1, handle_request(bob_publickey, bob_secretkey, NULL, message, &handled_request_id, packet, packet_len));
-            ASSERT_EQ(-1, handle_request(bob_publickey, NULL, handled_publickey, message, &handled_request_id, packet, packet_len));
-            ASSERT_EQ(-1, handle_request(NULL, bob_secretkey, handled_publickey, message, &handled_request_id, packet, packet_len));
         }
         {
             SCOPED_TRACE("wrong keys");
             uint8_t handled_request_id = 0;
-            uint8_t handled_publickey[crypto_box_PUBLICKEYBYTES] = {0};
+            PublicKey handled_publickey;
             ASSERT_EQ(-1, handle_request(alice_publickey, bob_secretkey, handled_publickey, message, &handled_request_id, packet, packet_len));
             ASSERT_EQ(-1, handle_request(bob_publickey, alice_secretkey, handled_publickey, message, &handled_request_id, packet, packet_len));
             ASSERT_EQ(-1, handle_request(alice_publickey, alice_secretkey, handled_publickey, message, &handled_request_id, packet, packet_len));
@@ -295,13 +279,13 @@ TEST(request, create_and_handle)
     {
         SCOPED_TRACE("good args to handle request");
         uint8_t handled_request_id = 0;
-        uint8_t handled_publickey[crypto_box_PUBLICKEYBYTES] = {0};
+        PublicKey handled_publickey;
 
         ASSERT_EQ(message_len, handle_request(bob_publickey, bob_secretkey, handled_publickey, message, &handled_request_id, packet, packet_len));
         ASSERT_EQ(NET_PACKET_CRYPTO, packet[0]);
 
         ASSERT_EQ(request_id, handled_request_id);
-        ASSERT_EQ(0, public_key_cmp(alice_publickey, handled_publickey));
+        ASSERT_EQ(alice_publickey, handled_publickey);
 
         std::string message_str(reinterpret_cast<const char*>(message), message_len);
         ASSERT_EQ(data, message_str);

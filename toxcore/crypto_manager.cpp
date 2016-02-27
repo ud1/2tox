@@ -15,13 +15,13 @@ struct Shared_Keys
     struct
     {
         bitox::PublicKey public_key;
-        bitox::impl::SharedKey shared_key;
+        bitox::SharedKey shared_key;
         uint32_t times_requested = 0;
         bool stored = false; /* 0 if not, 1 if is */
         uint64_t time_last_requested = 0;
     } keys[256 * MAX_KEYS_PER_SLOT];
     
-    void get_shared_key (bitox::impl::SharedKey &out_shared_key, const bitox::SecretKey &secret_key, const bitox::PublicKey &public_key)
+    void get_shared_key (bitox::SharedKey &out_shared_key, const bitox::SecretKey &secret_key, const bitox::PublicKey &public_key)
     {
         uint32_t i, num = ~0, curr = 0;
 
@@ -63,7 +63,7 @@ struct Shared_Keys
             }
         }
 
-        encrypt_precompute (public_key.data.data(), secret_key.data.data(), out_shared_key.data.data());
+        encrypt_precompute (public_key, secret_key, out_shared_key.data.data());
 
         if (num != (uint32_t) ~0)
         {

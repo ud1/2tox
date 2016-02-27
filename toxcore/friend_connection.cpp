@@ -134,7 +134,7 @@ static Friend_Conn *get_conn(const Friend_Connections *fr_c, int friendcon_id)
 /* return friendcon_id corresponding to the real public key on success.
  * return -1 on failure.
  */
-int getfriend_conn_id_pk(Friend_Connections *fr_c, const uint8_t *real_pk)
+int getfriend_conn_id_pk(Friend_Connections *fr_c, const bitox::PublicKey &real_pk)
 {
     uint32_t i;
 
@@ -142,7 +142,7 @@ int getfriend_conn_id_pk(Friend_Connections *fr_c, const uint8_t *real_pk)
         Friend_Conn *friend_con = get_conn(fr_c, i);
 
         if (friend_con) {
-            if (public_key_cmp(friend_con->real_public_key, real_pk) == 0)
+            if (friend_con->real_public_key == real_pk)
                 return i;
         }
     }
@@ -155,7 +155,7 @@ int getfriend_conn_id_pk(Friend_Connections *fr_c, const uint8_t *real_pk)
  * return -1 on failure.
  * return 0 on success.
  */
-int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, IPPort ip_port, const uint8_t *public_key)
+int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, IPPort ip_port, const PublicKey &public_key)
 {
     Friend_Conn *friend_con = get_conn(fr_c, friendcon_id);
 
@@ -163,7 +163,7 @@ int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, IPPort ip_p
         return -1;
 
     /* Local ip and same pk means that they are hosting a TCP relay. */
-    if (Local_ip(ip_port.ip) && public_key_cmp(friend_con->dht_temp_pk, public_key) == 0) {
+    if (Local_ip(ip_port.ip) && friend_con->dht_temp_pk == public_key) {
         if (friend_con->dht_ip_port.ip.family != Family::FAMILY_NULL) {
             ip_port.ip = friend_con->dht_ip_port.ip;
         } else {
@@ -177,13 +177,13 @@ int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, IPPort ip_p
 
     for (i = 0; i < FRIEND_MAX_STORED_TCP_RELAYS; ++i) {
         if (friend_con->tcp_relays[i].ip_port.ip.family != Family::FAMILY_NULL
-                && public_key_cmp(friend_con->tcp_relays[i].public_key.data.data(), public_key) == 0) {
+                && friend_con->tcp_relays[i].public_key == public_key) {
             memset(&friend_con->tcp_relays[i], 0, sizeof(NodeFormat));
         }
     }
 
     friend_con->tcp_relays[index].ip_port = ip_port;
-    memcpy(friend_con->tcp_relays[index].public_key.data.data(), public_key, crypto_box_PUBLICKEYBYTES);
+    friend_con->tcp_relays[index].public_key = public_key;
     ++friend_con->tcp_relay_counter;
 
     return add_tcp_relay_peer(fr_c->net_crypto, friend_con->crypt_connection_id, ip_port, public_key);
@@ -249,7 +249,7 @@ static unsigned int send_relays(Friend_Connections *fr_c, int friendcon_id)
 }
 
 /* callback for recv TCP relay nodes. */
-static int tcp_relay_node_callback(void *object, uint32_t number, IPPort ip_port, const uint8_t *public_key)
+static int tcp_relay_node_callback(void *object, uint32_t number, IPPort ip_port, const PublicKey &public_key)
 {
     Friend_Connections *fr_c = (Friend_Connections *) object;
     Friend_Conn *friend_con = get_conn(fr_c, number);
@@ -288,7 +288,7 @@ static void dht_ip_callback(void *object, int32_t number, IPPort ip_port)
     }
 }
 
-static void change_dht_pk(Friend_Connections *fr_c, int friendcon_id, const uint8_t *dht_public_key)
+static void change_dht_pk(Friend_Connections *fr_c, int friendcon_id, const PublicKey &dht_public_key)
 {
     Friend_Conn *friend_con = get_conn(fr_c, friendcon_id);
 
@@ -307,7 +307,7 @@ static void change_dht_pk(Friend_Connections *fr_c, int friendcon_id, const uint
     }
 
     fr_c->dht->addfriend(dht_public_key, dht_ip_callback, fr_c, friendcon_id, &friend_con->dht_lock);
-    memcpy(friend_con->dht_temp_pk, dht_public_key, crypto_box_PUBLICKEYBYTES);
+    friend_con->dht_temp_pk = dht_public_key;
 }
 
 static int handle_status(void *object, int number, uint8_t status)
@@ -352,7 +352,7 @@ static int handle_status(void *object, int number, uint8_t status)
 }
 
 /* Callback for dht public key changes. */
-static void dht_pk_callback(void *object, int32_t number, const uint8_t *dht_public_key)
+static void dht_pk_callback(void *object, int32_t number, const bitox::PublicKey &dht_public_key)
 {
     Friend_Connections *fr_c = (Friend_Connections *) object;
     Friend_Conn *friend_con = get_conn(fr_c, number);
@@ -360,7 +360,7 @@ static void dht_pk_callback(void *object, int32_t number, const uint8_t *dht_pub
     if (!friend_con)
         return;
 
-    if (public_key_cmp(friend_con->dht_temp_pk, dht_public_key) == 0)
+    if (friend_con->dht_temp_pk == dht_public_key)
         return;
 
     change_dht_pk(fr_c, number, dht_public_key);
@@ -483,7 +483,7 @@ static int handle_new_connections(void *object, New_Connection *n_c)
             friend_con->dht_ip_port_lastrecv = unix_time();
         }
 
-        if (public_key_cmp(friend_con->dht_temp_pk, n_c->dht_public_key) != 0) {
+        if (friend_con->dht_temp_pk != n_c->dht_public_key) {
             change_dht_pk(fr_c, friendcon_id, n_c->dht_public_key);
         }
 
@@ -577,25 +577,22 @@ FriendConnectionStatus friend_con_connected(Friend_Connections *fr_c, int friend
  * return 0 on success.
  * return -1 on failure.
  */
-int get_friendcon_public_keys(uint8_t *real_pk, uint8_t *dht_temp_pk, Friend_Connections *fr_c, int friendcon_id)
+int get_friendcon_public_keys(bitox::PublicKey &real_pk, bitox::PublicKey &dht_temp_pk, Friend_Connections *fr_c, int friendcon_id)
 {
     Friend_Conn *friend_con = get_conn(fr_c, friendcon_id);
 
     if (!friend_con)
         return -1;
 
-    if (real_pk)
-        memcpy(real_pk, friend_con->real_public_key, crypto_box_PUBLICKEYBYTES);
-
-    if (dht_temp_pk)
-        memcpy(dht_temp_pk, friend_con->dht_temp_pk, crypto_box_PUBLICKEYBYTES);
+    real_pk = friend_con->real_public_key;
+    dht_temp_pk = friend_con->dht_temp_pk;
 
     return 0;
 }
 
 /* Set temp dht key for connection.
  */
-void set_dht_temp_pk(Friend_Connections *fr_c, int friendcon_id, const uint8_t *dht_temp_pk)
+void set_dht_temp_pk(Friend_Connections *fr_c, int friendcon_id, const bitox::PublicKey &dht_temp_pk)
 {
     dht_pk_callback(fr_c, friendcon_id, dht_temp_pk);
 }
@@ -654,7 +651,7 @@ int friend_connection_crypt_connection_id(Friend_Connections *fr_c, int friendco
  * return -1 on failure.
  * return connection id on success.
  */
-int new_friend_connection(Friend_Connections *fr_c, const uint8_t *real_public_key)
+int new_friend_connection(Friend_Connections *fr_c, const bitox::PublicKey &real_public_key)
 {
     int friendcon_id = getfriend_conn_id_pk(fr_c, real_public_key);
 
@@ -677,7 +674,7 @@ int new_friend_connection(Friend_Connections *fr_c, const uint8_t *real_public_k
 
     friend_con->crypt_connection_id = -1;
     friend_con->status = FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING;
-    memcpy(friend_con->real_public_key, real_public_key, crypto_box_PUBLICKEYBYTES);
+    friend_con->real_public_key = real_public_key;
     friend_con->onion_friendnum = onion_friendnum;
 
     recv_tcp_relay_handler(fr_c->onion_c, onion_friendnum, &tcp_relay_node_callback, fr_c, friendcon_id);
@@ -718,7 +715,7 @@ int kill_friend_connection(Friend_Connections *fr_c, int friendcon_id)
  *
  * This function will be called every time a friend request packet is received.
  */
-void set_friend_request_callback(Friend_Connections *fr_c, int (*fr_request_callback)(void *, const uint8_t *,
+void set_friend_request_callback(Friend_Connections *fr_c, int (*fr_request_callback)(void *, const PublicKey &,
                                  const uint8_t *, uint16_t), void *object)
 {
     fr_c->fr_request_callback = fr_request_callback;

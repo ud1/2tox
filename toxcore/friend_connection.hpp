@@ -68,8 +68,8 @@ struct Friend_Conn
 {
     FriendConnectionStatus status;
 
-    uint8_t real_public_key[crypto_box_PUBLICKEYBYTES];
-    uint8_t dht_temp_pk[crypto_box_PUBLICKEYBYTES];
+    bitox::PublicKey real_public_key;
+    bitox::PublicKey dht_temp_pk;
     uint16_t dht_lock;
     bitox::network::IPPort dht_ip_port;
     uint64_t dht_pk_lastrecv, dht_ip_port_lastrecv;
@@ -112,7 +112,7 @@ struct Friend_Connections
     Friend_Conn *conns;
     uint32_t num_cons;
 
-    int (*fr_request_callback)(void *object, const uint8_t *source_pubkey, const uint8_t *data, uint16_t len);
+    int (*fr_request_callback)(void *object, const bitox::PublicKey &source_pubkey, const uint8_t *data, uint16_t len);
     void *fr_request_object;
 
     uint64_t last_LANdiscovery;
@@ -121,7 +121,7 @@ struct Friend_Connections
 /* return friendcon_id corresponding to the real public key on success.
  * return -1 on failure.
  */
-int getfriend_conn_id_pk(Friend_Connections *fr_c, const uint8_t *real_pk);
+int getfriend_conn_id_pk(Friend_Connections *fr_c, const bitox::PublicKey &real_pk);
 
 /* Increases lock_count for the connection with friendcon_id by 1.
  *
@@ -141,18 +141,18 @@ FriendConnectionStatus friend_con_connected(Friend_Connections *fr_c, int friend
  * return 0 on success.
  * return -1 on failure.
  */
-int get_friendcon_public_keys(uint8_t *real_pk, uint8_t *dht_temp_pk, Friend_Connections *fr_c, int friendcon_id);
+int get_friendcon_public_keys(bitox::PublicKey &real_pk, bitox::PublicKey &dht_temp_pk, Friend_Connections *fr_c, int friendcon_id);
 
 /* Set temp dht key for connection.
  */
-void set_dht_temp_pk(Friend_Connections *fr_c, int friendcon_id, const uint8_t *dht_temp_pk);
+void set_dht_temp_pk(Friend_Connections *fr_c, int friendcon_id, const bitox::PublicKey &dht_temp_pk);
 
 /* Add a TCP relay associated to the friend.
  *
  * return -1 on failure.
  * return 0 on success.
  */
-int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, bitox::network::IPPort ip_port, const uint8_t *public_key);
+int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
 
 /* Set the callbacks for the friend connection.
  * index is the index (0 to (MAX_FRIEND_CONNECTION_CALLBACKS - 1)) we want the callback to set in the array.
@@ -178,7 +178,7 @@ int friend_connection_crypt_connection_id(Friend_Connections *fr_c, int friendco
  * return -1 on failure.
  * return connection id on success.
  */
-int new_friend_connection(Friend_Connections *fr_c, const uint8_t *real_public_key);
+int new_friend_connection(Friend_Connections *fr_c, const bitox::PublicKey &real_public_key);
 
 /* Kill a friend connection.
  *
@@ -200,7 +200,7 @@ int send_friend_request_packet(Friend_Connections *fr_c, int friendcon_id, uint3
  *
  * This function will be called every time a friend request is received.
  */
-void set_friend_request_callback(Friend_Connections *fr_c, int (*fr_request_callback)(void *, const uint8_t *,
+void set_friend_request_callback(Friend_Connections *fr_c, int (*fr_request_callback)(void *, const bitox::PublicKey &,
                                  const uint8_t *, uint16_t), void *object);
 
 /* Create new friend_connections instance. */

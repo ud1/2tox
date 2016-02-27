@@ -27,6 +27,10 @@
 
 #include "group.hpp"
 #include "util.hpp"
+#include "protocol.hpp"
+
+using namespace bitox;
+using namespace bitox::dht;
 
 /* return 1 if the groupnumber is not valid.
  * return 0 if the groupnumber is valid.
@@ -138,12 +142,12 @@ static Group_c *get_group_c(const Group_Chats *g_c, int groupnumber)
  * TODO: make this more efficient.
  */
 
-static int peer_in_chat(const Group_c *chat, const uint8_t *real_pk)
+static int peer_in_chat(const Group_c *chat, const PublicKey &real_pk)
 {
     uint32_t i;
 
     for (i = 0; i < chat->numpeers; ++i)
-        if (id_equal(chat->group[i].real_pk, real_pk))
+        if (chat->group[i].real_pk == real_pk)
             return i;
 
     return -1;
@@ -188,15 +192,15 @@ static int get_peer_index(Group_c *g, uint16_t peer_number)
 }
 
 
-static uint64_t calculate_comp_value(const uint8_t *pk1, const uint8_t *pk2)
+static uint64_t calculate_comp_value(const bitox::PublicKey &pk1, const bitox::PublicKey &pk2)
 {
     uint64_t cmp1 = 0, cmp2 = 0;
 
     unsigned int i;
 
     for (i = 0; i < sizeof(uint64_t); ++i) {
-        cmp1 = (cmp1 << 8) + (uint64_t)pk1[i];
-        cmp2 = (cmp2 << 8) + (uint64_t)pk2[i];
+        cmp1 = (cmp1 << 8) + (uint64_t)pk1.data[i];
+        cmp2 = (cmp2 << 8) + (uint64_t)pk2.data[i];
     }
 
     return (cmp1 - cmp2);
@@ -211,21 +215,21 @@ enum {
 static int friend_in_close(Group_c *g, int friendcon_id);
 static int add_conn_to_groupchat(Group_Chats *g_c, int friendcon_id, int groupnumber, uint8_t closest, uint8_t lock);
 
-static int add_to_closest(Group_Chats *g_c, int groupnumber, const uint8_t *real_pk, const uint8_t *temp_pk)
+static int add_to_closest(Group_Chats *g_c, int groupnumber, const bitox::PublicKey &real_pk, const bitox::PublicKey &temp_pk)
 {
     Group_c *g = get_group_c(g_c, groupnumber);
 
     if (!g)
         return -1;
 
-    if (public_key_cmp(g->real_pk, real_pk) == 0)
+    if (g->real_pk == real_pk)
         return -1;
 
     unsigned int i;
     unsigned int index = DESIRED_CLOSE_CONNECTIONS;
 
     for (i = 0; i < DESIRED_CLOSE_CONNECTIONS; ++i) {
-        if (g->closest_peers[i].entry && public_key_cmp(real_pk, g->closest_peers[i].real_pk) == 0) {
+        if (g->closest_peers[i].entry && real_pk == g->closest_peers[i].real_pk) {
             return 0;
         }
     }
@@ -267,19 +271,19 @@ static int add_to_closest(Group_Chats *g_c, int groupnumber, const uint8_t *real
         return -1;
     }
 
-    uint8_t old_real_pk[crypto_box_PUBLICKEYBYTES];
-    uint8_t old_temp_pk[crypto_box_PUBLICKEYBYTES];
+    PublicKey old_real_pk;
+    PublicKey old_temp_pk;
     uint8_t old = 0;
 
     if (g->closest_peers[index].entry) {
-        memcpy(old_real_pk, g->closest_peers[index].real_pk, crypto_box_PUBLICKEYBYTES);
-        memcpy(old_temp_pk, g->closest_peers[index].temp_pk, crypto_box_PUBLICKEYBYTES);
+        old_real_pk = g->closest_peers[index].real_pk;
+        old_temp_pk = g->closest_peers[index].temp_pk;
         old = 1;
     }
 
     g->closest_peers[index].entry = 1;
-    memcpy(g->closest_peers[index].real_pk, real_pk, crypto_box_PUBLICKEYBYTES);
-    memcpy(g->closest_peers[index].temp_pk, temp_pk, crypto_box_PUBLICKEYBYTES);
+    g->closest_peers[index].real_pk = real_pk;
+    g->closest_peers[index].temp_pk = temp_pk;
 
     if (old) {
         add_to_closest(g_c, groupnumber, old_real_pk, old_temp_pk);
@@ -291,7 +295,7 @@ static int add_to_closest(Group_Chats *g_c, int groupnumber, const uint8_t *real
     return 0;
 }
 
-static unsigned int pk_in_closest_peers(Group_c *g, uint8_t *real_pk)
+static unsigned int pk_in_closest_peers(Group_c *g, PublicKey &real_pk)
 {
     unsigned int i;
 
@@ -299,7 +303,7 @@ static unsigned int pk_in_closest_peers(Group_c *g, uint8_t *real_pk)
         if (!g->closest_peers[i].entry)
             continue;
 
-        if (public_key_cmp(g->closest_peers[i].real_pk, real_pk) == 0)
+        if (g->closest_peers[i].real_pk == real_pk)
             return 1;
 
     }
@@ -334,8 +338,8 @@ static int connect_to_closest(Group_Chats *g_c, int groupnumber)
         if (!g->close[i].closest)
             continue;
 
-        uint8_t real_pk[crypto_box_PUBLICKEYBYTES];
-        uint8_t dht_temp_pk[crypto_box_PUBLICKEYBYTES];
+        PublicKey real_pk;
+        PublicKey dht_temp_pk;
         get_friendcon_public_keys(real_pk, dht_temp_pk, g_c->fr_c, g->close[i].number);
 
         if (!pk_in_closest_peers(g, real_pk)) {
@@ -381,7 +385,7 @@ static int connect_to_closest(Group_Chats *g_c, int groupnumber)
  * return peer_index if success or peer already in chat.
  * return -1 if error.
  */
-static int addpeer(Group_Chats *g_c, int groupnumber, const uint8_t *real_pk, const uint8_t *temp_pk,
+static int addpeer(Group_Chats *g_c, int groupnumber, const PublicKey &real_pk, const PublicKey &temp_pk,
                    uint16_t peer_number)
 {
     Group_c *g = get_group_c(g_c, groupnumber);
@@ -393,7 +397,7 @@ static int addpeer(Group_Chats *g_c, int groupnumber, const uint8_t *real_pk, co
     int peer_index = peer_in_chat(g, real_pk);
 
     if (peer_index != -1) {
-        id_copy(g->group[peer_index].temp_pk, temp_pk);
+        g->group[peer_index].temp_pk = temp_pk;
 
         if (g->group[peer_index].peer_number != peer_number)
             return -1;
@@ -415,8 +419,8 @@ static int addpeer(Group_Chats *g_c, int groupnumber, const uint8_t *real_pk, co
     memset(&(temp[g->numpeers]), 0, sizeof(Group_Peer));
     g->group = temp;
 
-    id_copy(g->group[g->numpeers].real_pk, real_pk);
-    id_copy(g->group[g->numpeers].temp_pk, temp_pk);
+    g->group[g->numpeers].real_pk = real_pk;
+    g->group[g->numpeers].temp_pk = temp_pk;
     g->group[g->numpeers].peer_number = peer_number;
 
     g->group[g->numpeers].last_recv = unix_time();
@@ -474,7 +478,7 @@ static int delpeer(Group_Chats *g_c, int groupnumber, int peer_index)
     uint32_t i;
 
     for (i = 0; i < DESIRED_CLOSE_CONNECTIONS; ++i) { /* If peer is in closest_peers list, remove it. */
-        if (g->closest_peers[i].entry && id_equal(g->closest_peers[i].real_pk, g->group[peer_index].real_pk)) {
+        if (g->closest_peers[i].entry && g->closest_peers[i].real_pk == g->group[peer_index].real_pk) {
             g->closest_peers[i].entry = 0;
             g->changed = GROUPCHAT_CLOSEST_REMOVED;
             break;
@@ -678,8 +682,8 @@ int add_groupchat(Group_Chats *g_c, uint8_t type)
     new_symmetric_key(g->identifier + 1);
     g->identifier[0] = type;
     g->peer_number = 0; /* Founder is peer 0. */
-    memcpy(g->real_pk, g_c->m->net_crypto->self_public_key, crypto_box_PUBLICKEYBYTES);
-    int peer_index = addpeer(g_c, groupnumber, g->real_pk, g_c->m->dht->self_public_key.data.data(), 0);
+    g->real_pk = g_c->m->net_crypto->self_public_key;
+    int peer_index = addpeer(g_c, groupnumber, g->real_pk, g_c->m->dht->self_public_key, 0);
 
     if (peer_index == -1) {
         return -1;
@@ -734,7 +738,7 @@ int del_groupchat(Group_Chats *g_c, int groupnumber)
  * returns 0 on success
  * returns -1 on failure
  */
-int group_peer_pubkey(const Group_Chats *g_c, int groupnumber, int peernumber, uint8_t *pk)
+int group_peer_pubkey(const Group_Chats *g_c, int groupnumber, int peernumber, PublicKey &pk)
 {
     Group_c *g = get_group_c(g_c, groupnumber);
 
@@ -744,7 +748,7 @@ int group_peer_pubkey(const Group_Chats *g_c, int groupnumber, int peernumber, u
     if ((uint32_t)peernumber >= g->numpeers)
         return -1;
 
-    memcpy(pk, g->group[peernumber].real_pk, crypto_box_PUBLICKEYBYTES);
+    pk = g->group[peernumber].real_pk;
     return 0;
 }
 
@@ -953,7 +957,7 @@ int join_groupchat(Group_Chats *g_c, int32_t friendnumber, uint8_t expected_type
     uint16_t group_num = htons(groupnumber);
     g->status = GROUPCHAT_STATUS_VALID;
     g->number_joined = -1;
-    memcpy(g->real_pk, g_c->m->net_crypto->self_public_key, crypto_box_PUBLICKEYBYTES);
+    g->real_pk = g_c->m->net_crypto->self_public_key;
 
     uint8_t response[INVITE_RESPONSE_PACKET_SIZE];
     response[0] = INVITE_RESPONSE_ID;
@@ -1125,15 +1129,15 @@ int group_ping_send(const Group_Chats *g_c, int groupnumber)
  * return 0 on success
  * return -1 on failure
  */
-int group_new_peer_send(const Group_Chats *g_c, int groupnumber, uint16_t peer_num, const uint8_t *real_pk,
-                        uint8_t *temp_pk)
+int group_new_peer_send(const Group_Chats *g_c, int groupnumber, uint16_t peer_num, const PublicKey &real_pk,
+                        PublicKey &temp_pk)
 {
     uint8_t packet[GROUP_MESSAGE_NEW_PEER_LENGTH];
 
     peer_num = htons(peer_num);
     memcpy(packet, &peer_num, sizeof(uint16_t));
-    memcpy(packet + sizeof(uint16_t), real_pk, crypto_box_PUBLICKEYBYTES);
-    memcpy(packet + sizeof(uint16_t) + crypto_box_PUBLICKEYBYTES, temp_pk, crypto_box_PUBLICKEYBYTES);
+    memcpy(packet + sizeof(uint16_t), real_pk.data.data(), crypto_box_PUBLICKEYBYTES);
+    memcpy(packet + sizeof(uint16_t) + crypto_box_PUBLICKEYBYTES, temp_pk.data.data(), crypto_box_PUBLICKEYBYTES);
 
     if (send_message_group(g_c, groupnumber, GROUP_MESSAGE_NEW_PEER_ID, packet, sizeof(packet))) {
         return 0;
@@ -1297,7 +1301,7 @@ static void handle_friend_invite_packet(Messenger *m, uint32_t friendnumber, con
             other_groupnum = ntohs(other_groupnum);
 
             int friendcon_id = getfriendcon_id(m, friendnumber);
-            uint8_t real_pk[crypto_box_PUBLICKEYBYTES], temp_pk[crypto_box_PUBLICKEYBYTES];
+            PublicKey real_pk, temp_pk;
             get_friendcon_public_keys(real_pk, temp_pk, g_c->fr_c, friendcon_id);
 
             addpeer(g_c, groupnum, real_pk, temp_pk, peer_number);
@@ -1476,9 +1480,9 @@ static unsigned int send_peers(Group_Chats *g_c, int groupnumber, int friendcon_
         uint16_t peer_num = htons(g->group[i].peer_number);
         memcpy(p, &peer_num, sizeof(peer_num));
         p += sizeof(peer_num);
-        memcpy(p, g->group[i].real_pk, crypto_box_PUBLICKEYBYTES);
+        memcpy(p, g->group[i].real_pk.data.data(), crypto_box_PUBLICKEYBYTES);
         p += crypto_box_PUBLICKEYBYTES;
-        memcpy(p, g->group[i].temp_pk, crypto_box_PUBLICKEYBYTES);
+        memcpy(p, g->group[i].temp_pk.data.data(), crypto_box_PUBLICKEYBYTES);
         p += crypto_box_PUBLICKEYBYTES;
         *p = g->group[i].nick_len;
         p += 1;
@@ -1525,7 +1529,7 @@ static int handle_send_peers(Group_Chats *g_c, int groupnumber, const uint8_t *d
             return -1;
 
         if (g->status == GROUPCHAT_STATUS_VALID
-                && public_key_cmp(d, g_c->m->net_crypto->self_public_key) == 0) {
+                && public_key_cmp(d, g_c->m->net_crypto->self_public_key.data.data()) == 0) {
             g->peer_number = peer_num;
             g->status = GROUPCHAT_STATUS_CONNECTED;
             group_name_send(g_c, groupnumber, g_c->m->name, g_c->m->name_length);
@@ -1664,8 +1668,8 @@ static unsigned int send_lossy_all_close(const Group_Chats *g_c, int groupnumber
     uint64_t comp_val_old = ~0;
 
     for (i = 0; i < num_connected_closest; ++i) {
-        uint8_t real_pk[crypto_box_PUBLICKEYBYTES];
-        uint8_t dht_temp_pk[crypto_box_PUBLICKEYBYTES];
+        PublicKey real_pk;
+        PublicKey dht_temp_pk;
         get_friendcon_public_keys(real_pk, dht_temp_pk, g_c->fr_c, g->close[connected_closest[i]].number);
         uint64_t comp_val = calculate_comp_value(g->real_pk, real_pk);
 
@@ -1684,8 +1688,8 @@ static unsigned int send_lossy_all_close(const Group_Chats *g_c, int groupnumber
     comp_val_old = ~0;
 
     for (i = 0; i < num_connected_closest; ++i) {
-        uint8_t real_pk[crypto_box_PUBLICKEYBYTES];
-        uint8_t dht_temp_pk[crypto_box_PUBLICKEYBYTES];
+        PublicKey real_pk;
+        PublicKey dht_temp_pk;
         get_friendcon_public_keys(real_pk, dht_temp_pk, g_c->fr_c, g->close[connected_closest[i]].number);
         uint64_t comp_val = calculate_comp_value(real_pk, g->real_pk);
 

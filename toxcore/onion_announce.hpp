@@ -76,9 +76,9 @@ typedef struct {
  * return -1 on failure.
  * return packet length on success.
  */
-int create_announce_request(uint8_t *packet, uint16_t max_packet_length, const uint8_t *dest_client_id,
-                            const uint8_t *public_key, const uint8_t *secret_key, const uint8_t *ping_id, const uint8_t *client_id,
-                            const uint8_t *data_public_key, uint64_t sendback_data);
+int create_announce_request(uint8_t *packet, uint16_t max_packet_length, const bitox::PublicKey &dest_client_id,
+                            const bitox::PublicKey &public_key, const bitox::SecretKey &secret_key, const bitox::PublicKey &ping_id, const bitox::PublicKey &client_id,
+                            const bitox::PublicKey &data_public_key, uint64_t sendback_data);
 
 /* Create an onion data request packet in packet of max_packet_length (recommended size ONION_MAX_PACKET_SIZE).
  *
@@ -90,8 +90,8 @@ int create_announce_request(uint8_t *packet, uint16_t max_packet_length, const u
  * return -1 on failure.
  * return 0 on success.
  */
-int create_data_request(uint8_t *packet, uint16_t max_packet_length, const uint8_t *public_key,
-                        const uint8_t *encrypt_public_key, const uint8_t *nonce, const uint8_t *data, uint16_t length);
+int create_data_request(uint8_t *packet, uint16_t max_packet_length, const bitox::PublicKey &public_key,
+                        const bitox::PublicKey &encrypt_public_key, const uint8_t *nonce, const uint8_t *data, uint16_t length);
 
 /* Create and send an onion announce request packet.
  *
@@ -107,8 +107,8 @@ int create_data_request(uint8_t *packet, uint16_t max_packet_length, const uint8
  * return -1 on failure.
  * return 0 on success.
  */
-int send_announce_request(bitox::network::Networking_Core *net, const Onion_Path *path, bitox::dht::NodeFormat dest, const uint8_t *public_key,
-                          const uint8_t *secret_key, const uint8_t *ping_id, const uint8_t *client_id, const uint8_t *data_public_key,
+int send_announce_request(bitox::network::Networking_Core *net, const Onion_Path *path, bitox::dht::NodeFormat dest, const bitox::PublicKey &public_key,
+                          const bitox::SecretKey &secret_key, const uint8_t *ping_id, const bitox::PublicKey &client_id, const bitox::PublicKey &data_public_key,
                           uint64_t sendback_data);
 
 /* Create and send an onion data request packet.

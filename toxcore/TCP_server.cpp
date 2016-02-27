@@ -493,7 +493,7 @@ static int handle_TCP_handshake(TCP_Secure_Connection *con, const uint8_t *data,
         return -1;
 
     uint8_t shared_key[crypto_box_BEFORENMBYTES];
-    encrypt_precompute(data, self_secret_key, shared_key);
+    encrypt_precompute(PublicKey(data), self_secret_key, shared_key);
     uint8_t plain[TCP_HANDSHAKE_PLAIN_SIZE];
     int len = decrypt_data_symmetric(shared_key, data + crypto_box_PUBLICKEYBYTES,
                                      data + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES, TCP_HANDSHAKE_PLAIN_SIZE + crypto_box_MACBYTES, plain);
@@ -501,7 +501,7 @@ static int handle_TCP_handshake(TCP_Secure_Connection *con, const uint8_t *data,
     if (len != TCP_HANDSHAKE_PLAIN_SIZE)
         return -1;
 
-    con->public_key = data;
+    con->public_key = PublicKey(data);
     SecretKey temp_secret_key;
     uint8_t resp_plain[TCP_HANDSHAKE_PLAIN_SIZE];
     crypto_box_keypair(resp_plain, temp_secret_key.data.data());
@@ -521,7 +521,7 @@ static int handle_TCP_handshake(TCP_Secure_Connection *con, const uint8_t *data,
     if (TCP_SERVER_HANDSHAKE_SIZE != send(con->sock, response, TCP_SERVER_HANDSHAKE_SIZE, MSG_NOSIGNAL))
         return -1;
 
-    encrypt_precompute(plain, temp_secret_key, con->shared_key.data.data());
+    encrypt_precompute(PublicKey(plain), temp_secret_key, con->shared_key.data.data());
     con->status = TCP_STATUS_UNCONFIRMED;
     return 1;
 }
@@ -657,7 +657,7 @@ static int handle_TCP_routing_req(TCP_Server *TCP_server, uint32_t con_id, const
 /* return 0 on success.
  * return -1 on failure (connection must be killed).
  */
-static int handle_TCP_oob_send(TCP_Server *TCP_server, uint32_t con_id, const uint8_t *public_key, const uint8_t *data,
+static int handle_TCP_oob_send(TCP_Server *TCP_server, uint32_t con_id, const PublicKey &public_key, const uint8_t *data,
                                uint16_t length)
 {
     if (length == 0 || length > TCP_MAX_OOB_DATA_LENGTH)
@@ -752,7 +752,7 @@ static int handle_TCP_packet(TCP_Server *TCP_server, uint32_t con_id, const uint
             if (length != 1 + crypto_box_PUBLICKEYBYTES)
                 return -1;
 
-            return handle_TCP_routing_req(TCP_server, con_id, data + 1);
+            return handle_TCP_routing_req(TCP_server, con_id, PublicKey(data + 1));
         }
 
         case TCP_PACKET_CONNECTION_NOTIFICATION: {
@@ -802,7 +802,7 @@ static int handle_TCP_packet(TCP_Server *TCP_server, uint32_t con_id, const uint
             if (length <= 1 + crypto_box_PUBLICKEYBYTES)
                 return -1;
 
-            return handle_TCP_oob_send(TCP_server, con_id, data + 1, data + 1 + crypto_box_PUBLICKEYBYTES,
+            return handle_TCP_oob_send(TCP_server, con_id, PublicKey(data + 1), data + 1 + crypto_box_PUBLICKEYBYTES,
                                        length - (1 + crypto_box_PUBLICKEYBYTES));
         }
 

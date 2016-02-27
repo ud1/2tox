@@ -21,15 +21,15 @@ typedef struct Assoc Assoc;
 
 /* custom distance handler, if it's not ID-distance based
  * return values exactly like id_closest() */
-typedef int (*Assoc_distance_relative_callback)(const Assoc *assoc, void *callback_data, const uint8_t *client_id,
-        const uint8_t *client_id1, const uint8_t *client_id2);
+typedef int (*Assoc_distance_relative_callback)(const Assoc *assoc, void *callback_data, const bitox::PublicKey &client_id,
+        const bitox::PublicKey &client_id1, const bitox::PublicKey &client_id2);
 
 #define DISTANCE_INDEX_DISTANCE_BITS 44
 
 /* absolute distance: can be same for different client_id_check values
  * return value should have DISTANCE_INDEX_DISTANCE_BITS valid bits */
 typedef uint64_t (*Assoc_distance_absolute_callback)(const Assoc *assoc, void *callback_data,
-        const uint8_t *client_id_ref, const uint8_t *client_id_check);
+        const bitox::PublicKey &client_id_ref, const bitox::PublicKey &client_id_check);
 
 /*****************************************************************************/
 

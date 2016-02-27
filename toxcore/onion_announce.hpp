@@ -45,13 +45,14 @@
 #define ONION_DATA_REQUEST_MIN_SIZE (1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + crypto_box_MACBYTES)
 #define MAX_DATA_REQUEST_SIZE (ONION_MAX_DATA_SIZE - ONION_DATA_REQUEST_MIN_SIZE)
 
-typedef struct {
-    uint8_t public_key[crypto_box_PUBLICKEYBYTES];
+struct Onion_Announce_Entry
+{
+    bitox::PublicKey public_key;
     bitox::network::IPPort ret_ip_port;
     uint8_t ret[ONION_RETURN_3];
-    uint8_t data_public_key[crypto_box_PUBLICKEYBYTES];
+    bitox::PublicKey data_public_key;
     uint64_t time;
-} Onion_Announce_Entry;
+};
 
 typedef struct {
     DHT     *dht;
@@ -108,7 +109,7 @@ int create_data_request(uint8_t *packet, uint16_t max_packet_length, const bitox
  * return 0 on success.
  */
 int send_announce_request(bitox::network::Networking_Core *net, const Onion_Path *path, bitox::dht::NodeFormat dest, const bitox::PublicKey &public_key,
-                          const bitox::SecretKey &secret_key, const uint8_t *ping_id, const bitox::PublicKey &client_id, const bitox::PublicKey &data_public_key,
+                          const bitox::SecretKey &secret_key, const bitox::PublicKey &ping_id, const bitox::PublicKey &client_id, const bitox::PublicKey &data_public_key,
                           uint64_t sendback_data);
 
 /* Create and send an onion data request packet.
@@ -127,8 +128,8 @@ int send_announce_request(bitox::network::Networking_Core *net, const Onion_Path
  * return -1 on failure.
  * return 0 on success.
  */
-int send_data_request(bitox::network::Networking_Core *net, const Onion_Path *path, bitox::network::IPPort dest, const uint8_t *public_key,
-                      const uint8_t *encrypt_public_key, const uint8_t *nonce, const uint8_t *data, uint16_t length);
+int send_data_request(bitox::network::Networking_Core *net, const Onion_Path *path, bitox::network::IPPort dest, const bitox::PublicKey &public_key,
+                      const bitox::PublicKey &encrypt_public_key, const uint8_t *nonce, const uint8_t *data, uint16_t length);
 
 
 Onion_Announce *new_onion_announce(DHT *dht);

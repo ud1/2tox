@@ -264,9 +264,9 @@ void tox_get_savedata(const Tox *tox, uint8_t *data)
     }
 }
 
-bool tox_bootstrap(Tox *tox, const char *address, uint16_t port, const uint8_t *public_key, TOX_ERR_BOOTSTRAP *error)
+bool tox_bootstrap(Tox *tox, const char *address, uint16_t port, const PublicKey &public_key, TOX_ERR_BOOTSTRAP *error)
 {
-    if (!address || !public_key) {
+    if (!address) {
         SET_ERROR_PARAMETER(error, TOX_ERR_BOOTSTRAP_NULL);
         return 0;
     }
@@ -363,7 +363,7 @@ bool tox_add_tcp_relay(Tox *tox, const char *address, uint16_t port, const uint8
         }
 
         Messenger *m = tox;
-        add_tcp_relay(m->net_crypto, ip_port, public_key);
+        add_tcp_relay(m->net_crypto, ip_port, PublicKey(public_key));
         ++count;
     } while ((info = info->ai_next));
 
@@ -589,7 +589,7 @@ uint32_t tox_friend_add_norequest(Tox *tox, const uint8_t *public_key, TOX_ERR_F
     }
 
     Messenger *m = tox;
-    int32_t ret = m_addfriend_norequest(m, public_key);
+    int32_t ret = m_addfriend_norequest(m, PublicKey(public_key));
 
     if (ret >= 0) {
         SET_ERROR_PARAMETER(error, TOX_ERR_FRIEND_ADD_OK);
@@ -623,7 +623,7 @@ uint32_t tox_friend_by_public_key(const Tox *tox, const uint8_t *public_key, TOX
     }
 
     const Messenger *m = tox;
-    int32_t ret = getfriend_id(m, public_key);
+    int32_t ret = getfriend_id(m, PublicKey(public_key));
 
     if (ret == -1) {
         SET_ERROR_PARAMETER(error, TOX_ERR_FRIEND_BY_PUBLIC_KEY_NOT_FOUND);

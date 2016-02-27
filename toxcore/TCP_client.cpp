@@ -253,7 +253,7 @@ static int handle_handshake(TCP_Client_Connection *TCP_conn, const uint8_t *data
         return -1;
 
     memcpy(TCP_conn->recv_nonce.data.data(), plain + crypto_box_PUBLICKEYBYTES, crypto_box_NONCEBYTES);
-    encrypt_precompute(plain, TCP_conn->temp_secret_key, TCP_conn->shared_key.data.data());
+    encrypt_precompute(PublicKey(plain), TCP_conn->temp_secret_key, TCP_conn->shared_key.data.data());
     sodium_memzero(TCP_conn->temp_secret_key.data.data(), crypto_box_SECRETKEYBYTES);
     return 0;
 }
@@ -715,7 +715,7 @@ static int handle_TCP_packet(TCP_Client_Connection *conn, const uint8_t *data, u
 
             conn->connections[con_id].status = 1;
             conn->connections[con_id].number = ~0;
-            conn->connections[con_id].public_key = data + 2;
+            conn->connections[con_id].public_key = PublicKey(data + 2);
 
             if (conn->response_callback)
                 conn->response_callback(conn->response_callback_object, con_id, conn->connections[con_id].public_key);
@@ -802,7 +802,7 @@ static int handle_TCP_packet(TCP_Client_Connection *conn, const uint8_t *data, u
                 return -1;
 
             if (conn->oob_data_callback)
-                conn->oob_data_callback(conn->oob_data_callback_object, data + 1, data + 1 + crypto_box_PUBLICKEYBYTES,
+                conn->oob_data_callback(conn->oob_data_callback_object, PublicKey(data + 1), data + 1 + crypto_box_PUBLICKEYBYTES,
                                         length - (1 + crypto_box_PUBLICKEYBYTES));
 
             return 0;

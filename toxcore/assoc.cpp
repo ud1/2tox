@@ -107,7 +107,7 @@ struct Assoc {
 
 /* the complete distance would be crypto_box_PUBLICKEYBYTES long...
  * returns DISTANCE_INDEX_DISTANCE_BITS valid bits */
-static uint64_t id_distance(const Assoc *assoc, void *callback_data, const uint8_t *id_ref, const uint8_t *id_test)
+static uint64_t id_distance(const Assoc *assoc, void *callback_data, const PublicKey &id_ref, const PublicKey &id_test)
 {
     /* with BIG_ENDIAN, this would be a one-liner... */
     uint64_t retval = 0;
@@ -115,13 +115,13 @@ static uint64_t id_distance(const Assoc *assoc, void *callback_data, const uint8
     uint8_t pos = 0, bits = DISTANCE_INDEX_DISTANCE_BITS;
 
     while (bits > 8) {
-        uint8_t distance = abs((int8_t)id_ref[pos] ^ (int8_t)id_test[pos]);
+        uint8_t distance = abs((int8_t)id_ref.data[pos] ^ (int8_t)id_test.data[pos]);
         retval = (retval << 8) | distance;
         bits -= 8;
         pos++;
     }
 
-    return (retval << bits) | ((id_ref[pos] ^ id_test[pos]) >> (8 - bits));
+    return (retval << bits) | ((id_ref.data[pos] ^ id_test.data[pos]) >> (8 - bits));
 }
 
 /* qsort() callback for a sorting by id_distance() values */
@@ -173,7 +173,7 @@ static uint8_t *dist_index_id(Assoc *assoc, uint64_t dist_ind)
 }
 
 /* sorts first .. last, i.e. last is included */
-static void dist_index_bubble(Assoc *assoc, uint64_t *dist_list, size_t first, size_t last, uint8_t *id,
+static void dist_index_bubble(Assoc *assoc, uint64_t *dist_list, size_t first, size_t last, const PublicKey &id,
                               void *custom_data, Assoc_distance_relative_callback dist_rel_func)
 {
     size_t i, k;
@@ -185,7 +185,7 @@ static void dist_index_bubble(Assoc *assoc, uint64_t *dist_list, size_t first, s
             uint8_t *id2 = dist_index_id(assoc, dist_list[k]);
 
             if (id1 && id2)
-                if (dist_rel_func(assoc, custom_data, id, id1, id2) == 2) {
+                if (dist_rel_func(assoc, custom_data, id, PublicKey(id1), PublicKey(id2)) == 2) {
                     uint64_t swap = dist_list[i];
                     dist_list[i] = dist_list[k];
                     dist_list[k] = swap;
@@ -319,8 +319,8 @@ static int entry_heard_store(Client_entry *entry, const IPPTs *ippts)
 }
 
 /* maps Assoc callback signature to id_closest() */
-static int assoc_id_closest(const Assoc *assoc, void *callback_data, const uint8_t *client_id,
-                            const uint8_t *client_id1, const uint8_t *client_id2)
+static int assoc_id_closest(const Assoc *assoc, void *callback_data, const PublicKey &client_id,
+                            const PublicKey &client_id1, const PublicKey &client_id2)
 {
     return id_closest(client_id, client_id1, client_id2);
 }
@@ -652,7 +652,7 @@ uint8_t Assoc_get_close_entries(Assoc *assoc, Assoc_close_entries *state)
                             continue;
                 }
 
-                uint64_t dist = state->distance_absolute_func(assoc, state->custom_data, state->wanted_id, entry->client.public_key.data.data());
+                uint64_t dist = state->distance_absolute_func(assoc, state->custom_data, PublicKey(state->wanted_id), entry->client.public_key);
                 uint32_t index = b * assoc->candidates_bucket_size + i;
                 dist_list[index] = (dist << DISTANCE_INDEX_INDEX_BITS) | index;
             }
@@ -680,7 +680,7 @@ uint8_t Assoc_get_close_entries(Assoc *assoc, Assoc_close_entries *state)
             len++;
         else {
             if (len > 1)
-                dist_index_bubble(assoc, dist_list, ind_prev, ind_curr - 1, state->wanted_id, state->custom_data,
+                dist_index_bubble(assoc, dist_list, ind_prev, ind_curr - 1, PublicKey(state->wanted_id), state->custom_data,
                                   state->distance_relative_func);
 
             dist_prev = dist_curr;
@@ -690,7 +690,7 @@ uint8_t Assoc_get_close_entries(Assoc *assoc, Assoc_close_entries *state)
     }
 
     if (len > 1)
-        dist_index_bubble(assoc, dist_list, ind_prev, ind_curr - 1, state->wanted_id, state->custom_data,
+        dist_index_bubble(assoc, dist_list, ind_prev, ind_curr - 1, PublicKey(state->wanted_id), state->custom_data,
                           state->distance_relative_func);
 
     /* ok, now dist_list is a strictly ascending sorted list of nodes
@@ -898,7 +898,7 @@ void do_Assoc(Assoc *assoc, DHT *dht)
          * find the best heard candidate
          * find the best seen candidate
          * send getnode() requests to both */
-        uint8_t *target_id = NULL;
+        PublicKey *target_id = nullptr;
         Client_entry *heard = NULL, *seen = NULL;
         size_t i, k, m;
 
@@ -918,7 +918,7 @@ void do_Assoc(Assoc *assoc, DHT *dht)
                         continue;
 
                     if (!target_id)
-                        target_id = entry->client.public_key.data.data();
+                        target_id = &entry->client.public_key;
 
                     if (entry->seen_at) {
                         if (!seen)
@@ -946,7 +946,7 @@ void do_Assoc(Assoc *assoc, DHT *dht)
             LOGGER_DEBUG("[%u] => S[%s...] %s:%u", (uint32_t)(candidate % assoc->candidates_bucket_count),
                          idpart2str(seen->client.public_key, 8), ip_ntoa(&ippts->ip_port.ip), htons(ippts->ip_port.port));
 
-            dht->getnodes(&ippts->ip_port, seen->client.public_key.data.data(), target_id);
+            dht->getnodes(&ippts->ip_port, seen->client.public_key, *target_id);
             seen->getnodes = unix_time();
         }
 
@@ -956,7 +956,7 @@ void do_Assoc(Assoc *assoc, DHT *dht)
             LOGGER_DEBUG("[%u] => H[%s...] %s:%u", (uint32_t)(candidate % assoc->candidates_bucket_count),
                          idpart2str(heard->client.public_key, 8), ip_ntoa(&ipp->ip), htons(ipp->port));
 
-            dht->getnodes(ipp, heard->client.public_key.data.data(), target_id);
+            dht->getnodes(ipp, heard->client.public_key, *target_id);
             heard->getnodes = unix_time();
         }
 

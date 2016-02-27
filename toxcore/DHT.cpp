@@ -2064,7 +2064,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
         IPPort pinging;
         ip_copy (&pinging.ip, &ip);
         pinging.port = htons (firstport);
-        ping->send_ping_request (pinging, friends_list[friend_num].public_key.data.data());
+        ping->send_ping_request (pinging, friends_list[friend_num].public_key);
     }
     else
     {
@@ -2075,7 +2075,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
             IPPort pinging;
             ip_copy (&pinging.ip, &ip);
             pinging.port = htons (port);
-            ping->send_ping_request (pinging, friends_list[friend_num].public_key.data.data());
+            ping->send_ping_request (pinging, friends_list[friend_num].public_key);
         }
 
         friends_list[friend_num].nat.punching_index = i;
@@ -2091,7 +2091,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
         for (i = friends_list[friend_num].nat.punching_index2; i != top; ++i)
         {
             pinging.port = htons (port + i);
-            ping->send_ping_request (pinging, friends_list[friend_num].public_key.data.data());
+            ping->send_ping_request (pinging, friends_list[friend_num].public_key);
         }
 
         friends_list[friend_num].nat.punching_index2 = i - (MAX_PUNCHING_PORTS / 2);
@@ -2278,7 +2278,7 @@ static int handle_hardening (void *object, IPPort source, const bitox::PublicKey
             node.public_key = source_pubkey;
             memcpy (&tocheck_node, packet + 1, sizeof (NodeFormat));
 
-            if (dht->getnodes (tocheck_node.ip_port, tocheck_node.public_key, packet + 1 + sizeof (NodeFormat), &node) == -1)
+            if (dht->getnodes (tocheck_node.ip_port, tocheck_node.public_key, PublicKey(packet + 1 + sizeof (NodeFormat)), &node) == -1)
             {
                 return 1;
             }
@@ -2315,7 +2315,7 @@ static int handle_hardening (void *object, IPPort source, const bitox::PublicKey
                 return 1;
             }
 
-            IPPTsPng *temp = dht->get_closelist_IPPTsPng (packet + 1, nodes[0].ip_port.ip.family);
+            IPPTsPng *temp = dht->get_closelist_IPPTsPng (PublicKey(packet + 1), nodes[0].ip_port.ip.family);
 
             if (temp == NULL)
             {

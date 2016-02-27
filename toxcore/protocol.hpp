@@ -83,7 +83,7 @@ constexpr size_t MAX_SENT_NODES = 4;
 struct PublicKey
 {
     PublicKey() {}
-    PublicKey(const uint8_t *key_bytes)
+    explicit PublicKey(const uint8_t *key_bytes)
     {
         std::copy(key_bytes, key_bytes + PUBLIC_KEY_LEN, data.data());
     }

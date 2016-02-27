@@ -341,7 +341,7 @@ int tcp_send_onion_request(TCP_Connections *tcp_c, unsigned int tcp_connections_
  * return 0 on success.
  * return -1 on failure.
  */
-int tcp_send_oob_packet(TCP_Connections *tcp_c, unsigned int tcp_connections_number, const uint8_t *public_key,
+int tcp_send_oob_packet(TCP_Connections *tcp_c, unsigned int tcp_connections_number, const PublicKey &public_key,
                         const uint8_t *packet, uint16_t length)
 {
     TCP_con *tcp_con = get_tcp_connection(tcp_c, tcp_connections_number);
@@ -1024,7 +1024,7 @@ static int tcp_relay_on_online(TCP_Connections *tcp_c, int tcp_connections_numbe
     return 0;
 }
 
-static int add_tcp_relay_instance(TCP_Connections *tcp_c, IPPort ip_port, const uint8_t *relay_pk)
+static int add_tcp_relay_instance(TCP_Connections *tcp_c, IPPort ip_port, const PublicKey &relay_pk)
 {
     if (ip_port.ip.family == Family::FAMILY_TCP_INET) {
         ip_port.ip.family = Family::FAMILY_AF_INET;
@@ -1059,7 +1059,7 @@ static int add_tcp_relay_instance(TCP_Connections *tcp_c, IPPort ip_port, const 
  * return 0 on success.
  * return -1 on failure.
  */
-int add_tcp_relay_global(TCP_Connections *tcp_c, IPPort ip_port, const uint8_t *relay_pk)
+int add_tcp_relay_global(TCP_Connections *tcp_c, IPPort ip_port, const PublicKey &relay_pk)
 {
     int tcp_connections_number = find_tcp_connection_relay(tcp_c, relay_pk);
 
@@ -1112,7 +1112,7 @@ int add_tcp_number_relay_connection(TCP_Connections *tcp_c, int connections_numb
  * return 0 on success.
  * return -1 on failure.
  */
-int add_tcp_relay_connection(TCP_Connections *tcp_c, int connections_number, IPPort ip_port, const uint8_t *relay_pk)
+int add_tcp_relay_connection(TCP_Connections *tcp_c, int connections_number, IPPort ip_port, const PublicKey &relay_pk)
 {
     TCP_Connection_to *con_to = get_connection(tcp_c, connections_number);
 

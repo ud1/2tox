@@ -321,7 +321,7 @@ static int handle_LANdiscovery(void *object, const IPPort &source, const uint8_t
     if (length != crypto_box_PUBLICKEYBYTES + 1)
         return 1;
 
-    dht->bootstrap(source, packet + 1);
+    dht->bootstrap(source, PublicKey(packet + 1));
     return 0;
 }
 

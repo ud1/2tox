@@ -214,14 +214,14 @@ int add_tcp_number_relay_connection(TCP_Connections *tcp_c, int connections_numb
  * return 0 on success.
  * return -1 on failure.
  */
-int add_tcp_relay_connection(TCP_Connections *tcp_c, int connections_number, bitox::network::IPPort ip_port, const uint8_t *relay_pk);
+int add_tcp_relay_connection(TCP_Connections *tcp_c, int connections_number, bitox::network::IPPort ip_port, const bitox::PublicKey &relay_pk);
 
 /* Add a TCP relay to the instance.
  *
  * return 0 on success.
  * return -1 on failure.
  */
-int add_tcp_relay_global(TCP_Connections *tcp_c, bitox::network::IPPort ip_port, const uint8_t *relay_pk);
+int add_tcp_relay_global(TCP_Connections *tcp_c, bitox::network::IPPort ip_port, const bitox::PublicKey &relay_pk);
 
 /* Copy a maximum of max_num TCP relays we are connected to to tcp_relays.
  * NOTE that the family of the copied ip ports will be set to TCP_INET or TCP_INET6.

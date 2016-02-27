@@ -360,7 +360,7 @@ static int handle_crypto_handshake(const Net_Crypto *c, Nonce &nonce, PublicKey 
     crypto_hash_sha512(cookie_hash, packet + 1, COOKIE_LENGTH);
 
     uint8_t plain[crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + crypto_hash_sha512_BYTES + COOKIE_LENGTH];
-    int len = decrypt_data(cookie_plain, c->self_secret_key, packet + 1 + COOKIE_LENGTH,
+    int len = decrypt_data(PublicKey(cookie_plain), c->self_secret_key, packet + 1 + COOKIE_LENGTH,
                            packet + 1 + COOKIE_LENGTH + crypto_box_NONCEBYTES,
                            HANDSHAKE_PACKET_LENGTH - (1 + COOKIE_LENGTH + crypto_box_NONCEBYTES), plain);
 
@@ -1865,7 +1865,7 @@ static int tcp_oob_callback(void *object, const PublicKey &public_key, unsigned 
  * return 0 if it was added.
  * return -1 if it wasn't.
  */
-int add_tcp_relay_peer(Net_Crypto *c, int crypt_connection_id, IPPort ip_port, const uint8_t *public_key)
+int add_tcp_relay_peer(Net_Crypto *c, int crypt_connection_id, IPPort ip_port, const PublicKey &public_key)
 {
     Crypto_Connection *conn = get_crypto_connection(c, crypt_connection_id);
 
@@ -1883,7 +1883,7 @@ int add_tcp_relay_peer(Net_Crypto *c, int crypt_connection_id, IPPort ip_port, c
  * return 0 if it was added.
  * return -1 if it wasn't.
  */
-int add_tcp_relay(Net_Crypto *c, IPPort ip_port, const uint8_t *public_key)
+int add_tcp_relay(Net_Crypto *c, IPPort ip_port, const PublicKey &public_key)
 {
     pthread_mutex_lock(&c->tcp_mutex);
     int ret = add_tcp_relay_global(c->tcp_c, ip_port, public_key);

@@ -1523,7 +1523,7 @@ static int handle_send_peers(Group_Chats *g_c, int groupnumber, const uint8_t *d
         memcpy(&peer_num, d, sizeof(peer_num));
         peer_num = ntohs(peer_num);
         d += sizeof(uint16_t);
-        int peer_index = addpeer(g_c, groupnumber, d, d + crypto_box_PUBLICKEYBYTES, peer_num);
+        int peer_index = addpeer(g_c, groupnumber, PublicKey(d), PublicKey(d + crypto_box_PUBLICKEYBYTES), peer_num);
 
         if (peer_index == -1)
             return -1;
@@ -1863,7 +1863,7 @@ static void handle_message_packet_group(Group_Chats *g_c, int groupnumber, const
             uint16_t new_peer_number;
             memcpy(&new_peer_number, msg_data, sizeof(uint16_t));
             new_peer_number = ntohs(new_peer_number);
-            addpeer(g_c, groupnumber, msg_data + sizeof(uint16_t), msg_data + sizeof(uint16_t) + crypto_box_PUBLICKEYBYTES,
+            addpeer(g_c, groupnumber, PublicKey(msg_data + sizeof(uint16_t)), PublicKey(msg_data + sizeof(uint16_t) + crypto_box_PUBLICKEYBYTES),
                     new_peer_number);
         }
         break;

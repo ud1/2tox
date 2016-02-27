@@ -223,7 +223,7 @@ int handle_request(const PublicKey &self_public_key, const SecretKey &self_secre
     if ( public_key_cmp(packet_ptr.recv_public_key, self_public_key.data.data()) != 0)
         return -1;
 
-    public_key = packet_ptr.send_public_key;
+    public_key = PublicKey(packet_ptr.send_public_key);
 
     Secret_Stack_Buffer<MAX_CRYPTO_REQUEST_SIZE> message;
     uint8_t* const message_request_id = message.ptr + 0;

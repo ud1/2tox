@@ -52,6 +52,9 @@ enum {
 };
 struct TCP_Client_Connection
 {
+    bool send_pending_data();
+    void add_priority(const uint8_t *packet, uint16_t size, uint16_t sent);
+    
     uint8_t status;
     bitox::network::sock_t  sock;
     bitox::PublicKey self_public_key; /* our public key */
@@ -69,7 +72,8 @@ struct TCP_Client_Connection
     uint16_t last_packet_length;
     uint16_t last_packet_sent;
 
-    TCP_Priority_List *priority_queue_start, *priority_queue_end;
+    //TCP_Priority_List *priority_queue_start, *priority_queue_end;
+    std::deque<DataToSend> priority_queue;
 
     uint64_t kill_at;
 

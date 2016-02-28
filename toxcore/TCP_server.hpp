@@ -27,6 +27,7 @@
 #include "onion.hpp"
 #include <map>
 #include <vector>
+#include <deque>
 
 #ifdef TCP_SERVER_USE_EPOLL
 #include "sys/epoll.h"
@@ -85,11 +86,12 @@ enum class TCP_Secure_Connection_Status
     TCP_STATUS_CONFIRMED,
 };
 
-struct TCP_Priority_List
+struct DataToSend
 {
-    TCP_Priority_List *next;
-    uint16_t size, sent;
-    uint8_t data[];
+    DataToSend(const uint8_t *data, size_t size, size_t bytes_sent) : data(data, data + size), bytes_sent(bytes_sent) {}
+    
+    std::vector<uint8_t> data;
+    size_t bytes_sent;
 };
 
 enum class TCPClientConnectionStatus
@@ -99,7 +101,11 @@ enum class TCPClientConnectionStatus
     ONLINE
 };
 
-struct TCP_Secure_Connection {
+struct TCP_Secure_Connection
+{
+    bool send_pending_data();
+    void add_priority(const uint8_t *packet, size_t size, size_t sent);
+    
     TCP_Secure_Connection_Status status = TCP_Secure_Connection_Status::TCP_STATUS_NO_STATUS;
     bitox::network::sock_t  sock;
     bitox::PublicKey public_key;
@@ -117,12 +123,21 @@ struct TCP_Secure_Connection {
     uint16_t last_packet_length;
     uint16_t last_packet_sent;
 
-    TCP_Priority_List *priority_queue_start, *priority_queue_end;
+    std::deque<DataToSend> priority_queue;
 
     uint64_t identifier;
 
     uint64_t last_pinged;
     uint64_t ping_id;
+    
+// private:
+    bool send_pending_data_nonpriority();
+    int write_packet_TCP_secure_connection(const uint8_t *data, uint16_t length, bool priority);
+    int send_disconnect_notification(uint8_t id);
+    int send_connect_notification(uint8_t id);
+    int send_routing_response(uint8_t rpid, const bitox::PublicKey &public_key);
+    int read_connection_handshake(const bitox::SecretKey &self_secret_key);
+    int handle_TCP_handshake(const uint8_t *data, uint16_t length, const bitox::SecretKey &self_secret_key);
 };
 
 
@@ -155,6 +170,28 @@ struct TCP_Server
     uint64_t counter;
 
     std::map<bitox::PublicKey, int> accepted_key_list;
+    
+// private::
+    void do_TCP_accept_new();
+    int do_incoming(uint32_t i);
+    int do_unconfirmed(uint32_t i);
+    void do_confirmed_recv(uint32_t i);
+    void do_TCP_incomming();
+    void do_TCP_unconfirmed();
+    void do_TCP_confirmed();
+    int accept_connection(bitox::network::sock_t sock);
+    int confirm_TCP_connection(TCP_Secure_Connection *con, const uint8_t *data, uint16_t length);
+    int add_accepted(const TCP_Secure_Connection *con);
+    int kill_accepted(int index);
+    int get_TCP_connection_index(const bitox::PublicKey &public_key);
+    int del_accepted(int index);
+    int rm_connection_index(TCP_Secure_Connection *con, uint8_t con_number);
+    int handle_TCP_routing_req(uint32_t con_id, const bitox::PublicKey &public_key);
+    int handle_TCP_oob_send(uint32_t con_id, const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length);
+    int handle_TCP_packet(uint32_t con_id, const uint8_t *data, uint16_t length);
+#ifdef TCP_SERVER_USE_EPOLL
+    void do_TCP_epoll();
+#endif
 };
 
 /* return the amount of data in the tcp recv buffer.

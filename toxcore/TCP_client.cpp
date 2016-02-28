@@ -283,82 +283,42 @@ static int send_pending_data_nonpriority(TCP_Client_Connection *con)
     return -1;
 }
 
-/* return 0 if pending data was sent completely
- * return -1 if it wasn't
+/* return true if pending data was sent completely
+ * return false if it wasn't
  */
-static int send_pending_data(TCP_Client_Connection *con)
+bool TCP_Client_Connection::send_pending_data()
 {
     /* finish sending current non-priority packet */
-    if (send_pending_data_nonpriority(con) == -1) {
+    if (send_pending_data_nonpriority(this) == -1) {
         return -1;
     }
 
-    TCP_Priority_List *p = con->priority_queue_start;
+    while (!priority_queue.empty())
+    {
+        DataToSend &entry = priority_queue.front();
+        int left = entry.data.size() - entry.bytes_sent;
+        int len = send(sock, entry.data.data() + entry.bytes_sent, left, MSG_NOSIGNAL);
 
-    while (p) {
-        uint16_t left = p->size - p->sent;
-        int len = send(con->sock, p->data + p->sent, left, MSG_NOSIGNAL);
-
-        if (len != left) {
-            if (len > 0) {
-                p->sent += len;
-            }
+        if (len != left)
+        {
+            if (len > 0)
+                entry.bytes_sent += len;
 
             break;
         }
 
-        TCP_Priority_List *pp = p;
-        p = p->next;
-        free(pp);
+        priority_queue.pop_front();
     }
 
-    con->priority_queue_start = p;
-
-    if (!p) {
-        con->priority_queue_end = NULL;
-        return 0;
-    }
-
-    return -1;
+    return priority_queue.empty();
 }
 
-/* return 0 on failure (only if malloc fails)
- * return 1 on success
- */
-static _Bool add_priority(TCP_Client_Connection *con, const uint8_t *packet, uint16_t size, uint16_t sent)
+void TCP_Client_Connection::add_priority(const uint8_t *packet, uint16_t size, uint16_t sent)
 {
-    TCP_Priority_List *p = con->priority_queue_end, *newList;
-    newList = (TCP_Priority_List *) malloc(sizeof(TCP_Priority_List) + size);
-
-    if (!newList) {
-        return 0;
-    }
-
-    newList->next = NULL;
-    newList->size = size;
-    newList->sent = sent;
-    memcpy(newList->data, packet, size);
-
-    if (p) {
-        p->next = newList;
-    } else {
-        con->priority_queue_start = newList;
-    }
-
-    con->priority_queue_end = newList;
-    return 1;
-}
-
-static void wipe_priority_list(TCP_Client_Connection *con)
-{
-    TCP_Priority_List *p = con->priority_queue_start;
-
-    while (p) {
-        TCP_Priority_List *pp = p;
-        p = p->next;
-        free(pp);
-    }
-
+    assert(size && "Size must not be 0");
+    assert((sent < size) && "sent must be less than size");
+    
+    priority_queue.emplace_back(packet, size, sent);
 }
 
 /* return 1 on success.
@@ -366,14 +326,14 @@ static void wipe_priority_list(TCP_Client_Connection *con)
  * return -1 on failure (connection must be killed).
  */
 static int write_packet_TCP_secure_connection(TCP_Client_Connection *con, const uint8_t *data, uint16_t length,
-        _Bool priority)
+        bool priority)
 {
     if (length + crypto_box_MACBYTES > MAX_PACKET_SIZE)
         return -1;
 
-    _Bool sendpriority = 1;
+    bool sendpriority = 1;
 
-    if (send_pending_data(con) == -1) {
+    if (!con->send_pending_data()) {
         if (priority) {
             sendpriority = 0;
         } else {
@@ -397,13 +357,14 @@ static int write_packet_TCP_secure_connection(TCP_Client_Connection *con, const 
             len = 0;
         }
 
-        increment_nonce(con->sent_nonce.data.data());
+        ++con->sent_nonce;
 
         if ((unsigned int)len == sizeof(packet)) {
             return 1;
         }
 
-        return add_priority(con, packet, sizeof(packet), len);
+        con->add_priority(packet, sizeof(packet), len);
+        return 1;
     }
 
     len = send(con->sock, packet, sizeof(packet), MSG_NOSIGNAL);
@@ -411,7 +372,7 @@ static int write_packet_TCP_secure_connection(TCP_Client_Connection *con, const 
     if (len <= 0)
         return 0;
 
-    increment_nonce(con->sent_nonce.data.data());
+    ++con->sent_nonce;
 
     if ((unsigned int)len == sizeof(packet))
         return 1;
@@ -829,7 +790,7 @@ static int handle_TCP_packet(TCP_Client_Connection *conn, const uint8_t *data, u
 
 static int do_confirmed_TCP(TCP_Client_Connection *conn)
 {
-    send_pending_data(conn);
+    conn->send_pending_data();
     send_ping_response(conn);
     send_ping_request(conn);
 
@@ -879,7 +840,7 @@ void do_TCP_connection(TCP_Client_Connection *TCP_connection)
     }
 
     if (TCP_connection->status == TCP_CLIENT_PROXY_HTTP_CONNECTING) {
-        if (send_pending_data(TCP_connection) == 0) {
+        if (TCP_connection->send_pending_data()) {
             int ret = proxy_http_read_connection_response(TCP_connection);
 
             if (ret == -1) {
@@ -895,7 +856,7 @@ void do_TCP_connection(TCP_Client_Connection *TCP_connection)
     }
 
     if (TCP_connection->status == TCP_CLIENT_PROXY_SOCKS5_CONNECTING) {
-        if (send_pending_data(TCP_connection) == 0) {
+        if (TCP_connection->send_pending_data()) {
             int ret = socks5_read_handshake_response(TCP_connection);
 
             if (ret == -1) {
@@ -911,7 +872,7 @@ void do_TCP_connection(TCP_Client_Connection *TCP_connection)
     }
 
     if (TCP_connection->status == TCP_CLIENT_PROXY_SOCKS5_UNCONFIRMED) {
-        if (send_pending_data(TCP_connection) == 0) {
+        if (TCP_connection->send_pending_data()) {
             int ret = proxy_socks5_read_connection_response(TCP_connection);
 
             if (ret == -1) {
@@ -927,7 +888,7 @@ void do_TCP_connection(TCP_Client_Connection *TCP_connection)
     }
 
     if (TCP_connection->status == TCP_CLIENT_CONNECTING) {
-        if (send_pending_data(TCP_connection) == 0) {
+        if (TCP_connection->send_pending_data()) {
             TCP_connection->status = TCP_CLIENT_UNCONFIRMED;
         }
     }
@@ -963,7 +924,6 @@ void kill_TCP_connection(TCP_Client_Connection *TCP_connection)
     if (TCP_connection == NULL)
         return;
 
-    wipe_priority_list(TCP_connection);
     kill_sock(TCP_connection->sock);
     sodium_memzero(TCP_connection, sizeof(TCP_Client_Connection));
     free(TCP_connection);

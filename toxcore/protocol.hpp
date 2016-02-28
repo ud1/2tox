@@ -112,6 +112,8 @@ struct Nonce
 
     static Nonce create_empty();
     static Nonce create_random();
+    
+    Nonce& operator++();
 private:
     Nonce() {}
 };

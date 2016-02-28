@@ -852,7 +852,7 @@ static int send_data_packet(Net_Crypto *c, int crypt_connection_id, const uint8_
         return -1;
     }
 
-    increment_nonce(conn->sent_nonce.data.data());
+    ++conn->sent_nonce;
     pthread_mutex_unlock(&conn->mutex);
 
     return send_packet_to(c, crypt_connection_id, packet, sizeof(packet));

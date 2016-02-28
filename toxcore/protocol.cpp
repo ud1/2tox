@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <sodium.h>
+#include "crypto_core.hpp"
 
 namespace bitox
 {
@@ -59,6 +60,12 @@ Nonce Nonce::create_random()
     Nonce result;
     randombytes_buf(result.data.data(), NONCE_LEN);
     return result;
+}
+
+Nonce& Nonce::operator++()
+{
+    increment_nonce(data.data());
+    return *this;
 }
 
 namespace network

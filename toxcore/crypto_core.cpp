@@ -7,9 +7,10 @@
 #include <string.h>
 #include <limits>
 
-#include "protocol.hpp"
+#include "protocol_impl.hpp"
 
 using namespace bitox;
+using namespace bitox::impl;
 
 #if !(crypto_box_BEFORENMBYTES >= crypto_secretbox_KEYBYTES)
   #error "crypto_box_beforenm will not work correctly"
@@ -56,6 +57,13 @@ void encrypt_precompute(const PublicKey &public_key, const SecretKey &secret_key
 }
 
 
+SharedKey compute_shared_key(const PublicKey &public_key, const SecretKey &secret_key)
+{
+    SharedKey result;
+    crypto_box_beforenm(result.data.data(), public_key.data.data(), secret_key.data.data());
+    return result;
+}
+
 int encrypt_data(const PublicKey &public_key, const SecretKey &secret_key, const uint8_t* nonce,
                  const uint8_t* plain, uint32_t length, uint8_t* encrypted)
 {
@@ -79,6 +87,33 @@ int encrypt_data_symmetric(const uint8_t* precomputed_key, const uint8_t* nonce,
     return length + crypto_box_MACBYTES;
 }
 
+std::pair<PublicKey, SecretKey> generate_keys()
+{
+    PublicKey public_key;
+    SecretKey secret_key;
+    crypto_box_keypair(public_key.data.data(), secret_key.data.data());
+    return std::make_pair(public_key, secret_key);
+}
+
+bool encrypt_buffer (const BufferDataRange &data_to_encrypt, const SharedKey &shared_key, const Nonce &nonce, Buffer &out_encrypted_data)
+{
+    assert ( (data_to_encrypt.second > data_to_encrypt.first) && "Data range to encrypt must not be empty or negative");
+
+    size_t length = data_to_encrypt.second - data_to_encrypt.first;
+    out_encrypted_data.resize (length + MAC_BYTES_LEN);
+
+    return encrypt_data_symmetric (shared_key.data.data(), nonce.data.data(), data_to_encrypt.first, length, out_encrypted_data.data()) > 0;
+}
+
+bool decrypt_buffer (const BufferDataRange &data_to_decrypt, const SharedKey &shared_key, const Nonce &nonce, Buffer &out_decrypted_data)
+{
+    assert ( (data_to_decrypt.second > data_to_decrypt.first + MAC_BYTES_LEN) && "Data range to decrypt must not be empty or negative");
+    
+    size_t length = data_to_decrypt.second - data_to_decrypt.first;
+    out_decrypted_data.resize (length - MAC_BYTES_LEN);
+    
+    return decrypt_data_symmetric (shared_key.data.data(), nonce.data.data(), data_to_decrypt.first, length, out_decrypted_data.data()) > 0;
+}
 
 int decrypt_data(const PublicKey &public_key, const SecretKey &secret_key, const uint8_t* nonce,
                  const uint8_t* encrypted, uint32_t length, uint8_t* plain)

@@ -57,6 +57,14 @@ int encrypt_data(const bitox::PublicKey &public_key, const bitox::SecretKey &sec
  */
 int encrypt_data_symmetric(const uint8_t* precomputed_key, const uint8_t* nonce, const uint8_t* plain, uint32_t length,
                            uint8_t* encrypted);
+
+bitox::SharedKey compute_shared_key(const bitox::PublicKey &public_key, const bitox::SecretKey &secret_key);
+
+std::pair<bitox::PublicKey, bitox::SecretKey> generate_keys();
+
+bool encrypt_buffer (const bitox::BufferDataRange &data_to_encrypt, const bitox::SharedKey &shared_key, const bitox::Nonce &nonce, bitox::Buffer &out_encrypted_data);
+bool decrypt_buffer (const bitox::BufferDataRange &data_to_decrypt, const bitox::SharedKey &shared_key, const bitox::Nonce &nonce, bitox::Buffer &out_decrypted_data);
+
 /* Decrypts encrypted of length length to plain of length length - 16 using the
  * public key(32 bytes) of the sender, the secret key of the receiver and a 24 byte nonce.
  *

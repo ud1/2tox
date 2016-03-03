@@ -93,24 +93,14 @@ public:
 
     bool encrypt_buffer (const BufferDataRange &data_to_encrypt, const PublicKey &recipient_public_key, const Nonce &nonce, Buffer &out_encrypted_data) const
     {
-        assert ( (data_to_encrypt.second > data_to_encrypt.first) && "Data range to encrypt must not be empty or negative");
-
-        size_t length = data_to_encrypt.second - data_to_encrypt.first;
-        out_encrypted_data.resize (length + MAC_BYTES_LEN);
-
         SharedKey shared_key = get_shared_key (recipient_public_key);
-        return encrypt_data_symmetric (shared_key.data.data(), nonce.data.data(), data_to_encrypt.first, length, out_encrypted_data.data()) > 0;
+        return ::encrypt_buffer(data_to_encrypt, shared_key, nonce, out_encrypted_data);
     }
 
     bool decrypt_buffer (const BufferDataRange &data_to_decrypt, const PublicKey &sender_public_key, const Nonce &nonce, Buffer &out_decrypted_data) const
     {
-        assert ( (data_to_decrypt.second > data_to_decrypt.first + MAC_BYTES_LEN) && "Data range to decrypt must not be empty or negative");
-
-        size_t length = data_to_decrypt.second - data_to_decrypt.first;
-        out_decrypted_data.resize (length - MAC_BYTES_LEN);
-
         SharedKey shared_key = get_shared_key (sender_public_key);
-        return decrypt_data_symmetric (shared_key.data.data(), nonce.data.data(), data_to_decrypt.first, length, out_decrypted_data.data()) > 0;
+        return ::decrypt_buffer(data_to_decrypt, shared_key, nonce, out_decrypted_data);
     }
 
     const PublicKey &get_self_public_key() const

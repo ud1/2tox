@@ -108,14 +108,14 @@ struct TCP_Secure_Connection
     
     TCP_Secure_Connection_Status status = TCP_Secure_Connection_Status::TCP_STATUS_NO_STATUS;
     bitox::network::sock_t  sock;
-    bitox::PublicKey public_key;
+    bitox::PublicKey client_dht_public_key;
     bitox::Nonce recv_nonce = bitox::Nonce::create_empty(); /* Nonce of received packets. */
     bitox::Nonce sent_nonce = bitox::Nonce::create_empty(); /* Nonce of sent packets. */
     bitox::SharedKey shared_key;
     uint16_t next_packet_length;
     struct {
         TCPClientConnectionStatus status = TCPClientConnectionStatus::NOT_USED;
-        bitox::PublicKey public_key;
+        bitox::PublicKey client_dht_public_key;
         uint32_t index;
         uint8_t other_id;
     } connections[NUM_CLIENT_CONNECTIONS];

@@ -31,10 +31,13 @@
 #endif
 
 #include "util.hpp"
+#include "protocol_impl.hpp"
 #include <cassert>
+#include <tuple>
 
 using namespace bitox;
 using namespace bitox::network;
+using namespace bitox::impl;
 
 /* return 1 on success
  * return 0 on failure
@@ -83,7 +86,7 @@ int TCP_Server::get_TCP_connection_index(const PublicKey &public_key)
  */
 int TCP_Server::add_accepted(const TCP_Secure_Connection *con)
 {
-    int index = get_TCP_connection_index(con->public_key);
+    int index = get_TCP_connection_index(con->client_dht_public_key);
 
     if (index != -1) { /* If an old connection to the same public key exists, kill it. */
         kill_accepted(index);
@@ -109,10 +112,10 @@ int TCP_Server::add_accepted(const TCP_Secure_Connection *con)
         return -1;
     }
 
-    if (accepted_key_list.count(con->public_key))
+    if (accepted_key_list.count(con->client_dht_public_key))
         return -1;
     
-    accepted_key_list[con->public_key] = index;
+    accepted_key_list[con->client_dht_public_key] = index;
 
     memcpy(&accepted_connection_array[index], con, sizeof(TCP_Secure_Connection));
     accepted_connection_array[index].status = TCP_Secure_Connection_Status::TCP_STATUS_CONFIRMED;
@@ -137,7 +140,7 @@ int TCP_Server::del_accepted(int index)
     if (accepted_connection_array[index].status == TCP_Secure_Connection_Status::TCP_STATUS_NO_STATUS)
         return -1;
 
-    auto it = accepted_key_list.find(accepted_connection_array[index].public_key);
+    auto it = accepted_key_list.find(accepted_connection_array[index].client_dht_public_key);
     if (it == accepted_key_list.end() || it->second != index) // TODO is the index check required?
         return -1;
     
@@ -436,36 +439,47 @@ int TCP_Secure_Connection::handle_TCP_handshake(const uint8_t *data, uint16_t le
     if (status != TCP_Secure_Connection_Status::TCP_STATUS_CONNECTED)
         return -1;
 
-    uint8_t shared_key[crypto_box_BEFORENMBYTES];
-    encrypt_precompute(PublicKey(data), self_secret_key, shared_key);
-    uint8_t plain[TCP_HANDSHAKE_PLAIN_SIZE];
-    int len = decrypt_data_symmetric(shared_key, data + crypto_box_PUBLICKEYBYTES,
-                                     data + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES, TCP_HANDSHAKE_PLAIN_SIZE + crypto_box_MACBYTES, plain);
-
-    if (len != TCP_HANDSHAKE_PLAIN_SIZE)
+    InputBuffer input_packet(data, length);
+    
+    Nonce input_packet_nonce = Nonce::create_empty();
+    if ((input_packet >> client_dht_public_key >> input_packet_nonce).fail())
         return -1;
-
-    public_key = PublicKey(data);
+    
+    SharedKey shared_key = ::compute_shared_key(client_dht_public_key, self_secret_key);
+    
+    Buffer decrypted_input_packet;
+    if (!::decrypt_buffer(input_packet.get_buffer_data(), shared_key, input_packet_nonce, decrypted_input_packet))
+        return -1;
+    
+    PublicKey client_key;
+    InputBuffer decrypted_buffer(std::move(decrypted_input_packet));
+    if ((decrypted_buffer >> client_key >> recv_nonce).fail())
+        return -1;
+    
     SecretKey temp_secret_key;
-    uint8_t resp_plain[TCP_HANDSHAKE_PLAIN_SIZE];
-    crypto_box_keypair(resp_plain, temp_secret_key.data.data());
-    random_nonce(sent_nonce.data.data());
-    memcpy(resp_plain + crypto_box_PUBLICKEYBYTES, sent_nonce.data.data(), crypto_box_NONCEBYTES);
-    memcpy(recv_nonce.data.data(), plain + crypto_box_PUBLICKEYBYTES, crypto_box_NONCEBYTES);
-
+    PublicKey temp_public_key;
+    std::tie(temp_public_key, temp_secret_key) = generate_keys();
+    this->shared_key = ::compute_shared_key(client_key, temp_secret_key);
+    
+    sent_nonce = Nonce::create_random();
+    
+    OutputBuffer data_to_encrypt;
+    data_to_encrypt << temp_public_key << sent_nonce;
+    
+    Nonce temp_nonce = Nonce::create_random();
     uint8_t response[TCP_SERVER_HANDSHAKE_SIZE];
     new_nonce(response);
 
-    len = encrypt_data_symmetric(shared_key, response, resp_plain, TCP_HANDSHAKE_PLAIN_SIZE,
-                                 response + crypto_box_NONCEBYTES);
-
-    if (len != TCP_HANDSHAKE_PLAIN_SIZE + crypto_box_MACBYTES)
+    Buffer encrypted_data;
+    if (!encrypt_buffer(data_to_encrypt.get_buffer_data(), shared_key, temp_nonce, encrypted_data))
+        return -1;
+    
+    OutputBuffer output_packet;
+    output_packet << temp_nonce << encrypted_data;
+    
+    if (TCP_SERVER_HANDSHAKE_SIZE != send(sock, output_packet.begin(), output_packet.size(), MSG_NOSIGNAL))
         return -1;
 
-    if (TCP_SERVER_HANDSHAKE_SIZE != send(sock, response, TCP_SERVER_HANDSHAKE_SIZE, MSG_NOSIGNAL))
-        return -1;
-
-    encrypt_precompute(PublicKey(plain), temp_secret_key, this->shared_key.data.data());
     status = TCP_Secure_Connection_Status::TCP_STATUS_UNCONFIRMED;
     return 1;
 }
@@ -530,7 +544,7 @@ int TCP_Server::handle_TCP_routing_req(uint32_t con_id, const PublicKey &public_
     TCP_Secure_Connection *con = &accepted_connection_array[con_id];
 
     /* If person tries to cennect to himself we deny the request*/
-    if (con->public_key == public_key) {
+    if (con->client_dht_public_key == public_key) {
         if (con->send_routing_response(0, public_key) == -1)
             return -1;
 
@@ -539,7 +553,7 @@ int TCP_Server::handle_TCP_routing_req(uint32_t con_id, const PublicKey &public_
 
     for (i = 0; i < NUM_CLIENT_CONNECTIONS; ++i) {
         if (con->connections[i].status != TCPClientConnectionStatus::NOT_USED) {
-            if (public_key == con->connections[i].public_key) {
+            if (public_key == con->connections[i].client_dht_public_key) {
                 if (con->send_routing_response(i + NUM_RESERVED_PORTS, public_key) == -1) {
                     return -1;
                 } else {
@@ -567,7 +581,7 @@ int TCP_Server::handle_TCP_routing_req(uint32_t con_id, const PublicKey &public_
         return -1;
 
     con->connections[index].status = TCPClientConnectionStatus::OFFLINE;
-    con->connections[index].public_key = public_key;
+    con->connections[index].client_dht_public_key = public_key;
     int other_index = get_TCP_connection_index(public_key);
 
     if (other_index != -1) {
@@ -576,7 +590,7 @@ int TCP_Server::handle_TCP_routing_req(uint32_t con_id, const PublicKey &public_
 
         for (i = 0; i < NUM_CLIENT_CONNECTIONS; ++i) {
             if (other_conn->connections[i].status == TCPClientConnectionStatus::OFFLINE
-                    && other_conn->connections[i].public_key == con->public_key) {
+                    && other_conn->connections[i].client_dht_public_key == con->client_dht_public_key) {
                 other_id = i;
                 break;
             }
@@ -613,7 +627,7 @@ int TCP_Server::handle_TCP_oob_send(uint32_t con_id, const PublicKey &public_key
     if (other_index != -1) {
         uint8_t resp_packet[1 + crypto_box_PUBLICKEYBYTES + length];
         resp_packet[0] = TCP_PACKET_OOB_RECV;
-        memcpy(resp_packet + 1, con->public_key.data.data(), crypto_box_PUBLICKEYBYTES);
+        memcpy(resp_packet + 1, con->client_dht_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
         memcpy(resp_packet + 1 + crypto_box_PUBLICKEYBYTES, data, length);
         accepted_connection_array[other_index].write_packet_TCP_secure_connection(resp_packet,
                                            sizeof(resp_packet), 0);

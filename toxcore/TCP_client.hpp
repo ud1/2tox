@@ -29,18 +29,21 @@
 
 #define TCP_CONNECTION_TIMEOUT 10
 
-typedef enum {
+enum class TCP_PROXY_TYPE
+{
     TCP_PROXY_NONE,
     TCP_PROXY_HTTP,
     TCP_PROXY_SOCKS5
-} TCP_PROXY_TYPE;
+};
 
-typedef struct {
+struct TCP_Proxy_Info
+{
     bitox::network::IPPort ip_port;
-    uint8_t proxy_type; // a value from TCP_PROXY_TYPE
-} TCP_Proxy_Info;
+    TCP_PROXY_TYPE proxy_type;
+};
 
-enum {
+enum class ClientToServerConnectionStatus
+{
     TCP_CLIENT_NO_STATUS,
     TCP_CLIENT_PROXY_HTTP_CONNECTING,
     TCP_CLIENT_PROXY_SOCKS5_CONNECTING,
@@ -55,7 +58,7 @@ struct TCP_Client_Connection
     bool send_pending_data();
     void add_priority(const uint8_t *packet, uint16_t size, uint16_t sent);
     
-    uint8_t status;
+    ClientToServerConnectionStatus status;
     bitox::network::sock_t  sock;
     bitox::PublicKey self_public_key; /* our public key */
     bitox::PublicKey public_key; /* public key of the server */
@@ -84,13 +87,13 @@ struct TCP_Client_Connection
     uint64_t ping_request_id;
 
     struct {
-        uint8_t status; /* 0 if not used, 1 if other is offline, 2 if other is online. */
+        ClientToClientConnectionStatus status;
         bitox::PublicKey public_key;
         uint32_t number;
     } connections[NUM_CLIENT_CONNECTIONS];
     int (*response_callback)(void *object, uint8_t connection_id, const bitox::PublicKey &public_key);
     void *response_callback_object;
-    int (*status_callback)(void *object, uint32_t number, uint8_t connection_id, uint8_t status);
+    int (*status_callback)(void *object, uint32_t number, uint8_t connection_id, ClientToClientConnectionStatus status);
     void *status_callback_object;
     int (*data_callback)(void *object, uint32_t number, uint8_t connection_id, const uint8_t *data, uint16_t length);
     void *data_callback_object;
@@ -134,7 +137,7 @@ int send_routing_request(TCP_Client_Connection *con, bitox::PublicKey &public_ke
 void routing_response_handler(TCP_Client_Connection *con, int (*response_callback)(void *object, uint8_t connection_id,
                               const bitox::PublicKey &public_key), void *object);
 void routing_status_handler(TCP_Client_Connection *con, int (*status_callback)(void *object, uint32_t number,
-                            uint8_t connection_id, uint8_t status), void *object);
+                            uint8_t connection_id, ClientToClientConnectionStatus status), void *object);
 
 /* return 1 on success.
  * return 0 if could not send packet.

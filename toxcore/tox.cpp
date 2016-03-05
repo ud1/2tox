@@ -176,15 +176,15 @@ Tox *tox_new(const struct Tox_Options *options, TOX_ERR_NEW *error)
 
         switch (options->proxy_type) {
             case TOX_PROXY_TYPE_HTTP:
-                m_options.proxy_info.proxy_type = TCP_PROXY_HTTP;
+                m_options.proxy_info.proxy_type = TCP_PROXY_TYPE::TCP_PROXY_HTTP;
                 break;
 
             case TOX_PROXY_TYPE_SOCKS5:
-                m_options.proxy_info.proxy_type = TCP_PROXY_SOCKS5;
+                m_options.proxy_info.proxy_type = TCP_PROXY_TYPE::TCP_PROXY_SOCKS5;
                 break;
 
             case TOX_PROXY_TYPE_NONE:
-                m_options.proxy_info.proxy_type = TCP_PROXY_NONE;
+                m_options.proxy_info.proxy_type = TCP_PROXY_TYPE::TCP_PROXY_NONE;
                 break;
 
             default:
@@ -192,7 +192,7 @@ Tox *tox_new(const struct Tox_Options *options, TOX_ERR_NEW *error)
                 return NULL;
         }
 
-        if (m_options.proxy_info.proxy_type != TCP_PROXY_NONE) {
+        if (m_options.proxy_info.proxy_type != TCP_PROXY_TYPE::TCP_PROXY_NONE) {
             if (options->proxy_port == 0) {
                 SET_ERROR_PARAMETER(error, TOX_ERR_NEW_PROXY_BAD_PORT);
                 return NULL;

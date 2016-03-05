@@ -94,7 +94,7 @@ struct DataToSend
     size_t bytes_sent;
 };
 
-enum class TCPClientConnectionStatus
+enum class ClientToClientConnectionStatus
 {
     NOT_USED,
     OFFLINE,
@@ -114,7 +114,7 @@ struct TCP_Secure_Connection
     bitox::SharedKey shared_key;
     uint16_t next_packet_length;
     struct {
-        TCPClientConnectionStatus status = TCPClientConnectionStatus::NOT_USED;
+        ClientToClientConnectionStatus status = ClientToClientConnectionStatus::NOT_USED;
         bitox::PublicKey client_dht_public_key;
         uint32_t index;
         uint8_t other_id;

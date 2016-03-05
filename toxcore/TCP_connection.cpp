@@ -860,7 +860,7 @@ static int tcp_response_callback(void *object, uint8_t connection_id, const bito
     return 0;
 }
 
-static int tcp_status_callback(void *object, uint32_t number, uint8_t connection_id, uint8_t status)
+static int tcp_status_callback(void *object, uint32_t number, uint8_t connection_id, ClientToClientConnectionStatus status)
 {
     TCP_Client_Connection *TCP_client_con = (TCP_Client_Connection *) object;
     TCP_Connections *tcp_c = (TCP_Connections *) TCP_client_con->custom_object;
@@ -872,7 +872,7 @@ static int tcp_status_callback(void *object, uint32_t number, uint8_t connection
     if (!con_to || !tcp_con)
         return -1;
 
-    if (status == 1) {
+    if (status == ClientToClientConnectionStatus::OFFLINE) {
         if (set_tcp_connection_status(con_to, tcp_connections_number, TCP_CONNECTIONS_STATUS_REGISTERED, connection_id) == -1)
             return -1;
 
@@ -881,7 +881,7 @@ static int tcp_status_callback(void *object, uint32_t number, uint8_t connection
         if (con_to->status == TCP_CONN_SLEEPING) {
             --tcp_con->sleep_count;
         }
-    } else if (status == 2) {
+    } else if (status == ClientToClientConnectionStatus::ONLINE) {
         if (set_tcp_connection_status(con_to, tcp_connections_number, TCP_CONNECTIONS_STATUS_ONLINE, connection_id) == -1)
             return -1;
 
@@ -1292,7 +1292,7 @@ static void do_tcp_conns(TCP_Connections *tcp_c)
                 /* callbacks can change TCP connection address. */
                 tcp_con = get_tcp_connection(tcp_c, i);
 
-                if (tcp_con->connection->status == TCP_CLIENT_DISCONNECTED) {
+                if (tcp_con->connection->status == ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED) {
                     if (tcp_con->status == TCP_CONN_CONNECTED) {
                         reconnect_tcp_relay_connection(tcp_c, i);
                     } else {
@@ -1302,7 +1302,7 @@ static void do_tcp_conns(TCP_Connections *tcp_c)
                     continue;
                 }
 
-                if (tcp_con->status == TCP_CONN_VALID && tcp_con->connection->status == TCP_CLIENT_CONFIRMED) {
+                if (tcp_con->status == TCP_CONN_VALID && tcp_con->connection->status == ClientToServerConnectionStatus::TCP_CLIENT_CONFIRMED) {
                     tcp_relay_on_online(tcp_c, i);
                 }
 

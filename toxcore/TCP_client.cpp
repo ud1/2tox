@@ -40,7 +40,7 @@ using namespace bitox::network;
  */
 static int connect_sock_to(sock_t sock, IPPort ip_port, TCP_Proxy_Info *proxy_info)
 {
-    if (proxy_info->proxy_type != TCP_PROXY_NONE) {
+    if (proxy_info->proxy_type != TCP_PROXY_TYPE::TCP_PROXY_NONE) {
         ip_port = proxy_info->ip_port;
     }
 
@@ -403,7 +403,7 @@ void routing_response_handler(TCP_Client_Connection *con, int (*response_callbac
 }
 
 void routing_status_handler(TCP_Client_Connection *con, int (*status_callback)(void *object, uint32_t number,
-                            uint8_t connection_id, uint8_t status), void *object)
+                            uint8_t connection_id, ClientToClientConnectionStatus status), void *object)
 {
     con->status_callback = status_callback;
     con->status_callback_object = object;
@@ -421,7 +421,7 @@ int send_data(TCP_Client_Connection *con, uint8_t con_id, const uint8_t *data, u
     if (con_id >= NUM_CLIENT_CONNECTIONS)
         return -1;
 
-    if (con->connections[con_id].status != 2)
+    if (con->connections[con_id].status != ClientToClientConnectionStatus::ONLINE)
         return -1;
 
     if (send_ping_response(con) == 0 || send_ping_request(con) == 0)
@@ -462,7 +462,7 @@ int set_tcp_connection_number(TCP_Client_Connection *con, uint8_t con_id, uint32
     if (con_id >= NUM_CLIENT_CONNECTIONS)
         return -1;
 
-    if (con->connections[con_id].status == 0)
+    if (con->connections[con_id].status == ClientToClientConnectionStatus::NOT_USED)
         return -1;
 
     con->connections[con_id].number = number;
@@ -546,7 +546,7 @@ int send_disconnect_request(TCP_Client_Connection *con, uint8_t con_id)
     if (con_id >= NUM_CLIENT_CONNECTIONS)
         return -1;
 
-    con->connections[con_id].status = 0;
+    con->connections[con_id].status = ClientToClientConnectionStatus::NOT_USED;
     con->connections[con_id].number = 0;
     return send_disconnect_notification(con, con_id + NUM_RESERVED_PORTS);
 }
@@ -587,11 +587,11 @@ TCP_Client_Connection *new_TCP_connection(IPPort ip_port, const PublicKey &publi
     TCP_Proxy_Info default_proxyinfo;
 
     if (proxy_info == NULL) {
-        default_proxyinfo.proxy_type = TCP_PROXY_NONE;
+        default_proxyinfo.proxy_type = TCP_PROXY_TYPE::TCP_PROXY_NONE;
         proxy_info = &default_proxyinfo;
     }
 
-    if (proxy_info->proxy_type != TCP_PROXY_NONE) {
+    if (proxy_info->proxy_type != TCP_PROXY_TYPE::TCP_PROXY_NONE) {
         family = proxy_info->ip_port.ip.family;
     }
 
@@ -626,18 +626,18 @@ TCP_Client_Connection *new_TCP_connection(IPPort ip_port, const PublicKey &publi
     temp->proxy_info = *proxy_info;
 
     switch (proxy_info->proxy_type) {
-        case TCP_PROXY_HTTP:
-            temp->status = TCP_CLIENT_PROXY_HTTP_CONNECTING;
+        case TCP_PROXY_TYPE::TCP_PROXY_HTTP:
+            temp->status = ClientToServerConnectionStatus::TCP_CLIENT_PROXY_HTTP_CONNECTING;
             proxy_http_generate_connection_request(temp);
             break;
 
-        case TCP_PROXY_SOCKS5:
-            temp->status = TCP_CLIENT_PROXY_SOCKS5_CONNECTING;
+        case TCP_PROXY_TYPE::TCP_PROXY_SOCKS5:
+            temp->status = ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_CONNECTING;
             proxy_socks5_generate_handshake(temp);
             break;
 
-        case TCP_PROXY_NONE:
-            temp->status = TCP_CLIENT_CONNECTING;
+        case TCP_PROXY_TYPE::TCP_PROXY_NONE:
+            temp->status = ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING;
 
             if (generate_handshake(temp) == -1) {
                 kill_sock(sock);
@@ -671,10 +671,10 @@ static int handle_TCP_packet(TCP_Client_Connection *conn, const uint8_t *data, u
 
             uint8_t con_id = data[1] - NUM_RESERVED_PORTS;
 
-            if (conn->connections[con_id].status != 0)
+            if (conn->connections[con_id].status != ClientToClientConnectionStatus::NOT_USED)
                 return 0;
 
-            conn->connections[con_id].status = 1;
+            conn->connections[con_id].status = ClientToClientConnectionStatus::OFFLINE;
             conn->connections[con_id].number = ~0;
             conn->connections[con_id].public_key = PublicKey(data + 2);
 
@@ -693,10 +693,10 @@ static int handle_TCP_packet(TCP_Client_Connection *conn, const uint8_t *data, u
 
             uint8_t con_id = data[1] - NUM_RESERVED_PORTS;
 
-            if (conn->connections[con_id].status != 1)
+            if (conn->connections[con_id].status != ClientToClientConnectionStatus::OFFLINE)
                 return 0;
 
-            conn->connections[con_id].status = 2;
+            conn->connections[con_id].status = ClientToClientConnectionStatus::ONLINE;
 
             if (conn->status_callback)
                 conn->status_callback(conn->status_callback_object, conn->connections[con_id].number, con_id,
@@ -714,13 +714,13 @@ static int handle_TCP_packet(TCP_Client_Connection *conn, const uint8_t *data, u
 
             uint8_t con_id = data[1] - NUM_RESERVED_PORTS;
 
-            if (conn->connections[con_id].status == 0)
+            if (conn->connections[con_id].status == ClientToClientConnectionStatus::NOT_USED)
                 return 0;
 
-            if (conn->connections[con_id].status != 2)
+            if (conn->connections[con_id].status != ClientToClientConnectionStatus::ONLINE)
                 return 0;
 
-            conn->connections[con_id].status = 1;
+            conn->connections[con_id].status = ClientToClientConnectionStatus::OFFLINE;
 
             if (conn->status_callback)
                 conn->status_callback(conn->status_callback_object, conn->connections[con_id].number, con_id,
@@ -809,19 +809,19 @@ static int do_confirmed_TCP(TCP_Client_Connection *conn)
     }
 
     if (conn->ping_id && is_timeout(conn->last_pinged, TCP_PING_TIMEOUT)) {
-        conn->status = TCP_CLIENT_DISCONNECTED;
+        conn->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
         return 0;
     }
 
     while ((len = read_packet_TCP_secure_connection(conn->sock, &conn->next_packet_length, conn->shared_key,
                   conn->recv_nonce, packet, sizeof(packet)))) {
         if (len == -1) {
-            conn->status = TCP_CLIENT_DISCONNECTED;
+            conn->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
             break;
         }
 
         if (handle_TCP_packet(conn, packet, len) == -1) {
-            conn->status = TCP_CLIENT_DISCONNECTED;
+            conn->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
             break;
         }
     }
@@ -835,85 +835,85 @@ void do_TCP_connection(TCP_Client_Connection *TCP_connection)
 {
     unix_time_update();
 
-    if (TCP_connection->status == TCP_CLIENT_DISCONNECTED) {
+    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED) {
         return;
     }
 
-    if (TCP_connection->status == TCP_CLIENT_PROXY_HTTP_CONNECTING) {
+    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_PROXY_HTTP_CONNECTING) {
         if (TCP_connection->send_pending_data()) {
             int ret = proxy_http_read_connection_response(TCP_connection);
 
             if (ret == -1) {
                 TCP_connection->kill_at = 0;
-                TCP_connection->status = TCP_CLIENT_DISCONNECTED;
+                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
             }
 
             if (ret == 1) {
                 generate_handshake(TCP_connection);
-                TCP_connection->status = TCP_CLIENT_CONNECTING;
+                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING;
             }
         }
     }
 
-    if (TCP_connection->status == TCP_CLIENT_PROXY_SOCKS5_CONNECTING) {
+    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_CONNECTING) {
         if (TCP_connection->send_pending_data()) {
             int ret = socks5_read_handshake_response(TCP_connection);
 
             if (ret == -1) {
                 TCP_connection->kill_at = 0;
-                TCP_connection->status = TCP_CLIENT_DISCONNECTED;
+                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
             }
 
             if (ret == 1) {
                 proxy_socks5_generate_connection_request(TCP_connection);
-                TCP_connection->status = TCP_CLIENT_PROXY_SOCKS5_UNCONFIRMED;
+                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_UNCONFIRMED;
             }
         }
     }
 
-    if (TCP_connection->status == TCP_CLIENT_PROXY_SOCKS5_UNCONFIRMED) {
+    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_UNCONFIRMED) {
         if (TCP_connection->send_pending_data()) {
             int ret = proxy_socks5_read_connection_response(TCP_connection);
 
             if (ret == -1) {
                 TCP_connection->kill_at = 0;
-                TCP_connection->status = TCP_CLIENT_DISCONNECTED;
+                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
             }
 
             if (ret == 1) {
                 generate_handshake(TCP_connection);
-                TCP_connection->status = TCP_CLIENT_CONNECTING;
+                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING;
             }
         }
     }
 
-    if (TCP_connection->status == TCP_CLIENT_CONNECTING) {
+    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING) {
         if (TCP_connection->send_pending_data()) {
-            TCP_connection->status = TCP_CLIENT_UNCONFIRMED;
+            TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_UNCONFIRMED;
         }
     }
 
-    if (TCP_connection->status == TCP_CLIENT_UNCONFIRMED) {
+    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_UNCONFIRMED) {
         uint8_t data[TCP_SERVER_HANDSHAKE_SIZE];
         int len = read_TCP_packet(TCP_connection->sock, data, sizeof(data));
 
         if (sizeof(data) == len) {
             if (handle_handshake(TCP_connection, data) == 0) {
                 TCP_connection->kill_at = ~0;
-                TCP_connection->status = TCP_CLIENT_CONFIRMED;
+                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_CONFIRMED;
             } else {
                 TCP_connection->kill_at = 0;
-                TCP_connection->status = TCP_CLIENT_DISCONNECTED;
+                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
             }
         }
     }
 
-    if (TCP_connection->status == TCP_CLIENT_CONFIRMED) {
+    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_CONFIRMED) {
         do_confirmed_TCP(TCP_connection);
     }
 
     if (TCP_connection->kill_at <= unix_time()) {
-        TCP_connection->status = TCP_CLIENT_DISCONNECTED;
+        TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
     }
 }
 

@@ -506,12 +506,12 @@ int TCP_Secure_Connection::read_connection_handshake(const SecretKey &self_secre
  */
 int TCP_Secure_Connection::send_routing_response(uint8_t rpid, const PublicKey &public_key)
 {
-    uint8_t data[1 + 1 + crypto_box_PUBLICKEYBYTES];
-    data[0] = TCP_PACKET_ROUTING_RESPONSE;
-    data[1] = rpid;
-    memcpy(data + 2, public_key.data.data(), crypto_box_PUBLICKEYBYTES);
+    OutputBuffer buffer;
+    buffer.write_byte(TCP_PACKET_ROUTING_RESPONSE);
+    buffer.write_byte(rpid);
+    buffer << public_key;
 
-    return write_packet_TCP_secure_connection(data, sizeof(data), 1);
+    return write_packet_TCP_secure_connection(buffer.begin(), buffer.size(), 1);
 }
 
 /* return 1 on success.
@@ -552,7 +552,7 @@ int TCP_Server::handle_TCP_routing_req(uint32_t con_id, const PublicKey &public_
     }
 
     for (i = 0; i < NUM_CLIENT_CONNECTIONS; ++i) {
-        if (con->connections[i].status != TCPClientConnectionStatus::NOT_USED) {
+        if (con->connections[i].status != ClientToClientConnectionStatus::NOT_USED) {
             if (public_key == con->connections[i].client_dht_public_key) {
                 if (con->send_routing_response(i + NUM_RESERVED_PORTS, public_key) == -1) {
                     return -1;
@@ -580,7 +580,7 @@ int TCP_Server::handle_TCP_routing_req(uint32_t con_id, const PublicKey &public_
     if (ret == -1)
         return -1;
 
-    con->connections[index].status = TCPClientConnectionStatus::OFFLINE;
+    con->connections[index].status = ClientToClientConnectionStatus::OFFLINE;
     con->connections[index].client_dht_public_key = public_key;
     int other_index = get_TCP_connection_index(public_key);
 
@@ -589,7 +589,7 @@ int TCP_Server::handle_TCP_routing_req(uint32_t con_id, const PublicKey &public_
         TCP_Secure_Connection *other_conn = &accepted_connection_array[other_index];
 
         for (i = 0; i < NUM_CLIENT_CONNECTIONS; ++i) {
-            if (other_conn->connections[i].status == TCPClientConnectionStatus::OFFLINE
+            if (other_conn->connections[i].status == ClientToClientConnectionStatus::OFFLINE
                     && other_conn->connections[i].client_dht_public_key == con->client_dht_public_key) {
                 other_id = i;
                 break;
@@ -597,10 +597,10 @@ int TCP_Server::handle_TCP_routing_req(uint32_t con_id, const PublicKey &public_
         }
 
         if (other_id != (uint32_t)~0) {
-            con->connections[index].status = TCPClientConnectionStatus::ONLINE;
+            con->connections[index].status = ClientToClientConnectionStatus::ONLINE;
             con->connections[index].index = other_index;
             con->connections[index].other_id = other_id;
-            other_conn->connections[other_id].status = TCPClientConnectionStatus::ONLINE;
+            other_conn->connections[other_id].status = ClientToClientConnectionStatus::ONLINE;
             other_conn->connections[other_id].index = con_id;
             other_conn->connections[other_id].other_id = index;
             //TODO: return values?
@@ -625,12 +625,11 @@ int TCP_Server::handle_TCP_oob_send(uint32_t con_id, const PublicKey &public_key
     int other_index = get_TCP_connection_index(public_key);
 
     if (other_index != -1) {
-        uint8_t resp_packet[1 + crypto_box_PUBLICKEYBYTES + length];
-        resp_packet[0] = TCP_PACKET_OOB_RECV;
-        memcpy(resp_packet + 1, con->client_dht_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
-        memcpy(resp_packet + 1 + crypto_box_PUBLICKEYBYTES, data, length);
-        accepted_connection_array[other_index].write_packet_TCP_secure_connection(resp_packet,
-                                           sizeof(resp_packet), 0);
+        OutputBuffer resp_packet;
+        resp_packet.write_byte(TCP_PACKET_OOB_RECV);
+        resp_packet << con->client_dht_public_key;
+        resp_packet.write_bytes(data, data + length);
+        accepted_connection_array[other_index].write_packet_TCP_secure_connection(resp_packet.begin(), resp_packet.size(), 0);
     }
 
     return 0;
@@ -646,25 +645,25 @@ int TCP_Server::rm_connection_index(TCP_Secure_Connection *con, uint8_t con_numb
     if (con_number >= NUM_CLIENT_CONNECTIONS)
         return -1;
 
-    if (con->connections[con_number].status != TCPClientConnectionStatus::NOT_USED) {
+    if (con->connections[con_number].status != ClientToClientConnectionStatus::NOT_USED) {
         uint32_t index = con->connections[con_number].index;
         uint8_t other_id = con->connections[con_number].other_id;
 
-        if (con->connections[con_number].status == TCPClientConnectionStatus::ONLINE) {
+        if (con->connections[con_number].status == ClientToClientConnectionStatus::ONLINE) {
 
             if (index >= accepted_connection_array.size())
                 return -1;
 
             accepted_connection_array[index].connections[other_id].other_id = 0;
             accepted_connection_array[index].connections[other_id].index = 0;
-            accepted_connection_array[index].connections[other_id].status = TCPClientConnectionStatus::OFFLINE;
+            accepted_connection_array[index].connections[other_id].status = ClientToClientConnectionStatus::OFFLINE;
             //TODO: return values?
             accepted_connection_array[index].send_disconnect_notification(other_id);
         }
 
         con->connections[con_number].index = 0;
         con->connections[con_number].other_id = 0;
-        con->connections[con_number].status = TCPClientConnectionStatus::NOT_USED;
+        con->connections[con_number].status = ClientToClientConnectionStatus::NOT_USED;
         return 0;
     } else {
         return -1;
@@ -684,11 +683,11 @@ static int handle_onion_recv_1(void *object, const IPPort &dest, const uint8_t *
     if (con->identifier != dest.onion_ip.identifier)
         return 1;
 
-    uint8_t packet[1 + length];
-    memcpy(packet + 1, data, length);
-    packet[0] = TCP_PACKET_ONION_RESPONSE;
+    OutputBuffer packet;
+    packet.write_byte(TCP_PACKET_ONION_RESPONSE);
+    packet.write_bytes(data, data + length);
 
-    if (con->write_packet_TCP_secure_connection(packet, sizeof(packet), 0) != 1)
+    if (con->write_packet_TCP_secure_connection(packet.begin(), packet.size(), 0) != 1)
         return 1;
 
     return 0;
@@ -793,10 +792,10 @@ int TCP_Server::handle_TCP_packet(uint32_t con_id, const uint8_t *data, uint16_t
             if (c_id >= NUM_CLIENT_CONNECTIONS)
                 return -1;
 
-            if (con->connections[c_id].status == TCPClientConnectionStatus::NOT_USED)
+            if (con->connections[c_id].status == ClientToClientConnectionStatus::NOT_USED)
                 return -1;
 
-            if (con->connections[c_id].status != TCPClientConnectionStatus::ONLINE)
+            if (con->connections[c_id].status != ClientToClientConnectionStatus::ONLINE)
                 return 0;
 
             uint32_t index = con->connections[c_id].index;
@@ -987,7 +986,7 @@ int TCP_Server::do_incoming(uint32_t i)
         if (conn_new->status != TCP_Secure_Connection_Status::TCP_STATUS_NO_STATUS)
             kill_TCP_connection(conn_new);
 
-        memcpy(conn_new, conn_old, sizeof(TCP_Secure_Connection));
+        *conn_new = *conn_old;
         sodium_memzero(conn_old, sizeof(TCP_Secure_Connection));
         ++unconfirmed_connection_queue_index;
 

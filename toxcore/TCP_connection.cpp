@@ -59,7 +59,7 @@ bool realloc_tox_array(T *&array, size_t num)
 /* return 1 if the connections_number is not valid.
  * return 0 if the connections_number is valid.
  */
-static _Bool connections_number_not_valid(const TCP_Connections *tcp_c, int connections_number)
+static bool connections_number_not_valid(const TCP_Connections *tcp_c, int connections_number)
 {
     if ((unsigned int)connections_number >= tcp_c->connections_length)
         return 1;
@@ -76,7 +76,7 @@ static _Bool connections_number_not_valid(const TCP_Connections *tcp_c, int conn
 /* return 1 if the tcp_connections_number is not valid.
  * return 0 if the tcp_connections_number is valid.
  */
-static _Bool tcp_connections_number_not_valid(const TCP_Connections *tcp_c, int tcp_connections_number)
+static bool tcp_connections_number_not_valid(const TCP_Connections *tcp_c, int tcp_connections_number)
 {
     if ((unsigned int)tcp_connections_number >= tcp_c->tcp_connections_length)
         return 1;
@@ -217,9 +217,9 @@ static TCP_con *get_tcp_connection(const TCP_Connections *tcp_c, int tcp_connect
  * return -1 on failure.
  * return 0 on success.
  */
-int send_packet_tcp_connection(TCP_Connections *tcp_c, int connections_number, const uint8_t *packet, uint16_t length)
+int TCP_Connections::send_packet_tcp_connection(int connections_number, const uint8_t *packet, uint16_t length)
 {
-    TCP_Connection_to *con_to = get_connection(tcp_c, connections_number);
+    TCP_Connection_to *con_to = get_connection(this, connections_number);
 
     if (!con_to) {
         return -1;
@@ -230,7 +230,7 @@ int send_packet_tcp_connection(TCP_Connections *tcp_c, int connections_number, c
     unsigned int i;
     int ret = -1;
 
-    _Bool limit_reached = 0;
+    bool limit_reached = false;
 
     for (i = 0; i < MAX_FRIEND_TCP_CONNECTIONS; ++i) {
         uint32_t tcp_con_num = con_to->connections[i].tcp_connection;
@@ -239,7 +239,7 @@ int send_packet_tcp_connection(TCP_Connections *tcp_c, int connections_number, c
 
         if (tcp_con_num && status == TCP_CONNECTIONS_STATUS_ONLINE) {
             tcp_con_num -= 1;
-            TCP_con *tcp_con = get_tcp_connection(tcp_c, tcp_con_num);
+            TCP_con *tcp_con = get_tcp_connection(this, tcp_con_num);
 
             if (!tcp_con) {
                 continue;
@@ -248,7 +248,7 @@ int send_packet_tcp_connection(TCP_Connections *tcp_c, int connections_number, c
             ret = tcp_con->connection->send_data(connection_id, packet, length);
 
             if (ret == 0) {
-                limit_reached = 1;
+                limit_reached = true;
             }
 
             if (ret == 1) {
@@ -269,7 +269,7 @@ int send_packet_tcp_connection(TCP_Connections *tcp_c, int connections_number, c
 
             if (tcp_con_num && status == TCP_CONNECTIONS_STATUS_REGISTERED) {
                 tcp_con_num -= 1;
-                TCP_con *tcp_con = get_tcp_connection(tcp_c, tcp_con_num);
+                TCP_con *tcp_con = get_tcp_connection(this, tcp_con_num);
 
                 if (!tcp_con) {
                     continue;
@@ -299,14 +299,14 @@ int send_packet_tcp_connection(TCP_Connections *tcp_c, int connections_number, c
  * return TCP connection number on success.
  * return -1 on failure.
  */
-int get_random_tcp_onion_conn_number(TCP_Connections *tcp_c)
+int TCP_Connections::get_random_tcp_onion_conn_number()
 {
     unsigned int i, r = rand();
 
-    for (i = 0; i < tcp_c->tcp_connections_length; ++i) {
-        unsigned int index = ((i + r) % tcp_c->tcp_connections_length);
+    for (i = 0; i < tcp_connections_length; ++i) {
+        unsigned int index = ((i + r) % tcp_connections_length);
 
-        if (tcp_c->tcp_connections[index].onion && tcp_c->tcp_connections[index].status == TCP_CONN_CONNECTED) {
+        if (tcp_connections[index].onion && tcp_connections[index].status == TCP_CONN_CONNECTED) {
             return index;
         }
     }
@@ -319,15 +319,15 @@ int get_random_tcp_onion_conn_number(TCP_Connections *tcp_c)
  * return 0 on success.
  * return -1 on failure.
  */
-int tcp_send_onion_request(TCP_Connections *tcp_c, unsigned int tcp_connections_number, const uint8_t *data,
+int TCP_Connections::tcp_send_onion_request(unsigned int tcp_connections_number, const uint8_t *data,
                            uint16_t length)
 {
-    if (tcp_connections_number >= tcp_c->tcp_connections_length) {
+    if (tcp_connections_number >= tcp_connections_length) {
         return -1;
     }
 
-    if (tcp_c->tcp_connections[tcp_connections_number].status == TCP_CONN_CONNECTED) {
-        int ret = tcp_c->tcp_connections[tcp_connections_number].connection->send_onion_request(data, length);
+    if (tcp_connections[tcp_connections_number].status == TCP_CONN_CONNECTED) {
+        int ret = tcp_connections[tcp_connections_number].connection->send_onion_request(data, length);
 
         if (ret == 1)
             return 0;
@@ -341,10 +341,10 @@ int tcp_send_onion_request(TCP_Connections *tcp_c, unsigned int tcp_connections_
  * return 0 on success.
  * return -1 on failure.
  */
-int tcp_send_oob_packet(TCP_Connections *tcp_c, unsigned int tcp_connections_number, const PublicKey &public_key,
+int TCP_Connections::tcp_send_oob_packet(unsigned int tcp_connections_number, const PublicKey &public_key,
                         const uint8_t *packet, uint16_t length)
 {
-    TCP_con *tcp_con = get_tcp_connection(tcp_c, tcp_connections_number);
+    TCP_con *tcp_con = get_tcp_connection(this, tcp_connections_number);
 
     if (!tcp_con)
         return -1;
@@ -447,17 +447,17 @@ static int find_tcp_connection_relay(TCP_Connections *tcp_c, const PublicKey &re
  * return connections_number on success.
  * return -1 on failure.
  */
-int new_tcp_connection_to(TCP_Connections *tcp_c, const bitox::PublicKey &public_key, int id)
+int TCP_Connections::new_tcp_connection_to(const bitox::PublicKey &public_key, int id)
 {
-    if (find_tcp_connection_to(tcp_c, public_key) != -1)
+    if (find_tcp_connection_to(this, public_key) != -1)
         return -1;
 
-    int connections_number = create_connection(tcp_c);
+    int connections_number = create_connection(this);
 
     if (connections_number == -1)
         return -1;
 
-    TCP_Connection_to *con_to = &tcp_c->connections[connections_number];
+    TCP_Connection_to *con_to = &connections[connections_number];
 
     con_to->status = TCP_CONN_VALID;
     con_to->public_key = public_key;
@@ -469,9 +469,9 @@ int new_tcp_connection_to(TCP_Connections *tcp_c, const bitox::PublicKey &public
 /* return 0 on success.
  * return -1 on failure.
  */
-int kill_tcp_connection_to(TCP_Connections *tcp_c, int connections_number)
+int TCP_Connections::kill_tcp_connection_to(int connections_number)
 {
-    TCP_Connection_to *con_to = get_connection(tcp_c, connections_number);
+    TCP_Connection_to *con_to = get_connection(this, connections_number);
 
     if (!con_to)
         return -1;
@@ -481,7 +481,7 @@ int kill_tcp_connection_to(TCP_Connections *tcp_c, int connections_number)
     for (i = 0; i < MAX_FRIEND_TCP_CONNECTIONS; ++i) {
         if (con_to->connections[i].tcp_connection) {
             unsigned int tcp_connections_number = con_to->connections[i].tcp_connection - 1;
-            TCP_con *tcp_con = get_tcp_connection(tcp_c, tcp_connections_number);
+            TCP_con *tcp_con = get_tcp_connection(this, tcp_connections_number);
 
             if (!tcp_con)
                 continue;
@@ -500,7 +500,7 @@ int kill_tcp_connection_to(TCP_Connections *tcp_c, int connections_number)
         }
     }
 
-    return wipe_connection(tcp_c, connections_number);
+    return wipe_connection(this, connections_number);
 }
 
 /* Set connection status.
@@ -513,9 +513,9 @@ int kill_tcp_connection_to(TCP_Connections *tcp_c, int connections_number)
  * return 0 on success.
  * return -1 on failure.
  */
-int set_tcp_connection_to_status(TCP_Connections *tcp_c, int connections_number, _Bool status)
+int TCP_Connections::set_tcp_connection_to_status(int connections_number, bool status)
 {
-    TCP_Connection_to *con_to = get_connection(tcp_c, connections_number);
+    TCP_Connection_to *con_to = get_connection(this, connections_number);
 
     if (!con_to)
         return -1;
@@ -530,7 +530,7 @@ int set_tcp_connection_to_status(TCP_Connections *tcp_c, int connections_number,
         for (i = 0; i < MAX_FRIEND_TCP_CONNECTIONS; ++i) {
             if (con_to->connections[i].tcp_connection) {
                 unsigned int tcp_connections_number = con_to->connections[i].tcp_connection - 1;
-                TCP_con *tcp_con = get_tcp_connection(tcp_c, tcp_connections_number);
+                TCP_con *tcp_con = get_tcp_connection(this, tcp_connections_number);
 
                 if (!tcp_con)
                     continue;
@@ -553,7 +553,7 @@ int set_tcp_connection_to_status(TCP_Connections *tcp_c, int connections_number,
         for (i = 0; i < MAX_FRIEND_TCP_CONNECTIONS; ++i) {
             if (con_to->connections[i].tcp_connection) {
                 unsigned int tcp_connections_number = con_to->connections[i].tcp_connection - 1;
-                TCP_con *tcp_con = get_tcp_connection(tcp_c, tcp_connections_number);
+                TCP_con *tcp_con = get_tcp_connection(this, tcp_connections_number);
 
                 if (!tcp_con)
                     continue;
@@ -569,7 +569,7 @@ int set_tcp_connection_to_status(TCP_Connections *tcp_c, int connections_number,
     }
 }
 
-static _Bool tcp_connection_in_conn(TCP_Connection_to *con_to, unsigned int tcp_connections_number)
+static bool tcp_connection_in_conn(TCP_Connection_to *con_to, unsigned int tcp_connections_number)
 {
     unsigned int i;
 
@@ -1039,14 +1039,14 @@ static int add_tcp_relay_instance(TCP_Connections *tcp_c, IPPort ip_port, const 
  * return 0 on success.
  * return -1 on failure.
  */
-int add_tcp_relay_global(TCP_Connections *tcp_c, IPPort ip_port, const PublicKey &relay_pk)
+int TCP_Connections::add_tcp_relay_global(IPPort ip_port, const PublicKey &relay_pk)
 {
-    int tcp_connections_number = find_tcp_connection_relay(tcp_c, relay_pk);
+    int tcp_connections_number = find_tcp_connection_relay(this, relay_pk);
 
     if (tcp_connections_number != -1)
         return -1;
 
-    if (add_tcp_relay_instance(tcp_c, ip_port, relay_pk) == -1)
+    if (add_tcp_relay_instance(this, ip_port, relay_pk) == -1)
         return -1;
 
     return 0;
@@ -1057,14 +1057,14 @@ int add_tcp_relay_global(TCP_Connections *tcp_c, IPPort ip_port, const PublicKey
  * return 0 on success.
  * return -1 on failure.
  */
-int add_tcp_number_relay_connection(TCP_Connections *tcp_c, int connections_number, unsigned int tcp_connections_number)
+int TCP_Connections::add_tcp_number_relay_connection(int connections_number, unsigned int tcp_connections_number)
 {
-    TCP_Connection_to *con_to = get_connection(tcp_c, connections_number);
+    TCP_Connection_to *con_to = get_connection(this, connections_number);
 
     if (!con_to)
         return -1;
 
-    TCP_con *tcp_con = get_tcp_connection(tcp_c, tcp_connections_number);
+    TCP_con *tcp_con = get_tcp_connection(this, tcp_connections_number);
 
     if (!tcp_con)
         return -1;
@@ -1077,7 +1077,7 @@ int add_tcp_number_relay_connection(TCP_Connections *tcp_c, int connections_numb
         return -1;
 
     if (tcp_con->status == TCP_CONN_CONNECTED) {
-        if (send_tcp_relay_routing_request(tcp_c, tcp_connections_number, con_to->public_key) == 0) {
+        if (send_tcp_relay_routing_request(this, tcp_connections_number, con_to->public_key) == 0) {
             tcp_con->connected_time = unix_time();
         }
     }
@@ -1092,25 +1092,25 @@ int add_tcp_number_relay_connection(TCP_Connections *tcp_c, int connections_numb
  * return 0 on success.
  * return -1 on failure.
  */
-int add_tcp_relay_connection(TCP_Connections *tcp_c, int connections_number, IPPort ip_port, const PublicKey &relay_pk)
+int TCP_Connections::add_tcp_relay_connection(int connections_number, IPPort ip_port, const PublicKey &relay_pk)
 {
-    TCP_Connection_to *con_to = get_connection(tcp_c, connections_number);
+    TCP_Connection_to *con_to = get_connection(this, connections_number);
 
     if (!con_to)
         return -1;
 
-    int tcp_connections_number = find_tcp_connection_relay(tcp_c, relay_pk);
+    int tcp_connections_number = find_tcp_connection_relay(this, relay_pk);
 
     if (tcp_connections_number != -1) {
-        return add_tcp_number_relay_connection(tcp_c, connections_number, tcp_connections_number);
+        return add_tcp_number_relay_connection(connections_number, tcp_connections_number);
     } else {
         if (online_tcp_connection_from_conn(con_to) >= RECOMMENDED_FRIEND_TCP_CONNECTIONS) {
             return -1;
         }
 
-        int tcp_connections_number = add_tcp_relay_instance(tcp_c, ip_port, relay_pk);
+        int tcp_connections_number = add_tcp_relay_instance(this, ip_port, relay_pk);
 
-        TCP_con *tcp_con = get_tcp_connection(tcp_c, tcp_connections_number);
+        TCP_con *tcp_con = get_tcp_connection(this, tcp_connections_number);
 
         if (!tcp_con)
             return -1;
@@ -1126,9 +1126,9 @@ int add_tcp_relay_connection(TCP_Connections *tcp_c, int connections_number, IPP
 /* return number of online tcp relays tied to the connection on success.
  * return 0 on failure.
  */
-unsigned int tcp_connection_to_online_tcp_relays(TCP_Connections *tcp_c, int connections_number)
+unsigned int TCP_Connections::tcp_connection_to_online_tcp_relays(int connections_number)
 {
-    TCP_Connection_to *con_to = get_connection(tcp_c, connections_number);
+    TCP_Connection_to *con_to = get_connection(this, connections_number);
 
     if (!con_to)
         return 0;
@@ -1142,12 +1142,12 @@ unsigned int tcp_connection_to_online_tcp_relays(TCP_Connections *tcp_c, int con
  * return number of relays copied to tcp_relays on success.
  * return 0 on failure.
  */
-unsigned int tcp_copy_connected_relays(TCP_Connections *tcp_c, NodeFormat *tcp_relays, uint16_t max_num)
+unsigned int TCP_Connections::tcp_copy_connected_relays(NodeFormat *tcp_relays, uint16_t max_num)
 {
     unsigned int i, copied = 0, r = rand();
 
-    for (i = 0; (i < tcp_c->tcp_connections_length) && (copied < max_num); ++i) {
-        TCP_con *tcp_con = get_tcp_connection(tcp_c, (i + r) % tcp_c->tcp_connections_length);
+    for (i = 0; (i < tcp_connections_length) && (copied < max_num); ++i) {
+        TCP_con *tcp_con = get_tcp_connection(this, (i + r) % tcp_connections_length);
 
         if (!tcp_con) {
             continue;
@@ -1177,33 +1177,33 @@ unsigned int tcp_copy_connected_relays(TCP_Connections *tcp_c, NodeFormat *tcp_r
  * return 0 on success.
  * return -1 on failure.
  */
-int set_tcp_onion_status(TCP_Connections *tcp_c, _Bool status)
+int TCP_Connections::set_tcp_onion_status(bool status)
 {
-    if (tcp_c->onion_status == status)
+    if (onion_status == status)
         return -1;
 
     if (status) {
         unsigned int i;
 
-        for (i = 0; i < tcp_c->tcp_connections_length; ++i) {
-            TCP_con *tcp_con = get_tcp_connection(tcp_c, i);
+        for (i = 0; i < tcp_connections_length; ++i) {
+            TCP_con *tcp_con = get_tcp_connection(this, i);
 
             if (tcp_con) {
                 if (tcp_con->status == TCP_CONN_CONNECTED && !tcp_con->onion) {
-                    ++tcp_c->onion_num_conns;
+                    ++onion_num_conns;
                     tcp_con->onion = 1;
                 }
             }
 
-            if (tcp_c->onion_num_conns >= NUM_ONION_TCP_CONNECTIONS)
+            if (onion_num_conns >= NUM_ONION_TCP_CONNECTIONS)
                 break;
         }
 
-        if (tcp_c->onion_num_conns < NUM_ONION_TCP_CONNECTIONS) {
-            unsigned int wakeup = NUM_ONION_TCP_CONNECTIONS - tcp_c->onion_num_conns;
+        if (onion_num_conns < NUM_ONION_TCP_CONNECTIONS) {
+            unsigned int wakeup = NUM_ONION_TCP_CONNECTIONS - onion_num_conns;
 
-            for (i = 0; i < tcp_c->tcp_connections_length; ++i) {
-                TCP_con *tcp_con = get_tcp_connection(tcp_c, i);
+            for (i = 0; i < tcp_connections_length; ++i) {
+                TCP_con *tcp_con = get_tcp_connection(this, i);
 
                 if (tcp_con) {
                     if (tcp_con->status == TCP_CONN_SLEEPING) {
@@ -1216,22 +1216,22 @@ int set_tcp_onion_status(TCP_Connections *tcp_c, _Bool status)
             }
         }
 
-        tcp_c->onion_status = 1;
+        onion_status = 1;
     } else {
         unsigned int i;
 
-        for (i = 0; i < tcp_c->tcp_connections_length; ++i) {
-            TCP_con *tcp_con = get_tcp_connection(tcp_c, i);
+        for (i = 0; i < tcp_connections_length; ++i) {
+            TCP_con *tcp_con = get_tcp_connection(this, i);
 
             if (tcp_con) {
                 if (tcp_con->onion) {
-                    --tcp_c->onion_num_conns;
+                    --onion_num_conns;
                     tcp_con->onion = 0;
                 }
             }
         }
 
-        tcp_c->onion_status = 0;
+        onion_status = 0;
     }
 
     return 0;
@@ -1336,10 +1336,10 @@ static void kill_nonused_tcp(TCP_Connections *tcp_c)
     }
 }
 
-void do_tcp_connections(TCP_Connections *tcp_c)
+void TCP_Connections::do_tcp_connections()
 {
-    do_tcp_conns(tcp_c);
-    kill_nonused_tcp(tcp_c);
+    do_tcp_conns(this);
+    kill_nonused_tcp(this);
 }
 
 void kill_tcp_connections(TCP_Connections *tcp_c)

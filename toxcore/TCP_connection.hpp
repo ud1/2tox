@@ -51,7 +51,8 @@
 /* Number of TCP connections used for onion purposes. */
 #define NUM_ONION_TCP_CONNECTIONS RECOMMENDED_FRIEND_TCP_CONNECTIONS
 
-typedef struct {
+struct TCP_Connection_to
+{
     uint8_t status;
     bitox::PublicKey public_key; /* The dht public key of the peer */
 
@@ -62,7 +63,7 @@ typedef struct {
     } connections[MAX_FRIEND_TCP_CONNECTIONS];
 
     int id; /* id used in callbacks. */
-} TCP_Connection_to;
+};
 
 struct TCP_con
 {
@@ -79,7 +80,8 @@ struct TCP_con
     bool unsleep; /* set to 1 to unsleep connection. */
 };
 
-typedef struct {
+struct TCP_Connections : TCPClientEventListener
+{
     DHT *dht;
 
     bitox::PublicKey self_public_key;
@@ -105,7 +107,13 @@ typedef struct {
 
     bool onion_status;
     uint16_t onion_num_conns;
-} TCP_Connections;
+    
+    virtual int on_response(TCP_Client_Connection *connection, uint8_t connection_id, const bitox::PublicKey &public_key) override;
+    virtual int on_status(TCP_Client_Connection *connection, uint32_t number, uint8_t connection_id, ClientToClientConnectionStatus status) override;
+    virtual int on_data (TCP_Client_Connection *connection, uint32_t number, uint8_t connection_id, const uint8_t *data, uint16_t length) override;
+    virtual int on_oob_data(TCP_Client_Connection *connection, const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length) override;
+    virtual int on_onion(TCP_Client_Connection *connection, const uint8_t *data, uint16_t length) override;
+};
 
 /* Send a packet to the TCP connection.
  *

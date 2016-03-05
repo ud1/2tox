@@ -27,7 +27,7 @@
 #include "crypto_core.hpp"
 #include "TCP_server.hpp"
 
-#define TCP_CONNECTION_TIMEOUT 10
+constexpr long TCP_CONNECTION_TIMEOUT = 10;
 
 enum class TCP_PROXY_TYPE
 {
@@ -53,10 +53,73 @@ enum class ClientToServerConnectionStatus
     TCP_CLIENT_CONFIRMED,
     TCP_CLIENT_DISCONNECTED,
 };
+
+struct TCP_Client_Connection;
+
+class TCPClientEventListener
+{
+public:
+    virtual int on_response(TCP_Client_Connection *connection, uint8_t connection_id, const bitox::PublicKey &public_key) = 0;
+    virtual int on_status(TCP_Client_Connection *connection, uint32_t number, uint8_t connection_id, ClientToClientConnectionStatus status) = 0;
+    virtual int on_data (TCP_Client_Connection *connection, uint32_t number, uint8_t connection_id, const uint8_t *data, uint16_t length) = 0;
+    virtual int on_oob_data(TCP_Client_Connection *connection, const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length) = 0;
+    virtual int on_onion(TCP_Client_Connection *connection, const uint8_t *data, uint16_t length) = 0;
+};
+
 struct TCP_Client_Connection
 {
+    /* Create new TCP connection to ip_port/public_key
+    */
+    TCP_Client_Connection(bitox::network::IPPort ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &self_public_key,
+            const bitox::SecretKey &self_secret_key, TCP_Proxy_Info *proxy_info);
+    
+    ~TCP_Client_Connection();
+
     bool send_pending_data();
     void add_priority(const uint8_t *packet, uint16_t size, uint16_t sent);
+    
+    /* Run the TCP connection
+    */
+    void do_TCP_connection();
+    
+    /* return 1 on success.
+    * return 0 if could not send packet.
+    * return -1 on failure (connection must be killed).
+    */
+    int send_onion_request(const uint8_t *data, uint16_t length);
+    
+    /* return 1 on success.
+    * return 0 if could not send packet.
+    * return -1 on failure (connection must be killed).
+    */
+    int send_disconnect_request(uint8_t con_id);
+    
+    /* Set the number that will be used as an argument in the callbacks related to con_id.
+    *
+    * When not set by this function, the number is ~0.
+    *
+    * return 0 on success.
+    * return -1 on failure.
+    */
+    int set_tcp_connection_number(uint8_t con_id, uint32_t number);
+    
+    /* return 1 on success.
+    * return 0 if could not send packet.
+    * return -1 on failure.
+    */
+    int send_data(uint8_t con_id, const uint8_t *data, uint16_t length);
+    
+    /* return 1 on success.
+    * return 0 if could not send packet.
+    * return -1 on failure.
+    */
+    int send_oob_packet(const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length);
+    
+    /* return 1 on success.
+    * return 0 if could not send packet.
+    * return -1 on failure (connection must be killed).
+    */
+    int send_routing_request(bitox::PublicKey &public_key);
     
     ClientToServerConnectionStatus status;
     bitox::network::sock_t  sock;
@@ -64,8 +127,8 @@ struct TCP_Client_Connection
     bitox::PublicKey public_key; /* public key of the server */
     bitox::network::IPPort ip_port; /* The ip and port of the server */
     TCP_Proxy_Info proxy_info;
-    bitox::Nonce recv_nonce; /* Nonce of received packets. */
-    bitox::Nonce sent_nonce; /* Nonce of sent packets. */
+    bitox::Nonce recv_nonce = bitox::Nonce::create_empty(); /* Nonce of received packets. */
+    bitox::Nonce sent_nonce = bitox::Nonce::create_empty(); /* Nonce of sent packets. */
     bitox::SharedKey shared_key;
     uint16_t next_packet_length;
 
@@ -75,7 +138,6 @@ struct TCP_Client_Connection
     uint16_t last_packet_length;
     uint16_t last_packet_sent;
 
-    //TCP_Priority_List *priority_queue_start, *priority_queue_end;
     std::deque<DataToSend> priority_queue;
 
     uint64_t kill_at;
@@ -91,84 +153,11 @@ struct TCP_Client_Connection
         bitox::PublicKey public_key;
         uint32_t number;
     } connections[NUM_CLIENT_CONNECTIONS];
-    int (*response_callback)(void *object, uint8_t connection_id, const bitox::PublicKey &public_key);
-    void *response_callback_object;
-    int (*status_callback)(void *object, uint32_t number, uint8_t connection_id, ClientToClientConnectionStatus status);
-    void *status_callback_object;
-    int (*data_callback)(void *object, uint32_t number, uint8_t connection_id, const uint8_t *data, uint16_t length);
-    void *data_callback_object;
-    int (*oob_data_callback)(void *object, const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length);
-    void *oob_data_callback_object;
-
-    int (*onion_callback)(void *object, const uint8_t *data, uint16_t length);
-    void *onion_callback_object;
-
+    
+    TCPClientEventListener *event_listener = nullptr;
+    
     /* Can be used by user. */
-    void *custom_object;
     uint32_t custom_uint;
 };
-
-/* Create new TCP connection to ip_port/public_key
- */
-TCP_Client_Connection *new_TCP_connection(bitox::network::IPPort ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &self_public_key,
-        const bitox::SecretKey &self_secret_key, TCP_Proxy_Info *proxy_info);
-
-/* Run the TCP connection
- */
-void do_TCP_connection(TCP_Client_Connection *TCP_connection);
-
-/* Kill the TCP connection
- */
-void kill_TCP_connection(TCP_Client_Connection *TCP_connection);
-
-/* return 1 on success.
- * return 0 if could not send packet.
- * return -1 on failure (connection must be killed).
- */
-int send_onion_request(TCP_Client_Connection *con, const uint8_t *data, uint16_t length);
-void onion_response_handler(TCP_Client_Connection *con, int (*onion_callback)(void *object, const uint8_t *data,
-                            uint16_t length), void *object);
-
-/* return 1 on success.
- * return 0 if could not send packet.
- * return -1 on failure (connection must be killed).
- */
-int send_routing_request(TCP_Client_Connection *con, bitox::PublicKey &public_key);
-void routing_response_handler(TCP_Client_Connection *con, int (*response_callback)(void *object, uint8_t connection_id,
-                              const bitox::PublicKey &public_key), void *object);
-void routing_status_handler(TCP_Client_Connection *con, int (*status_callback)(void *object, uint32_t number,
-                            uint8_t connection_id, ClientToClientConnectionStatus status), void *object);
-
-/* return 1 on success.
- * return 0 if could not send packet.
- * return -1 on failure (connection must be killed).
- */
-int send_disconnect_request(TCP_Client_Connection *con, uint8_t con_id);
-
-/* Set the number that will be used as an argument in the callbacks related to con_id.
- *
- * When not set by this function, the number is ~0.
- *
- * return 0 on success.
- * return -1 on failure.
- */
-int set_tcp_connection_number(TCP_Client_Connection *con, uint8_t con_id, uint32_t number);
-
-/* return 1 on success.
- * return 0 if could not send packet.
- * return -1 on failure.
- */
-int send_data(TCP_Client_Connection *con, uint8_t con_id, const uint8_t *data, uint16_t length);
-void routing_data_handler(TCP_Client_Connection *con, int (*data_callback)(void *object, uint32_t number,
-                          uint8_t connection_id, const uint8_t *data, uint16_t length), void *object);
-
-/* return 1 on success.
- * return 0 if could not send packet.
- * return -1 on failure.
- */
-int send_oob_packet(TCP_Client_Connection *con, const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length);
-void oob_data_handler(TCP_Client_Connection *con, int (*oob_data_callback)(void *object, const bitox::PublicKey &public_key,
-                      const uint8_t *data, uint16_t length), void *object);
-
 
 #endif

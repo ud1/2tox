@@ -25,6 +25,7 @@
 #endif
 
 #include "TCP_client.hpp"
+#include "protocol_impl.hpp"
 
 #if !defined(_WIN32) && !defined(__WIN32__) && !defined (WIN32)
 #include <sys/ioctl.h>
@@ -34,6 +35,7 @@
 
 using namespace bitox;
 using namespace bitox::network;
+using namespace bitox::impl;
 
 /* return 1 on success
  * return 0 on failure
@@ -387,26 +389,13 @@ static int write_packet_TCP_secure_connection(TCP_Client_Connection *con, const 
  * return 0 if could not send packet.
  * return -1 on failure (connection must be killed).
  */
-int send_routing_request(TCP_Client_Connection *con, bitox::PublicKey &public_key)
+int TCP_Client_Connection::send_routing_request(bitox::PublicKey &public_key)
 {
-    uint8_t packet[1 + crypto_box_PUBLICKEYBYTES];
-    packet[0] = TCP_PACKET_ROUTING_REQUEST;
-    memcpy(packet + 1, public_key.data.data(), crypto_box_PUBLICKEYBYTES);
-    return write_packet_TCP_secure_connection(con, packet, sizeof(packet), 1);
-}
-
-void routing_response_handler(TCP_Client_Connection *con, int (*response_callback)(void *object, uint8_t connection_id,
-                              const bitox::PublicKey &public_key), void *object)
-{
-    con->response_callback = response_callback;
-    con->response_callback_object = object;
-}
-
-void routing_status_handler(TCP_Client_Connection *con, int (*status_callback)(void *object, uint32_t number,
-                            uint8_t connection_id, ClientToClientConnectionStatus status), void *object)
-{
-    con->status_callback = status_callback;
-    con->status_callback_object = object;
+    OutputBuffer packet;
+    packet.write_byte(TCP_PACKET_ROUTING_REQUEST);
+    packet << public_key;
+    
+    return write_packet_TCP_secure_connection(this, packet.begin(), packet.size(), 1);
 }
 
 static int send_ping_response(TCP_Client_Connection *con);
@@ -416,37 +405,38 @@ static int send_ping_request(TCP_Client_Connection *con);
  * return 0 if could not send packet.
  * return -1 on failure.
  */
-int send_data(TCP_Client_Connection *con, uint8_t con_id, const uint8_t *data, uint16_t length)
+int TCP_Client_Connection::send_data(uint8_t con_id, const uint8_t *data, uint16_t length)
 {
     if (con_id >= NUM_CLIENT_CONNECTIONS)
         return -1;
 
-    if (con->connections[con_id].status != ClientToClientConnectionStatus::ONLINE)
+    if (connections[con_id].status != ClientToClientConnectionStatus::ONLINE)
         return -1;
 
-    if (send_ping_response(con) == 0 || send_ping_request(con) == 0)
+    if (send_ping_response(this) == 0 || send_ping_request(this) == 0)
         return 0;
 
     uint8_t packet[1 + length];
     packet[0] = con_id + NUM_RESERVED_PORTS;
     memcpy(packet + 1, data, length);
-    return write_packet_TCP_secure_connection(con, packet, sizeof(packet), 0);
+    return write_packet_TCP_secure_connection(this, packet, sizeof(packet), 0);
 }
 
 /* return 1 on success.
  * return 0 if could not send packet.
  * return -1 on failure.
  */
-int send_oob_packet(TCP_Client_Connection *con, const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length)
+int TCP_Client_Connection::send_oob_packet(const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length)
 {
     if (length == 0 || length > TCP_MAX_OOB_DATA_LENGTH)
         return -1;
 
-    uint8_t packet[1 + crypto_box_PUBLICKEYBYTES + length];
-    packet[0] = TCP_PACKET_OOB_SEND;
-    memcpy(packet + 1, public_key.data.data(), crypto_box_PUBLICKEYBYTES);
-    memcpy(packet + 1 + crypto_box_PUBLICKEYBYTES, data, length);
-    return write_packet_TCP_secure_connection(con, packet, sizeof(packet), 0);
+    OutputBuffer packet;
+    packet.write_byte(TCP_PACKET_OOB_SEND);
+    packet << public_key;
+    packet.write_bytes(data, data + length);
+    
+    return write_packet_TCP_secure_connection(this, packet.begin(), packet.size(), 0);
 }
 
 
@@ -457,42 +447,16 @@ int send_oob_packet(TCP_Client_Connection *con, const bitox::PublicKey &public_k
  * return 0 on success.
  * return -1 on failure.
  */
-int set_tcp_connection_number(TCP_Client_Connection *con, uint8_t con_id, uint32_t number)
+int TCP_Client_Connection::set_tcp_connection_number(uint8_t con_id, uint32_t number)
 {
     if (con_id >= NUM_CLIENT_CONNECTIONS)
         return -1;
 
-    if (con->connections[con_id].status == ClientToClientConnectionStatus::NOT_USED)
+    if (connections[con_id].status == ClientToClientConnectionStatus::NOT_USED)
         return -1;
 
-    con->connections[con_id].number = number;
+    connections[con_id].number = number;
     return 0;
-}
-
-void routing_data_handler(TCP_Client_Connection *con, int (*data_callback)(void *object, uint32_t number,
-                          uint8_t connection_id, const uint8_t *data, uint16_t length), void *object)
-{
-    con->data_callback = data_callback;
-    con->data_callback_object = object;
-}
-
-void oob_data_handler(TCP_Client_Connection *con, int (*oob_data_callback)(void *object, const bitox::PublicKey &public_key,
-                      const uint8_t *data, uint16_t length), void *object)
-{
-    con->oob_data_callback = oob_data_callback;
-    con->oob_data_callback_object = object;
-}
-
-/* return 1 on success.
- * return 0 if could not send packet.
- * return -1 on failure (connection must be killed).
- */
-static int send_disconnect_notification(TCP_Client_Connection *con, uint8_t id)
-{
-    uint8_t packet[1 + 1];
-    packet[0] = TCP_PACKET_DISCONNECT_NOTIFICATION;
-    packet[1] = id;
-    return write_packet_TCP_secure_connection(con, packet, sizeof(packet), 1);
 }
 
 /* return 1 on success.
@@ -541,46 +505,46 @@ static int send_ping_response(TCP_Client_Connection *con)
  * return 0 if could not send packet.
  * return -1 on failure (connection must be killed).
  */
-int send_disconnect_request(TCP_Client_Connection *con, uint8_t con_id)
+int TCP_Client_Connection::send_disconnect_request(uint8_t con_id)
 {
     if (con_id >= NUM_CLIENT_CONNECTIONS)
         return -1;
 
-    con->connections[con_id].status = ClientToClientConnectionStatus::NOT_USED;
-    con->connections[con_id].number = 0;
-    return send_disconnect_notification(con, con_id + NUM_RESERVED_PORTS);
+    connections[con_id].status = ClientToClientConnectionStatus::NOT_USED;
+    connections[con_id].number = 0;
+    
+    uint8_t packet[1 + 1];
+    packet[0] = TCP_PACKET_DISCONNECT_NOTIFICATION;
+    packet[1] = con_id + NUM_RESERVED_PORTS;
+    return write_packet_TCP_secure_connection(this, packet, sizeof(packet), 1);
 }
 
 /* return 1 on success.
  * return 0 if could not send packet.
  * return -1 on failure (connection must be killed).
  */
-int send_onion_request(TCP_Client_Connection *con, const uint8_t *data, uint16_t length)
+int TCP_Client_Connection::send_onion_request(const uint8_t *data, uint16_t length)
 {
-    uint8_t packet[1 + length];
-    packet[0] = TCP_PACKET_ONION_REQUEST;
-    memcpy(packet + 1, data, length);
-    return write_packet_TCP_secure_connection(con, packet, sizeof(packet), 0);
-}
-
-void onion_response_handler(TCP_Client_Connection *con, int (*onion_callback)(void *object, const uint8_t *data,
-                            uint16_t length), void *object)
-{
-    con->onion_callback = onion_callback;
-    con->onion_callback_object = object;
+    OutputBuffer packet;
+    packet.write_byte(TCP_PACKET_ONION_REQUEST);
+    packet.write_bytes(data, data + length);
+    
+    return write_packet_TCP_secure_connection(this, packet.begin(), packet.size(), 0);
 }
 
 /* Create new TCP connection to ip_port/public_key
  */
-TCP_Client_Connection *new_TCP_connection(IPPort ip_port, const PublicKey &public_key, const PublicKey &self_public_key,
+TCP_Client_Connection::TCP_Client_Connection(IPPort ip_port, const PublicKey &public_key, const PublicKey &self_public_key,
         const SecretKey &self_secret_key, TCP_Proxy_Info *proxy_info)
 {
     if (networking_at_startup() != 0) {
-        return NULL;
+        throw std::runtime_error("Network startup error");
     }
 
     if (ip_port.ip.family != Family::FAMILY_AF_INET && ip_port.ip.family != Family::FAMILY_AF_INET6)
-        return NULL;
+    {
+        throw std::runtime_error("Invalid IP family");
+    }
 
     Family family = ip_port.ip.family;
 
@@ -595,62 +559,51 @@ TCP_Client_Connection *new_TCP_connection(IPPort ip_port, const PublicKey &publi
         family = proxy_info->ip_port.ip.family;
     }
 
-    sock_t sock = socket((int) family, SOCK_STREAM, IPPROTO_TCP);
+    sock = socket((int) family, SOCK_STREAM, IPPROTO_TCP);
 
     if (!sock_valid(sock)) {
-        return NULL;
+        throw std::runtime_error("Open socket error");
     }
 
     if (!set_socket_nosigpipe(sock)) {
         kill_sock(sock);
-        return 0;
+        throw std::runtime_error("Set socket nosigpipe error");
     }
 
     if (!(set_socket_nonblock(sock) && connect_sock_to(sock, ip_port, proxy_info))) {
         kill_sock(sock);
-        return NULL;
+        throw std::runtime_error("Set socket nonblock or connect error");
     }
 
-    TCP_Client_Connection *temp = (TCP_Client_Connection *) calloc(sizeof(TCP_Client_Connection), 1);
-
-    if (temp == NULL) {
-        kill_sock(sock);
-        return NULL;
-    }
-
-    temp->sock = sock;
-    temp->public_key = public_key;
-    temp->self_public_key = self_public_key;
-    encrypt_precompute(temp->public_key, self_secret_key, temp->shared_key.data.data());
-    temp->ip_port = ip_port;
-    temp->proxy_info = *proxy_info;
+    this->public_key = public_key;
+    this->self_public_key = self_public_key;
+    this->shared_key = compute_shared_key(public_key, self_secret_key);
+    this->ip_port = ip_port;
+    this->proxy_info = *proxy_info;
 
     switch (proxy_info->proxy_type) {
         case TCP_PROXY_TYPE::TCP_PROXY_HTTP:
-            temp->status = ClientToServerConnectionStatus::TCP_CLIENT_PROXY_HTTP_CONNECTING;
-            proxy_http_generate_connection_request(temp);
+            this->status = ClientToServerConnectionStatus::TCP_CLIENT_PROXY_HTTP_CONNECTING;
+            proxy_http_generate_connection_request(this);
             break;
 
         case TCP_PROXY_TYPE::TCP_PROXY_SOCKS5:
-            temp->status = ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_CONNECTING;
-            proxy_socks5_generate_handshake(temp);
+            this->status = ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_CONNECTING;
+            proxy_socks5_generate_handshake(this);
             break;
 
         case TCP_PROXY_TYPE::TCP_PROXY_NONE:
-            temp->status = ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING;
+            this->status = ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING;
 
-            if (generate_handshake(temp) == -1) {
+            if (generate_handshake(this) == -1) {
                 kill_sock(sock);
-                free(temp);
-                return NULL;
+                throw std::runtime_error("Generate handshake error");
             }
 
             break;
     }
 
-    temp->kill_at = unix_time() + TCP_CONNECTION_TIMEOUT;
-
-    return temp;
+    this->kill_at = unix_time() + TCP_CONNECTION_TIMEOUT;
 }
 
 /* return 0 on success
@@ -678,9 +631,9 @@ static int handle_TCP_packet(TCP_Client_Connection *conn, const uint8_t *data, u
             conn->connections[con_id].number = ~0;
             conn->connections[con_id].public_key = PublicKey(data + 2);
 
-            if (conn->response_callback)
-                conn->response_callback(conn->response_callback_object, con_id, conn->connections[con_id].public_key);
-
+            if (conn->event_listener)
+                conn->event_listener->on_response(conn, con_id, conn->connections[con_id].public_key);
+            
             return 0;
         }
 
@@ -698,8 +651,8 @@ static int handle_TCP_packet(TCP_Client_Connection *conn, const uint8_t *data, u
 
             conn->connections[con_id].status = ClientToClientConnectionStatus::ONLINE;
 
-            if (conn->status_callback)
-                conn->status_callback(conn->status_callback_object, conn->connections[con_id].number, con_id,
+            if (conn->event_listener)
+                conn->event_listener->on_status(conn, conn->connections[con_id].number, con_id,
                                       conn->connections[con_id].status);
 
             return 0;
@@ -722,10 +675,10 @@ static int handle_TCP_packet(TCP_Client_Connection *conn, const uint8_t *data, u
 
             conn->connections[con_id].status = ClientToClientConnectionStatus::OFFLINE;
 
-            if (conn->status_callback)
-                conn->status_callback(conn->status_callback_object, conn->connections[con_id].number, con_id,
+            if (conn->event_listener)
+                conn->event_listener->on_status(conn, conn->connections[con_id].number, con_id,
                                       conn->connections[con_id].status);
-
+                
             return 0;
         }
 
@@ -762,15 +715,15 @@ static int handle_TCP_packet(TCP_Client_Connection *conn, const uint8_t *data, u
             if (length <= 1 + crypto_box_PUBLICKEYBYTES)
                 return -1;
 
-            if (conn->oob_data_callback)
-                conn->oob_data_callback(conn->oob_data_callback_object, PublicKey(data + 1), data + 1 + crypto_box_PUBLICKEYBYTES,
+            if (conn->event_listener)
+                conn->event_listener->on_oob_data(conn, PublicKey(data + 1), data + 1 + crypto_box_PUBLICKEYBYTES,
                                         length - (1 + crypto_box_PUBLICKEYBYTES));
-
             return 0;
         }
 
         case TCP_PACKET_ONION_RESPONSE: {
-            conn->onion_callback(conn->onion_callback_object, data + 1, length - 1);
+            if (conn->event_listener)
+                conn->event_listener->on_onion(conn, data + 1, length - 1);
             return 0;
         }
 
@@ -780,8 +733,8 @@ static int handle_TCP_packet(TCP_Client_Connection *conn, const uint8_t *data, u
 
             uint8_t con_id = data[0] - NUM_RESERVED_PORTS;
 
-            if (conn->data_callback)
-                conn->data_callback(conn->data_callback_object, conn->connections[con_id].number, con_id, data + 1, length - 1);
+            if (conn->event_listener)
+                conn->event_listener->on_data(conn, conn->connections[con_id].number, con_id, data + 1, length - 1);
         }
     }
 
@@ -831,100 +784,95 @@ static int do_confirmed_TCP(TCP_Client_Connection *conn)
 
 /* Run the TCP connection
  */
-void do_TCP_connection(TCP_Client_Connection *TCP_connection)
+void TCP_Client_Connection::do_TCP_connection()
 {
     unix_time_update();
 
-    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED) {
+    if (status == ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED) {
         return;
     }
 
-    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_PROXY_HTTP_CONNECTING) {
-        if (TCP_connection->send_pending_data()) {
-            int ret = proxy_http_read_connection_response(TCP_connection);
+    if (status == ClientToServerConnectionStatus::TCP_CLIENT_PROXY_HTTP_CONNECTING) {
+        if (send_pending_data()) {
+            int ret = proxy_http_read_connection_response(this);
 
             if (ret == -1) {
-                TCP_connection->kill_at = 0;
-                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
+                kill_at = 0;
+                status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
             }
 
             if (ret == 1) {
-                generate_handshake(TCP_connection);
-                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING;
+                generate_handshake(this);
+                status = ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING;
             }
         }
     }
 
-    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_CONNECTING) {
-        if (TCP_connection->send_pending_data()) {
-            int ret = socks5_read_handshake_response(TCP_connection);
+    if (status == ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_CONNECTING) {
+        if (send_pending_data()) {
+            int ret = socks5_read_handshake_response(this);
 
             if (ret == -1) {
-                TCP_connection->kill_at = 0;
-                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
+                kill_at = 0;
+                status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
             }
 
             if (ret == 1) {
-                proxy_socks5_generate_connection_request(TCP_connection);
-                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_UNCONFIRMED;
+                proxy_socks5_generate_connection_request(this);
+                status = ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_UNCONFIRMED;
             }
         }
     }
 
-    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_UNCONFIRMED) {
-        if (TCP_connection->send_pending_data()) {
-            int ret = proxy_socks5_read_connection_response(TCP_connection);
+    if (status == ClientToServerConnectionStatus::TCP_CLIENT_PROXY_SOCKS5_UNCONFIRMED) {
+        if (send_pending_data()) {
+            int ret = proxy_socks5_read_connection_response(this);
 
             if (ret == -1) {
-                TCP_connection->kill_at = 0;
-                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
+                kill_at = 0;
+                status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
             }
 
             if (ret == 1) {
-                generate_handshake(TCP_connection);
-                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING;
+                generate_handshake(this);
+                status = ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING;
             }
         }
     }
 
-    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING) {
-        if (TCP_connection->send_pending_data()) {
-            TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_UNCONFIRMED;
+    if (status == ClientToServerConnectionStatus::TCP_CLIENT_CONNECTING) {
+        if (send_pending_data()) {
+            status = ClientToServerConnectionStatus::TCP_CLIENT_UNCONFIRMED;
         }
     }
 
-    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_UNCONFIRMED) {
+    if (status == ClientToServerConnectionStatus::TCP_CLIENT_UNCONFIRMED) {
         uint8_t data[TCP_SERVER_HANDSHAKE_SIZE];
-        int len = read_TCP_packet(TCP_connection->sock, data, sizeof(data));
+        int len = read_TCP_packet(sock, data, sizeof(data));
 
         if (sizeof(data) == len) {
-            if (handle_handshake(TCP_connection, data) == 0) {
-                TCP_connection->kill_at = ~0;
-                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_CONFIRMED;
+            if (handle_handshake(this, data) == 0) {
+                kill_at = ~0;
+                status = ClientToServerConnectionStatus::TCP_CLIENT_CONFIRMED;
             } else {
-                TCP_connection->kill_at = 0;
-                TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
+                kill_at = 0;
+                status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
             }
         }
     }
 
-    if (TCP_connection->status == ClientToServerConnectionStatus::TCP_CLIENT_CONFIRMED) {
-        do_confirmed_TCP(TCP_connection);
+    if (status == ClientToServerConnectionStatus::TCP_CLIENT_CONFIRMED) {
+        do_confirmed_TCP(this);
     }
 
-    if (TCP_connection->kill_at <= unix_time()) {
-        TCP_connection->status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
+    if (kill_at <= unix_time()) {
+        status = ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED;
     }
 }
 
 /* Kill the TCP connection
  */
-void kill_TCP_connection(TCP_Client_Connection *TCP_connection)
+TCP_Client_Connection::~TCP_Client_Connection()
 {
-    if (TCP_connection == NULL)
-        return;
-
-    kill_sock(TCP_connection->sock);
-    sodium_memzero(TCP_connection, sizeof(TCP_Client_Connection));
-    free(TCP_connection);
+    kill_sock(sock);
 }

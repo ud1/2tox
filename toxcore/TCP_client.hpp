@@ -158,6 +158,76 @@ struct TCP_Client_Connection
     
     /* Can be used by user. */
     uint32_t custom_uint;
+    
+private:
+    /* return 1 on success.
+    * return 0 on failure.
+    */
+    int proxy_http_generate_connection_request();
+    
+    /* return 1 on success.
+    * return 0 if no data received.
+    * return -1 on failure (connection refused).
+    */
+    int proxy_http_read_connection_response();
+    
+    void proxy_socks5_generate_handshake();
+    
+    /* return 1 on success.
+    * return 0 if no data received.
+    * return -1 on failure (connection refused).
+    */
+    int socks5_read_handshake_response();
+    
+    void proxy_socks5_generate_connection_request();
+    
+    /* return 1 on success.
+    * return 0 if no data received.
+    * return -1 on failure (connection refused).
+    */
+    int proxy_socks5_read_connection_response();
+    
+    /* return 0 on success.
+    * return -1 on failure.
+    */
+    int generate_handshake();
+    
+    /* data must be of length TCP_SERVER_HANDSHAKE_SIZE
+    *
+    * return 0 on success.
+    * return -1 on failure.
+    */
+    int handle_handshake(const uint8_t *data);
+    
+    /* return 0 if pending data was sent completely
+    * return -1 if it wasn't
+    */
+    int send_pending_data_nonpriority();
+    
+    /* return 1 on success.
+    * return 0 if could not send packet.
+    * return -1 on failure (connection must be killed).
+    */
+    int write_packet_TCP_secure_connection(const uint8_t *data, uint16_t length, bool priority);
+    
+    /* return 1 on success.
+    * return 0 if could not send packet.
+    * return -1 on failure (connection must be killed).
+    */
+    int send_ping_request();
+    
+    /* return 1 on success.
+    * return 0 if could not send packet.
+    * return -1 on failure (connection must be killed).
+    */
+    int send_ping_response();
+    
+    /* return 0 on success
+    * return -1 on failure
+    */
+    int handle_TCP_packet(const uint8_t *data, uint16_t length);
+    
+    int do_confirmed_TCP();
 };
 
 #endif

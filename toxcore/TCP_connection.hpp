@@ -25,6 +25,7 @@
 #define TCP_CONNECTION_H
 
 #include "TCP_client.hpp"
+#include <vector>
 
 #define TCP_CONN_NONE 0
 #define TCP_CONN_VALID 1
@@ -198,11 +199,9 @@ struct TCP_Connections : TCPClientEventListener
     bitox::PublicKey self_public_key;
     bitox::SecretKey self_secret_key;
 
-    TCP_Connection_to *connections;
-    uint32_t connections_length; /* Length of connections array. */
+    std::vector<TCP_Connection_to> connections;
 
-    TCP_con *tcp_connections;
-    uint32_t tcp_connections_length; /* Length of tcp_connections array. */
+    std::vector<TCP_con> tcp_connections;
 
     int (*tcp_data_callback)(void *object, int id, const uint8_t *data, uint16_t length);
     void *tcp_data_callback_object;

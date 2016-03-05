@@ -61,10 +61,7 @@ bool realloc_tox_array(T *&array, size_t num)
  */
 static bool connections_number_not_valid(const TCP_Connections *tcp_c, int connections_number)
 {
-    if ((unsigned int)connections_number >= tcp_c->connections_length)
-        return 1;
-
-    if (tcp_c->connections == NULL)
+    if ((unsigned int)connections_number >= tcp_c->connections.size())
         return 1;
 
     if (tcp_c->connections[connections_number].status == TCP_CONN_NONE)
@@ -78,10 +75,7 @@ static bool connections_number_not_valid(const TCP_Connections *tcp_c, int conne
  */
 static bool tcp_connections_number_not_valid(const TCP_Connections *tcp_c, int tcp_connections_number)
 {
-    if ((unsigned int)tcp_connections_number >= tcp_c->tcp_connections_length)
-        return 1;
-
-    if (tcp_c->tcp_connections == NULL)
+    if ((unsigned int)tcp_connections_number >= tcp_c->tcp_connections.size())
         return 1;
 
     if (tcp_c->tcp_connections[tcp_connections_number].status == TCP_CONN_NONE)
@@ -97,23 +91,13 @@ static bool tcp_connections_number_not_valid(const TCP_Connections *tcp_c, int t
  */
 static int create_connection(TCP_Connections *tcp_c)
 {
-    uint32_t i;
-
-    for (i = 0; i < tcp_c->connections_length; ++i) {
+    for (size_t i = 0; i < tcp_c->connections.size(); ++i) {
         if (tcp_c->connections[i].status == TCP_CONN_NONE)
             return i;
     }
 
-    int id = -1;
-
-    if (realloc_tox_array<TCP_Connection_to>(tcp_c->connections, tcp_c->connections_length + 1))
-	{
-        id = tcp_c->connections_length;
-        ++tcp_c->connections_length;
-        memset(&(tcp_c->connections[id]), 0, sizeof(TCP_Connection_to));
-    }
-
-    return id;
+    tcp_c->connections.emplace_back();
+    return tcp_c->connections.size() - 1;
 }
 
 /* Create a new empty tcp connection.
@@ -125,22 +109,13 @@ static int create_tcp_connection(TCP_Connections *tcp_c)
 {
     uint32_t i;
 
-    for (i = 0; i < tcp_c->tcp_connections_length; ++i) {
+    for (i = 0; i < tcp_c->tcp_connections.size(); ++i) {
         if (tcp_c->tcp_connections[i].status == TCP_CONN_NONE)
             return i;
     }
 
-    int id = -1;
-
-    TCP_con *temp_pointer;
-
-    if (realloc_tox_array<TCP_con>(tcp_c->tcp_connections, tcp_c->tcp_connections_length + 1)) {
-        id = tcp_c->tcp_connections_length;
-        ++tcp_c->tcp_connections_length;
-        memset(&(tcp_c->tcp_connections[id]), 0, sizeof(TCP_con));
-    }
-
-    return id;
+    tcp_c->tcp_connections.emplace_back();
+    return tcp_c->tcp_connections.size() - 1;
 }
 
 /* Wipe a connection.
@@ -153,17 +128,13 @@ static int wipe_connection(TCP_Connections *tcp_c, int connections_number)
     if (connections_number_not_valid(tcp_c, connections_number))
         return -1;
 
-    uint32_t i;
     memset(&(tcp_c->connections[connections_number]), 0 , sizeof(TCP_Connection_to));
 
-    for (i = tcp_c->connections_length; i != 0; --i) {
-        if (tcp_c->connections[i - 1].status != TCP_CONN_NONE)
+    for (size_t i = tcp_c->connections.size(); i --> 0;) {
+        if (tcp_c->connections[i].status != TCP_CONN_NONE)
             break;
-    }
-
-    if (tcp_c->connections_length != i) {
-        tcp_c->connections_length = i;
-        realloc_tox_array<TCP_Connection_to>(tcp_c->connections, tcp_c->connections_length);
+        
+        tcp_c->connections.pop_back();
     }
 
     return 0;
@@ -179,24 +150,19 @@ static int wipe_tcp_connection(TCP_Connections *tcp_c, int tcp_connections_numbe
     if (tcp_connections_number_not_valid(tcp_c, tcp_connections_number))
         return -1;
 
-    uint32_t i;
     memset(&(tcp_c->tcp_connections[tcp_connections_number]), 0 , sizeof(TCP_con));
 
-    for (i = tcp_c->tcp_connections_length; i != 0; --i) {
+    for (size_t i = tcp_c->tcp_connections.size(); i --> 0;) {
         if (tcp_c->tcp_connections[i - 1].status != TCP_CONN_NONE)
             break;
-    }
-
-    if (tcp_c->tcp_connections_length != i) {
-        tcp_c->tcp_connections_length = i;
-
-        realloc_tox_array<TCP_con>(tcp_c->tcp_connections, tcp_c->tcp_connections_length);
+        
+        tcp_c->tcp_connections.pop_back();
     }
 
     return 0;
 }
 
-static TCP_Connection_to *get_connection(const TCP_Connections *tcp_c, int connections_number)
+static TCP_Connection_to *get_connection(TCP_Connections *tcp_c, int connections_number)
 {
     if (connections_number_not_valid(tcp_c, connections_number))
         return 0;
@@ -204,7 +170,7 @@ static TCP_Connection_to *get_connection(const TCP_Connections *tcp_c, int conne
     return &tcp_c->connections[connections_number];
 }
 
-static TCP_con *get_tcp_connection(const TCP_Connections *tcp_c, int tcp_connections_number)
+static TCP_con *get_tcp_connection(TCP_Connections *tcp_c, int tcp_connections_number)
 {
     if (tcp_connections_number_not_valid(tcp_c, tcp_connections_number))
         return 0;
@@ -219,7 +185,7 @@ static TCP_con *get_tcp_connection(const TCP_Connections *tcp_c, int tcp_connect
  */
 int TCP_Connections::send_packet_tcp_connection(int connections_number, const uint8_t *packet, uint16_t length)
 {
-    TCP_Connection_to *con_to = get_connection(this, connections_number);
+    const TCP_Connection_to *con_to = get_connection(this, connections_number);
 
     if (!con_to) {
         return -1;
@@ -303,8 +269,8 @@ int TCP_Connections::get_random_tcp_onion_conn_number()
 {
     unsigned int i, r = rand();
 
-    for (i = 0; i < tcp_connections_length; ++i) {
-        unsigned int index = ((i + r) % tcp_connections_length);
+    for (i = 0; i < tcp_connections.size(); ++i) {
+        unsigned int index = ((i + r) % tcp_connections.size());
 
         if (tcp_connections[index].onion && tcp_connections[index].status == TCP_CONN_CONNECTED) {
             return index;
@@ -322,7 +288,7 @@ int TCP_Connections::get_random_tcp_onion_conn_number()
 int TCP_Connections::tcp_send_onion_request(unsigned int tcp_connections_number, const uint8_t *data,
                            uint16_t length)
 {
-    if (tcp_connections_number >= tcp_connections_length) {
+    if (tcp_connections_number >= tcp_connections.size()) {
         return -1;
     }
 
@@ -397,8 +363,8 @@ static int find_tcp_connection_to(TCP_Connections *tcp_c, const bitox::PublicKey
 {
     unsigned int i;
 
-    for (i = 0; i < tcp_c->connections_length; ++i) {
-        TCP_Connection_to *con_to = get_connection(tcp_c, i);
+    for (i = 0; i < tcp_c->connections.size(); ++i) {
+        const TCP_Connection_to *con_to = get_connection(tcp_c, i);
 
         if (con_to) {
             if (con_to->public_key == public_key) {
@@ -419,7 +385,7 @@ static int find_tcp_connection_relay(TCP_Connections *tcp_c, const PublicKey &re
 {
     unsigned int i;
 
-    for (i = 0; i < tcp_c->tcp_connections_length; ++i) {
+    for (i = 0; i < tcp_c->tcp_connections.size(); ++i) {
         TCP_con *tcp_con = get_tcp_connection(tcp_c, i);
 
         if (tcp_con) {
@@ -471,7 +437,7 @@ int TCP_Connections::new_tcp_connection_to(const bitox::PublicKey &public_key, i
  */
 int TCP_Connections::kill_tcp_connection_to(int connections_number)
 {
-    TCP_Connection_to *con_to = get_connection(this, connections_number);
+    const TCP_Connection_to *con_to = get_connection(this, connections_number);
 
     if (!con_to)
         return -1;
@@ -679,7 +645,7 @@ static int kill_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connections
 
     unsigned int i;
 
-    for (i = 0; i < tcp_c->connections_length; ++i) {
+    for (i = 0; i < tcp_c->connections.size(); ++i) {
         TCP_Connection_to *con_to = get_connection(tcp_c, i);
 
         if (con_to) {
@@ -719,7 +685,7 @@ static int reconnect_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connec
 
     unsigned int i;
 
-    for (i = 0; i < tcp_c->connections_length; ++i) {
+    for (i = 0; i < tcp_c->connections.size(); ++i) {
         TCP_Connection_to *con_to = get_connection(tcp_c, i);
 
         if (con_to) {
@@ -762,7 +728,7 @@ static int sleep_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connection
 
     unsigned int i;
 
-    for (i = 0; i < tcp_c->connections_length; ++i) {
+    for (i = 0; i < tcp_c->connections.size(); ++i) {
         TCP_Connection_to *con_to = get_connection(tcp_c, i);
 
         if (con_to) {
@@ -974,7 +940,7 @@ static int tcp_relay_on_online(TCP_Connections *tcp_c, int tcp_connections_numbe
 
     unsigned int i, sent = 0;
 
-    for (i = 0; i < tcp_c->connections_length; ++i) {
+    for (i = 0; i < tcp_c->connections.size(); ++i) {
         TCP_Connection_to *con_to = get_connection(tcp_c, i);
 
         if (con_to) {
@@ -1146,8 +1112,8 @@ unsigned int TCP_Connections::tcp_copy_connected_relays(NodeFormat *tcp_relays, 
 {
     unsigned int i, copied = 0, r = rand();
 
-    for (i = 0; (i < tcp_connections_length) && (copied < max_num); ++i) {
-        TCP_con *tcp_con = get_tcp_connection(this, (i + r) % tcp_connections_length);
+    for (i = 0; (i < tcp_connections.size()) && (copied < max_num); ++i) {
+        TCP_con *tcp_con = get_tcp_connection(this, (i + r) % tcp_connections.size());
 
         if (!tcp_con) {
             continue;
@@ -1185,7 +1151,7 @@ int TCP_Connections::set_tcp_onion_status(bool status)
     if (status) {
         unsigned int i;
 
-        for (i = 0; i < tcp_connections_length; ++i) {
+        for (i = 0; i < tcp_connections.size(); ++i) {
             TCP_con *tcp_con = get_tcp_connection(this, i);
 
             if (tcp_con) {
@@ -1202,7 +1168,7 @@ int TCP_Connections::set_tcp_onion_status(bool status)
         if (onion_num_conns < NUM_ONION_TCP_CONNECTIONS) {
             unsigned int wakeup = NUM_ONION_TCP_CONNECTIONS - onion_num_conns;
 
-            for (i = 0; i < tcp_connections_length; ++i) {
+            for (i = 0; i < tcp_connections.size(); ++i) {
                 TCP_con *tcp_con = get_tcp_connection(this, i);
 
                 if (tcp_con) {
@@ -1220,7 +1186,7 @@ int TCP_Connections::set_tcp_onion_status(bool status)
     } else {
         unsigned int i;
 
-        for (i = 0; i < tcp_connections_length; ++i) {
+        for (i = 0; i < tcp_connections.size(); ++i) {
             TCP_con *tcp_con = get_tcp_connection(this, i);
 
             if (tcp_con) {
@@ -1262,7 +1228,7 @@ static void do_tcp_conns(TCP_Connections *tcp_c)
 {
     unsigned int i;
 
-    for (i = 0; i < tcp_c->tcp_connections_length; ++i) {
+    for (i = 0; i < tcp_c->tcp_connections.size(); ++i) {
         TCP_con *tcp_con = get_tcp_connection(tcp_c, i);
 
         if (tcp_con) {
@@ -1302,12 +1268,12 @@ static void do_tcp_conns(TCP_Connections *tcp_c)
 
 static void kill_nonused_tcp(TCP_Connections *tcp_c)
 {
-    if (tcp_c->tcp_connections_length == 0)
+    if (tcp_c->tcp_connections.size() == 0)
         return;
 
-    unsigned int i, num_online = 0, num_kill = 0, to_kill[tcp_c->tcp_connections_length];
+    unsigned int i, num_online = 0, num_kill = 0, to_kill[tcp_c->tcp_connections.size()];
 
-    for (i = 0; i < tcp_c->tcp_connections_length; ++i) {
+    for (i = 0; i < tcp_c->tcp_connections.size(); ++i) {
         TCP_con *tcp_con = get_tcp_connection(tcp_c, i);
 
         if (tcp_con) {
@@ -1346,12 +1312,10 @@ void kill_tcp_connections(TCP_Connections *tcp_c)
 {
     unsigned int i;
 
-    for (i = 0; i < tcp_c->tcp_connections_length; ++i) {
+    for (i = 0; i < tcp_c->tcp_connections.size(); ++i) {
         delete tcp_c->tcp_connections[i].connection;
     }
 
-    free(tcp_c->tcp_connections);
-    free(tcp_c->connections);
     free(tcp_c);
 }
 

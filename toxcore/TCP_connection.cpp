@@ -64,7 +64,7 @@ static bool connections_number_not_valid(const TCP_Connections *tcp_c, int conne
     if ((unsigned int)connections_number >= tcp_c->connections.size())
         return 1;
 
-    if (tcp_c->connections[connections_number].status == TCP_CONN_NONE)
+    if (tcp_c->connections[connections_number].status == TCPConnectionStatus::TCP_CONN_NONE)
         return 1;
 
     return 0;
@@ -78,7 +78,7 @@ static bool tcp_connections_number_not_valid(const TCP_Connections *tcp_c, int t
     if ((unsigned int)tcp_connections_number >= tcp_c->tcp_connections.size())
         return 1;
 
-    if (tcp_c->tcp_connections[tcp_connections_number].status == TCP_CONN_NONE)
+    if (tcp_c->tcp_connections[tcp_connections_number].status == TCPConnectionStatus::TCP_CONN_NONE)
         return 1;
 
     return 0;
@@ -92,7 +92,7 @@ static bool tcp_connections_number_not_valid(const TCP_Connections *tcp_c, int t
 static int create_connection(TCP_Connections *tcp_c)
 {
     for (size_t i = 0; i < tcp_c->connections.size(); ++i) {
-        if (tcp_c->connections[i].status == TCP_CONN_NONE)
+        if (tcp_c->connections[i].status == TCPConnectionStatus::TCP_CONN_NONE)
             return i;
     }
 
@@ -110,7 +110,7 @@ static int create_tcp_connection(TCP_Connections *tcp_c)
     uint32_t i;
 
     for (i = 0; i < tcp_c->tcp_connections.size(); ++i) {
-        if (tcp_c->tcp_connections[i].status == TCP_CONN_NONE)
+        if (tcp_c->tcp_connections[i].status == TCPConnectionStatus::TCP_CONN_NONE)
             return i;
     }
 
@@ -131,7 +131,7 @@ static int wipe_connection(TCP_Connections *tcp_c, int connections_number)
     memset(&(tcp_c->connections[connections_number]), 0 , sizeof(TCP_Connection_to));
 
     for (size_t i = tcp_c->connections.size(); i --> 0;) {
-        if (tcp_c->connections[i].status != TCP_CONN_NONE)
+        if (tcp_c->connections[i].status != TCPConnectionStatus::TCP_CONN_NONE)
             break;
         
         tcp_c->connections.pop_back();
@@ -153,7 +153,7 @@ static int wipe_tcp_connection(TCP_Connections *tcp_c, int tcp_connections_numbe
     memset(&(tcp_c->tcp_connections[tcp_connections_number]), 0 , sizeof(TCP_con));
 
     for (size_t i = tcp_c->tcp_connections.size(); i --> 0;) {
-        if (tcp_c->tcp_connections[i - 1].status != TCP_CONN_NONE)
+        if (tcp_c->tcp_connections[i - 1].status != TCPConnectionStatus::TCP_CONN_NONE)
             break;
         
         tcp_c->tcp_connections.pop_back();
@@ -200,10 +200,10 @@ int TCP_Connections::send_packet_tcp_connection(int connections_number, const ui
 
     for (i = 0; i < MAX_FRIEND_TCP_CONNECTIONS; ++i) {
         uint32_t tcp_con_num = con_to->connections[i].tcp_connection;
-        uint8_t status = con_to->connections[i].status;
+        TCPConnectionsStatus status = con_to->connections[i].status;
         uint8_t connection_id = con_to->connections[i].connection_id;
 
-        if (tcp_con_num && status == TCP_CONNECTIONS_STATUS_ONLINE) {
+        if (tcp_con_num && status == TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_ONLINE) {
             tcp_con_num -= 1;
             TCP_con *tcp_con = get_tcp_connection(this, tcp_con_num);
 
@@ -231,9 +231,9 @@ int TCP_Connections::send_packet_tcp_connection(int connections_number, const ui
         /* Send oob packets to all relays tied to the connection. */
         for (i = 0; i < MAX_FRIEND_TCP_CONNECTIONS; ++i) {
             uint32_t tcp_con_num = con_to->connections[i].tcp_connection;
-            uint8_t status = con_to->connections[i].status;
+            TCPConnectionsStatus status = con_to->connections[i].status;
 
-            if (tcp_con_num && status == TCP_CONNECTIONS_STATUS_REGISTERED) {
+            if (tcp_con_num && status == TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_REGISTERED) {
                 tcp_con_num -= 1;
                 TCP_con *tcp_con = get_tcp_connection(this, tcp_con_num);
 
@@ -272,7 +272,7 @@ int TCP_Connections::get_random_tcp_onion_conn_number()
     for (i = 0; i < tcp_connections.size(); ++i) {
         unsigned int index = ((i + r) % tcp_connections.size());
 
-        if (tcp_connections[index].onion && tcp_connections[index].status == TCP_CONN_CONNECTED) {
+        if (tcp_connections[index].onion && tcp_connections[index].status == TCPConnectionStatus::TCP_CONN_CONNECTED) {
             return index;
         }
     }
@@ -292,7 +292,7 @@ int TCP_Connections::tcp_send_onion_request(unsigned int tcp_connections_number,
         return -1;
     }
 
-    if (tcp_connections[tcp_connections_number].status == TCP_CONN_CONNECTED) {
+    if (tcp_connections[tcp_connections_number].status == TCPConnectionStatus::TCP_CONN_CONNECTED) {
         int ret = tcp_connections[tcp_connections_number].connection->send_onion_request(data, length);
 
         if (ret == 1)
@@ -315,7 +315,7 @@ int TCP_Connections::tcp_send_oob_packet(unsigned int tcp_connections_number, co
     if (!tcp_con)
         return -1;
 
-    if (tcp_con->status != TCP_CONN_CONNECTED)
+    if (tcp_con->status != TCPConnectionStatus::TCP_CONN_CONNECTED)
         return -1;
 
     int ret = tcp_con->connection->send_oob_packet(public_key, packet, length);
@@ -389,7 +389,7 @@ static int find_tcp_connection_relay(TCP_Connections *tcp_c, const PublicKey &re
         TCP_con *tcp_con = get_tcp_connection(tcp_c, i);
 
         if (tcp_con) {
-            if (tcp_con->status == TCP_CONN_SLEEPING) {
+            if (tcp_con->status == TCPConnectionStatus::TCP_CONN_SLEEPING) {
                 if (tcp_con->relay_pk == relay_pk) {
                     return i;
                 }
@@ -425,7 +425,7 @@ int TCP_Connections::new_tcp_connection_to(const bitox::PublicKey &public_key, i
 
     TCP_Connection_to *con_to = &connections[connections_number];
 
-    con_to->status = TCP_CONN_VALID;
+    con_to->status = TCPConnectionStatus::TCP_CONN_VALID;
     con_to->public_key = public_key;
     con_to->id = id;
 
@@ -452,14 +452,14 @@ int TCP_Connections::kill_tcp_connection_to(int connections_number)
             if (!tcp_con)
                 continue;
 
-            if (tcp_con->status == TCP_CONN_CONNECTED) {
+            if (tcp_con->status == TCPConnectionStatus::TCP_CONN_CONNECTED) {
                 tcp_con->connection->send_disconnect_request(con_to->connections[i].connection_id);
             }
 
-            if (con_to->connections[i].status == TCP_CONNECTIONS_STATUS_ONLINE) {
+            if (con_to->connections[i].status == TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_ONLINE) {
                 --tcp_con->lock_count;
 
-                if (con_to->status == TCP_CONN_SLEEPING) {
+                if (con_to->status == TCPConnectionStatus::TCP_CONN_SLEEPING) {
                     --tcp_con->sleep_count;
                 }
             }
@@ -488,7 +488,7 @@ int TCP_Connections::set_tcp_connection_to_status(int connections_number, bool s
 
     if (status) {
         /* Conection is unsleeping. */
-        if (con_to->status != TCP_CONN_SLEEPING)
+        if (con_to->status != TCPConnectionStatus::TCP_CONN_SLEEPING)
             return -1;
 
         unsigned int i;
@@ -501,17 +501,17 @@ int TCP_Connections::set_tcp_connection_to_status(int connections_number, bool s
                 if (!tcp_con)
                     continue;
 
-                if (tcp_con->status == TCP_CONN_SLEEPING) {
+                if (tcp_con->status == TCPConnectionStatus::TCP_CONN_SLEEPING) {
                     tcp_con->unsleep = 1;
                 }
             }
         }
 
-        con_to->status = TCP_CONN_VALID;
+        con_to->status = TCPConnectionStatus::TCP_CONN_VALID;
         return 0;
     } else {
         /* Conection is going to sleep. */
-        if (con_to->status != TCP_CONN_VALID)
+        if (con_to->status != TCPConnectionStatus::TCP_CONN_VALID)
             return -1;
 
         unsigned int i;
@@ -524,13 +524,13 @@ int TCP_Connections::set_tcp_connection_to_status(int connections_number, bool s
                 if (!tcp_con)
                     continue;
 
-                if (con_to->connections[i].status == TCP_CONNECTIONS_STATUS_ONLINE) {
+                if (con_to->connections[i].status == TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_ONLINE) {
                     ++tcp_con->sleep_count;
                 }
             }
         }
 
-        con_to->status = TCP_CONN_SLEEPING;
+        con_to->status = TCPConnectionStatus::TCP_CONN_SLEEPING;
         return 0;
     }
 }
@@ -561,7 +561,7 @@ static int add_tcp_connection_to_conn(TCP_Connection_to *con_to, unsigned int tc
     for (i = 0; i < MAX_FRIEND_TCP_CONNECTIONS; ++i) {
         if (con_to->connections[i].tcp_connection == 0) {
             con_to->connections[i].tcp_connection = tcp_connections_number + 1;
-            con_to->connections[i].status = TCP_CONNECTIONS_STATUS_NONE;
+            con_to->connections[i].status = TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_NONE;
             con_to->connections[i].connection_id = 0;
             return i;
         }
@@ -580,7 +580,7 @@ static int rm_tcp_connection_from_conn(TCP_Connection_to *con_to, unsigned int t
     for (i = 0; i < MAX_FRIEND_TCP_CONNECTIONS; ++i) {
         if (con_to->connections[i].tcp_connection == (tcp_connections_number + 1)) {
             con_to->connections[i].tcp_connection = 0;
-            con_to->connections[i].status = TCP_CONNECTIONS_STATUS_NONE;
+            con_to->connections[i].status = TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_NONE;
             con_to->connections[i].connection_id = 0;
             return i;
         }
@@ -598,7 +598,7 @@ static unsigned int online_tcp_connection_from_conn(TCP_Connection_to *con_to)
 
     for (i = 0; i < MAX_FRIEND_TCP_CONNECTIONS; ++i) {
         if (con_to->connections[i].tcp_connection) {
-            if (con_to->connections[i].status == TCP_CONNECTIONS_STATUS_ONLINE) {
+            if (con_to->connections[i].status == TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_ONLINE) {
                 ++count;
             }
         }
@@ -611,7 +611,7 @@ static unsigned int online_tcp_connection_from_conn(TCP_Connection_to *con_to)
  * return -1 on failure.
  */
 static int set_tcp_connection_status(TCP_Connection_to *con_to, unsigned int tcp_connections_number,
-                                     unsigned int status, uint8_t connection_id)
+                                     TCPConnectionsStatus status, uint8_t connection_id)
 {
     unsigned int i;
 
@@ -669,7 +669,7 @@ static int reconnect_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connec
     if (!tcp_con)
         return -1;
 
-    if (tcp_con->status == TCP_CONN_SLEEPING)
+    if (tcp_con->status == TCPConnectionStatus::TCP_CONN_SLEEPING)
         return -1;
 
     IPPort ip_port = tcp_con->connection->ip_port;
@@ -689,7 +689,7 @@ static int reconnect_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connec
         TCP_Connection_to *con_to = get_connection(tcp_c, i);
 
         if (con_to) {
-            set_tcp_connection_status(con_to, tcp_connections_number, TCP_CONNECTIONS_STATUS_NONE, 0);
+            set_tcp_connection_status(con_to, tcp_connections_number, TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_NONE, 0);
         }
     }
 
@@ -701,7 +701,7 @@ static int reconnect_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connec
     tcp_con->lock_count = 0;
     tcp_con->sleep_count = 0;
     tcp_con->connected_time = 0;
-    tcp_con->status = TCP_CONN_VALID;
+    tcp_con->status = TCPConnectionStatus::TCP_CONN_VALID;
     tcp_con->unsleep = 0;
 
     return 0;
@@ -714,7 +714,7 @@ static int sleep_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connection
     if (!tcp_con)
         return -1;
 
-    if (tcp_con->status != TCP_CONN_CONNECTED)
+    if (tcp_con->status != TCPConnectionStatus::TCP_CONN_CONNECTED)
         return -1;
 
     if (tcp_con->lock_count != tcp_con->sleep_count)
@@ -732,7 +732,7 @@ static int sleep_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connection
         TCP_Connection_to *con_to = get_connection(tcp_c, i);
 
         if (con_to) {
-            set_tcp_connection_status(con_to, tcp_connections_number, TCP_CONNECTIONS_STATUS_NONE, 0);
+            set_tcp_connection_status(con_to, tcp_connections_number, TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_NONE, 0);
         }
     }
 
@@ -744,7 +744,7 @@ static int sleep_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connection
     tcp_con->lock_count = 0;
     tcp_con->sleep_count = 0;
     tcp_con->connected_time = 0;
-    tcp_con->status = TCP_CONN_SLEEPING;
+    tcp_con->status = TCPConnectionStatus::TCP_CONN_SLEEPING;
     tcp_con->unsleep = 0;
 
     return 0;
@@ -757,7 +757,7 @@ static int unsleep_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connecti
     if (!tcp_con)
         return -1;
 
-    if (tcp_con->status != TCP_CONN_SLEEPING)
+    if (tcp_con->status != TCPConnectionStatus::TCP_CONN_SLEEPING)
         return -1;
 
     tcp_con->connection = new TCP_Client_Connection(tcp_con->ip_port, tcp_con->relay_pk, tcp_c->self_public_key,
@@ -771,7 +771,7 @@ static int unsleep_tcp_relay_connection(TCP_Connections *tcp_c, int tcp_connecti
     tcp_con->lock_count = 0;
     tcp_con->sleep_count = 0;
     tcp_con->connected_time = 0;
-    tcp_con->status = TCP_CONN_VALID;
+    tcp_con->status = TCPConnectionStatus::TCP_CONN_VALID;
     tcp_con->unsleep = 0;
     return 0;
 }
@@ -788,7 +788,7 @@ static int send_tcp_relay_routing_request(TCP_Connections *tcp_c, int tcp_connec
     if (!tcp_con)
         return -1;
 
-    if (tcp_con->status == TCP_CONN_SLEEPING)
+    if (tcp_con->status == TCPConnectionStatus::TCP_CONN_SLEEPING)
         return -1;
 
     if (tcp_con->connection->send_routing_request(public_key) != 1)
@@ -815,7 +815,7 @@ int TCP_Connections::on_response(TCP_Client_Connection *connection, uint8_t conn
     if (con_to == NULL)
         return -1;
 
-    if (set_tcp_connection_status(con_to, tcp_connections_number, TCP_CONNECTIONS_STATUS_REGISTERED, connection_id) == -1)
+    if (set_tcp_connection_status(con_to, tcp_connections_number, TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_REGISTERED, connection_id) == -1)
         return -1;
 
     tcp_con->connection->set_tcp_connection_number(connection_id, connections_number);
@@ -833,21 +833,21 @@ int TCP_Connections::on_status(TCP_Client_Connection *connection, uint32_t numbe
         return -1;
 
     if (status == ClientToClientConnectionStatus::OFFLINE) {
-        if (set_tcp_connection_status(con_to, tcp_connections_number, TCP_CONNECTIONS_STATUS_REGISTERED, connection_id) == -1)
+        if (set_tcp_connection_status(con_to, tcp_connections_number, TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_REGISTERED, connection_id) == -1)
             return -1;
 
         --tcp_con->lock_count;
 
-        if (con_to->status == TCP_CONN_SLEEPING) {
+        if (con_to->status == TCPConnectionStatus::TCP_CONN_SLEEPING) {
             --tcp_con->sleep_count;
         }
     } else if (status == ClientToClientConnectionStatus::ONLINE) {
-        if (set_tcp_connection_status(con_to, tcp_connections_number, TCP_CONNECTIONS_STATUS_ONLINE, connection_id) == -1)
+        if (set_tcp_connection_status(con_to, tcp_connections_number, TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_ONLINE, connection_id) == -1)
             return -1;
 
         ++tcp_con->lock_count;
 
-        if (con_to->status == TCP_CONN_SLEEPING) {
+        if (con_to->status == TCPConnectionStatus::TCP_CONN_SLEEPING) {
             ++tcp_con->sleep_count;
         }
     }
@@ -953,7 +953,7 @@ static int tcp_relay_on_online(TCP_Connections *tcp_c, int tcp_connections_numbe
     }
 
     tcp_relay_set_callbacks(tcp_c, tcp_connections_number);
-    tcp_con->status = TCP_CONN_CONNECTED;
+    tcp_con->status = TCPConnectionStatus::TCP_CONN_CONNECTED;
 
     /* If this connection isn't used by any connection, we don't need to wait for them to come online. */
     if (sent) {
@@ -995,7 +995,7 @@ static int add_tcp_relay_instance(TCP_Connections *tcp_c, IPPort ip_port, const 
     if (!tcp_con->connection)
         return -1;
 
-    tcp_con->status = TCP_CONN_VALID;
+    tcp_con->status = TCPConnectionStatus::TCP_CONN_VALID;
 
     return tcp_connections_number;
 }
@@ -1035,14 +1035,14 @@ int TCP_Connections::add_tcp_number_relay_connection(int connections_number, uns
     if (!tcp_con)
         return -1;
 
-    if (con_to->status != TCP_CONN_SLEEPING && tcp_con->status == TCP_CONN_SLEEPING) {
+    if (con_to->status != TCPConnectionStatus::TCP_CONN_SLEEPING && tcp_con->status == TCPConnectionStatus::TCP_CONN_SLEEPING) {
         tcp_con->unsleep = 1;
     }
 
     if (add_tcp_connection_to_conn(con_to, tcp_connections_number) == -1)
         return -1;
 
-    if (tcp_con->status == TCP_CONN_CONNECTED) {
+    if (tcp_con->status == TCPConnectionStatus::TCP_CONN_CONNECTED) {
         if (send_tcp_relay_routing_request(this, tcp_connections_number, con_to->public_key) == 0) {
             tcp_con->connected_time = unix_time();
         }
@@ -1119,7 +1119,7 @@ unsigned int TCP_Connections::tcp_copy_connected_relays(NodeFormat *tcp_relays, 
             continue;
         }
 
-        if (tcp_con->status == TCP_CONN_CONNECTED) {
+        if (tcp_con->status == TCPConnectionStatus::TCP_CONN_CONNECTED) {
             tcp_relays[copied].public_key = tcp_con->connection->public_key;
             tcp_relays[copied].ip_port = tcp_con->connection->ip_port;
 
@@ -1155,7 +1155,7 @@ int TCP_Connections::set_tcp_onion_status(bool status)
             TCP_con *tcp_con = get_tcp_connection(this, i);
 
             if (tcp_con) {
-                if (tcp_con->status == TCP_CONN_CONNECTED && !tcp_con->onion) {
+                if (tcp_con->status == TCPConnectionStatus::TCP_CONN_CONNECTED && !tcp_con->onion) {
                     ++onion_num_conns;
                     tcp_con->onion = 1;
                 }
@@ -1172,7 +1172,7 @@ int TCP_Connections::set_tcp_onion_status(bool status)
                 TCP_con *tcp_con = get_tcp_connection(this, i);
 
                 if (tcp_con) {
-                    if (tcp_con->status == TCP_CONN_SLEEPING) {
+                    if (tcp_con->status == TCPConnectionStatus::TCP_CONN_SLEEPING) {
                         tcp_con->unsleep = 1;
                     }
                 }
@@ -1232,14 +1232,14 @@ static void do_tcp_conns(TCP_Connections *tcp_c)
         TCP_con *tcp_con = get_tcp_connection(tcp_c, i);
 
         if (tcp_con) {
-            if (tcp_con->status != TCP_CONN_SLEEPING) {
+            if (tcp_con->status != TCPConnectionStatus::TCP_CONN_SLEEPING) {
                 tcp_con->connection->do_TCP_connection();
 
                 /* callbacks can change TCP connection address. */
                 tcp_con = get_tcp_connection(tcp_c, i);
 
                 if (tcp_con->connection->status == ClientToServerConnectionStatus::TCP_CLIENT_DISCONNECTED) {
-                    if (tcp_con->status == TCP_CONN_CONNECTED) {
+                    if (tcp_con->status == TCPConnectionStatus::TCP_CONN_CONNECTED) {
                         reconnect_tcp_relay_connection(tcp_c, i);
                     } else {
                         kill_tcp_relay_connection(tcp_c, i);
@@ -1248,18 +1248,18 @@ static void do_tcp_conns(TCP_Connections *tcp_c)
                     continue;
                 }
 
-                if (tcp_con->status == TCP_CONN_VALID && tcp_con->connection->status == ClientToServerConnectionStatus::TCP_CLIENT_CONFIRMED) {
+                if (tcp_con->status == TCPConnectionStatus::TCP_CONN_VALID && tcp_con->connection->status == ClientToServerConnectionStatus::TCP_CLIENT_CONFIRMED) {
                     tcp_relay_on_online(tcp_c, i);
                 }
 
-                if (tcp_con->status == TCP_CONN_CONNECTED && !tcp_con->onion && tcp_con->lock_count
+                if (tcp_con->status == TCPConnectionStatus::TCP_CONN_CONNECTED && !tcp_con->onion && tcp_con->lock_count
                         && tcp_con->lock_count == tcp_con->sleep_count
                         && is_timeout(tcp_con->connected_time, TCP_CONNECTION_ANNOUNCE_TIMEOUT)) {
                     sleep_tcp_relay_connection(tcp_c, i);
                 }
             }
 
-            if (tcp_con->status == TCP_CONN_SLEEPING && tcp_con->unsleep) {
+            if (tcp_con->status == TCPConnectionStatus::TCP_CONN_SLEEPING && tcp_con->unsleep) {
                 unsleep_tcp_relay_connection(tcp_c, i);
             }
         }
@@ -1277,7 +1277,7 @@ static void kill_nonused_tcp(TCP_Connections *tcp_c)
         TCP_con *tcp_con = get_tcp_connection(tcp_c, i);
 
         if (tcp_con) {
-            if (tcp_con->status == TCP_CONN_CONNECTED) {
+            if (tcp_con->status == TCPConnectionStatus::TCP_CONN_CONNECTED) {
                 if (!tcp_con->onion && !tcp_con->lock_count && is_timeout(tcp_con->connected_time, TCP_CONNECTION_ANNOUNCE_TIMEOUT)) {
                     to_kill[num_kill] = i;
                     ++num_kill;

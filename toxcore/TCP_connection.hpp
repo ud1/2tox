@@ -27,18 +27,24 @@
 #include "TCP_client.hpp"
 #include <vector>
 
-#define TCP_CONN_NONE 0
-#define TCP_CONN_VALID 1
+enum class TCPConnectionStatus
+{
+    TCP_CONN_NONE = 0,
+    TCP_CONN_VALID = 1,
+    
+    //NOTE: only used by TCP_con
+    TCP_CONN_CONNECTED = 2,
+    
+    // Connection is not connected but can be quickly reconnected in case it is needed
+    TCP_CONN_SLEEPING = 3
+};
 
-/* NOTE: only used by TCP_con */
-#define TCP_CONN_CONNECTED 2
-
-/* Connection is not connected but can be quickly reconnected in case it is needed. */
-#define TCP_CONN_SLEEPING 3
-
-#define TCP_CONNECTIONS_STATUS_NONE 0
-#define TCP_CONNECTIONS_STATUS_REGISTERED 1
-#define TCP_CONNECTIONS_STATUS_ONLINE 2
+enum class TCPConnectionsStatus
+{
+    TCP_CONNECTIONS_STATUS_NONE = 0,
+    TCP_CONNECTIONS_STATUS_REGISTERED = 1,
+    TCP_CONNECTIONS_STATUS_ONLINE = 2
+};
 
 #define MAX_FRIEND_TCP_CONNECTIONS 6
 
@@ -54,31 +60,31 @@
 
 struct TCP_Connection_to
 {
-    uint8_t status;
+    TCPConnectionStatus status = TCPConnectionStatus::TCP_CONN_NONE;
     bitox::PublicKey public_key; /* The dht public key of the peer */
 
     struct {
-        uint32_t tcp_connection;
-        unsigned int status;
-        unsigned int connection_id;
+        uint32_t tcp_connection = 0;
+        TCPConnectionsStatus status = TCPConnectionsStatus::TCP_CONNECTIONS_STATUS_NONE;
+        unsigned int connection_id = 0;
     } connections[MAX_FRIEND_TCP_CONNECTIONS];
 
-    int id; /* id used in callbacks. */
+    int id = 0; /* id used in callbacks. */
 };
 
 struct TCP_con
 {
-    uint8_t status;
-    TCP_Client_Connection *connection;
-    uint64_t connected_time;
-    uint32_t lock_count;
-    uint32_t sleep_count;
-    bool onion;
+    TCPConnectionStatus status = TCPConnectionStatus::TCP_CONN_NONE;
+    TCP_Client_Connection *connection = nullptr;
+    uint64_t connected_time = 0;
+    uint32_t lock_count = 0;
+    uint32_t sleep_count = 0;
+    bool onion = false;
 
     /* Only used when connection is sleeping. */
     bitox::network::IPPort ip_port;
     bitox::PublicKey relay_pk;
-    bool unsleep; /* set to 1 to unsleep connection. */
+    bool unsleep = false; /* set to true to unsleep connection. */
 };
 
 struct TCP_Connections : TCPClientEventListener
@@ -200,7 +206,6 @@ struct TCP_Connections : TCPClientEventListener
     bitox::SecretKey self_secret_key;
 
     std::vector<TCP_Connection_to> connections;
-
     std::vector<TCP_con> tcp_connections;
 
     int (*tcp_data_callback)(void *object, int id, const uint8_t *data, uint16_t length);

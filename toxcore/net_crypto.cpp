@@ -2623,7 +2623,7 @@ Net_Crypto *new_net_crypto(DHT *dht, TCP_Proxy_Info *proxy_info)
     if (temp == NULL)
         return NULL;
 
-    temp->tcp_c = new_tcp_connections(dht->self_secret_key, proxy_info);
+    temp->tcp_c = new TCP_Connections(dht->self_secret_key, proxy_info);
 
     if (temp->tcp_c == NULL) {
         free(temp);
@@ -2635,7 +2635,7 @@ Net_Crypto *new_net_crypto(DHT *dht, TCP_Proxy_Info *proxy_info)
 
     if (create_recursive_mutex(&temp->tcp_mutex) != 0 ||
             pthread_mutex_init(&temp->connections_mutex, NULL) != 0) {
-        kill_tcp_connections(temp->tcp_c);
+        delete temp->tcp_c;
         free(temp);
         return NULL;
     }
@@ -2711,7 +2711,7 @@ void kill_net_crypto(Net_Crypto *c)
     pthread_mutex_destroy(&c->tcp_mutex);
     pthread_mutex_destroy(&c->connections_mutex);
 
-    kill_tcp_connections(c->tcp_c);
+    delete c->tcp_c;
     networking_registerhandler(c->dht->net, NET_PACKET_COOKIE_REQUEST, NULL, NULL);
     networking_registerhandler(c->dht->net, NET_PACKET_COOKIE_RESPONSE, NULL, NULL);
     networking_registerhandler(c->dht->net, NET_PACKET_CRYPTO_HS, NULL, NULL);

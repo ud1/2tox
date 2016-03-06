@@ -70,6 +70,32 @@ struct TCP_Connection_to
     } connections[MAX_FRIEND_TCP_CONNECTIONS];
 
     int id = 0; /* id used in callbacks. */
+    
+private:
+    friend struct TCP_Connections;
+    
+    bool tcp_connection_in_conn(unsigned int tcp_connections_number);
+    
+    /* return index on success.
+    * return -1 on failure.
+    */
+    int add_tcp_connection_to_conn(unsigned int tcp_connections_number);
+    
+    /* return index on success.
+    * return -1 on failure.
+    */
+    int rm_tcp_connection_from_conn(unsigned int tcp_connections_number);
+    
+    /* return number of online connections on success.
+    * return -1 on failure.
+    */
+    unsigned int online_tcp_connection_from_conn();
+    
+    /* return index on success.
+    * return -1 on failure.
+    */
+    int set_tcp_connection_status(unsigned int tcp_connections_number,
+                                        TCPConnectionsStatus status, uint8_t connection_id);
 };
 
 struct TCP_con
@@ -89,6 +115,15 @@ struct TCP_con
 
 struct TCP_Connections : TCPClientEventListener
 {
+    /* Returns a new TCP_Connections object associated with the secret_key.
+    *
+    * In order for others to connect to this instance new_tcp_connection_to() must be called with the
+    * public_key associated with secret_key.
+    */
+    TCP_Connections(const bitox::SecretKey &secret_key, TCP_Proxy_Info *proxy_info);
+    
+    ~TCP_Connections();
+
     /* Send a packet to the TCP connection.
     *
     * return -1 on failure.
@@ -228,6 +263,91 @@ struct TCP_Connections : TCPClientEventListener
     virtual int on_data (TCP_Client_Connection *connection, uint32_t number, uint8_t connection_id, const uint8_t *data, uint16_t length) override;
     virtual int on_oob_data(TCP_Client_Connection *connection, const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length) override;
     virtual int on_onion(TCP_Client_Connection *connection, const uint8_t *data, uint16_t length) override;
+    
+private:
+    /* return 1 if the connections_number is not valid.
+    * return 0 if the connections_number is valid.
+    */
+    bool connections_number_not_valid(int connections_number);
+    
+    /* return 1 if the tcp_connections_number is not valid.
+    * return 0 if the tcp_connections_number is valid.
+    */
+    bool tcp_connections_number_not_valid(int tcp_connections_number);
+    
+    /* Create a new empty connection.
+    *
+    * return -1 on failure.
+    * return connections_number on success.
+    */
+    int create_connection();
+    
+    /* Create a new empty tcp connection.
+    *
+    * return -1 on failure.
+    * return tcp_connections_number on success.
+    */
+    int create_tcp_connection();
+    
+    /* Wipe a connection.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int wipe_connection(int connections_number);
+    
+    /* Wipe a connection.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int wipe_tcp_connection(int tcp_connections_number);
+    
+    TCP_Connection_to *get_connection(int connections_number);
+    
+    TCP_con *get_tcp_connection(int tcp_connections_number);
+    
+    /* Find the TCP connection with public_key.
+    *
+    * return connections_number on success.
+    * return -1 on failure.
+    */
+    int find_tcp_connection_to(const bitox::PublicKey &public_key);
+    
+    /* Find the TCP connection to a relay with relay_pk.
+    *
+    * return connections_number on success.
+    * return -1 on failure.
+    */
+    int find_tcp_connection_relay(const bitox::PublicKey &relay_pk);
+    
+    /* Kill a TCP relay connection.
+    *
+    * return 0 on success.
+    * return -1 on failure.
+    */
+    int kill_tcp_relay_connection(int tcp_connections_number);
+    
+    int reconnect_tcp_relay_connection(int tcp_connections_number);
+    int sleep_tcp_relay_connection(int tcp_connections_number);
+    int unsleep_tcp_relay_connection(int tcp_connections_number);
+    /* Send a TCP routing request.
+    *
+    * return 0 on success.
+    * return -1 on failure.
+    */
+    int send_tcp_relay_routing_request(int tcp_connections_number, bitox::PublicKey &public_key);
+
+    /* Set callbacks for the TCP relay connection.
+    *
+    * return 0 on success.
+    * return -1 on failure.
+    */
+    int tcp_relay_set_callbacks(int tcp_connections_number);
+    int tcp_relay_on_online(int tcp_connections_number);
+    int add_tcp_relay_instance(bitox::network::IPPort ip_port, const bitox::PublicKey &relay_pk);
+    void do_tcp_conns();
+    void kill_nonused_tcp();
 };
 
 
@@ -245,17 +365,6 @@ void set_onion_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_
  */
 void set_oob_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_oob_callback)(void *object,
         const bitox::PublicKey &public_key, unsigned int tcp_connections_number, const uint8_t *data, uint16_t length), void *object);
-
-/* Returns a new TCP_Connections object associated with the secret_key.
- *
- * In order for others to connect to this instance new_tcp_connection_to() must be called with the
- * public_key associated with secret_key.
- *
- * Returns NULL on failure.
- */
-TCP_Connections *new_tcp_connections(const bitox::SecretKey &secret_key, TCP_Proxy_Info *proxy_info);
-
-void kill_tcp_connections(TCP_Connections *tcp_c);
 
 #endif
 

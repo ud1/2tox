@@ -1790,7 +1790,7 @@ Messenger *new_messenger(Messenger_Options *options, unsigned int *error)
         return NULL;
     }
 
-    m->net_crypto = new_net_crypto(m->dht, &options->proxy_info);
+    m->net_crypto = new Net_Crypto(m->dht, &options->proxy_info);
 
     if (m->net_crypto == NULL) {
         kill_networking(m->net);
@@ -1809,7 +1809,7 @@ Messenger *new_messenger(Messenger_Options *options, unsigned int *error)
         delete m->onion;
         kill_onion_announce(m->onion_a);
         delete m->onion_c;
-        kill_net_crypto(m->net_crypto);
+        delete m->net_crypto;
         delete m->dht;
         kill_networking(m->net);
         free(m);
@@ -1824,7 +1824,7 @@ Messenger *new_messenger(Messenger_Options *options, unsigned int *error)
             delete m->onion;
             kill_onion_announce(m->onion_a);
             delete m->onion_c;
-            kill_net_crypto(m->net_crypto);
+            delete m->net_crypto;
             delete m->dht;
             kill_networking(m->net);
             free(m);
@@ -1863,7 +1863,7 @@ void kill_messenger(Messenger *m)
     delete m->onion;
     kill_onion_announce(m->onion_a);
     delete m->onion_c;
-    kill_net_crypto(m->net_crypto);
+    delete m->net_crypto;
     delete m->dht;
     kill_networking(m->net);
 

@@ -32,12 +32,6 @@
 #include <mutex>
 #include <vector>
 
-#define CRYPTO_CONN_NO_CONNECTION 0
-#define CRYPTO_CONN_COOKIE_REQUESTING 1 //send cookie request packets
-#define CRYPTO_CONN_HANDSHAKE_SENT 2 //send handshake packets
-#define CRYPTO_CONN_NOT_CONFIRMED 3 //send handshake packets, we have received one from the other
-#define CRYPTO_CONN_ESTABLISHED 4
-
 /* Maximum size of receiving and sending packet buffers. */
 #define CRYPTO_PACKET_BUFFER_SIZE 32768 /* Must be a power of 2 */
 
@@ -102,6 +96,24 @@ typedef struct {
     uint32_t  buffer_end = 0; /* packet numbers in array: {buffer_start, buffer_end) */
 } Packets_Array;
 
+enum class CryptoConnectionStatus
+{
+    // No connection
+    CRYPTO_CONN_NO_CONNECTION = 0,
+    
+    // We are sending cookie request packets
+    CRYPTO_CONN_COOKIE_REQUESTING = 1,
+    
+    // We are sending handshake packet
+    CRYPTO_CONN_HANDSHAKE_SENT = 2,
+    
+    // Connection is not confirmed yet (we have received a handshake but no data packets yet)
+    CRYPTO_CONN_NOT_CONFIRMED = 3,
+    
+    // The connection is established
+    CRYPTO_CONN_ESTABLISHED = 4
+};
+
 struct Crypto_Connection
 {
     bitox::PublicKey public_key; /* The real public key of the peer. */
@@ -111,16 +123,11 @@ struct Crypto_Connection
     bitox::SecretKey sessionsecret_key; /* Our private key for this session. */
     bitox::PublicKey peersessionpublic_key; /* The public key of the peer. */
     bitox::SharedKey shared_key; /* The precomputed shared key from encrypt_precompute. */
-    uint8_t status = 0; /* 0 if no connection, 1 we are sending cookie request packets,
-                     * 2 if we are sending handshake packets
-                     * 3 if connection is not confirmed yet (we have received a handshake but no data packets yet),
-                     * 4 if the connection is established.
-                     */
+    CryptoConnectionStatus status = CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION;
     uint64_t cookie_request_number = 0; /* number used in the cookie request packets for this connection */
     bitox::PublicKey dht_public_key; /* The dht public key of the peer */
 
-    uint8_t *temp_packet = nullptr; /* Where the cookie request/handshake packet is stored while it is being sent. */
-    uint16_t temp_packet_length = 0;
+    std::vector<uint8_t> temp_packet; /* Where the cookie request/handshake packet is stored while it is being sent. */
     uint64_t temp_packet_sent_time = 0; /* The time at which the last temp_packet was sent in ms. */
     uint32_t temp_packet_num_sent = 0;
 
@@ -189,8 +196,7 @@ struct New_Connection
     bitox::PublicKey dht_public_key; /* The dht public key of the peer. */
     bitox::Nonce recv_nonce = bitox::Nonce::create_empty(); /* Nonce of received packets. */
     bitox::PublicKey peersessionpublic_key; /* The public key of the peer. */
-    uint8_t *cookie;
-    uint8_t cookie_length;
+    std::vector<uint8_t> cookie;
 };
 
 struct Net_Crypto
@@ -305,7 +311,7 @@ struct Net_Crypto
     * sets direct_connected to 1 if connection connects directly to other, 0 if it isn't.
     * sets online_tcp_relays to the number of connected tcp relays this connection has.
     */
-    unsigned int crypto_connection_status(int crypt_connection_id, bool *direct_connected,
+    CryptoConnectionStatus crypto_connection_status(int crypt_connection_id, bool *direct_connected,
                                         unsigned int *online_tcp_relays);
 
     /* Generate our public and private keys.
@@ -461,7 +467,7 @@ struct Net_Crypto
     * return -1 on failure.
     * return 0 on success.
     */
-    int send_packet_to(int crypt_connection_id, const uint8_t *data, uint16_t length);
+    int send_packet_to(int crypt_connection_id, const uint8_t *data, size_t length);
 
     /* Creates and sends a data packet to the peer using the fastest route.
     *

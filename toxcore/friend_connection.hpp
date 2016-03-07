@@ -29,7 +29,8 @@
 #include "DHT.hpp"
 #include "LAN_discovery.hpp"
 #include "onion_client.hpp"
-
+#include <map>
+#include <memory>
 
 #define MAX_FRIEND_CONNECTION_CALLBACKS 2
 #define MESSENGER_CALLBACK_INDEX 0
@@ -64,17 +65,39 @@ enum class FriendConnectionStatus
     FRIENDCONN_STATUS_CONNECTED
 };
 
-struct Friend_Conn
+struct Friend_Connections;
+
+struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public CryptoConnectionEventListener
 {
+    Friend_Conn(Friend_Connections *connections, const bitox::PublicKey &real_public_key);
+    ~Friend_Conn();
+    
+    /* Send a Friend request packet.
+    *
+    *  return -1 if failure.
+    *  return  0 if it sent the friend request directly to the friend.
+    *  return the number of peers it was routed through if it did not send it directly.
+    */
+    int send_friend_request_packet(uint32_t nospam_num, const uint8_t *data, uint16_t length);
+    
+    /* Add a TCP relay associated to the friend.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int friend_add_tcp_relay(bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
+    
+    Friend_Connections * const connections;
+    
     FriendConnectionStatus status;
 
-    bitox::PublicKey real_public_key;
+    const bitox::PublicKey real_public_key;
     bitox::PublicKey dht_temp_pk;
     uint16_t dht_lock;
     bitox::network::IPPort dht_ip_port;
     uint64_t dht_pk_lastrecv, dht_ip_port_lastrecv;
 
-    int onion_friendnum;
+    int onion_friendnum = -1;
     int crypt_connection_id;
 
     uint64_t ping_lastrecv, ping_lastsent;
@@ -94,23 +117,38 @@ struct Friend_Conn
         int lossy_data_callback_id;
     } callbacks[MAX_FRIEND_CONNECTION_CALLBACKS];
 
-    uint16_t lock_count;
-
     bitox::dht::NodeFormat tcp_relays[FRIEND_MAX_STORED_TCP_RELAYS];
     uint16_t tcp_relay_counter;
 
     bool hosting_tcp_relay;
+    
+// private:
+    unsigned int send_relays();
+    
+    virtual int on_status(Crypto_Connection *connection, uint8_t status) override;
+    virtual int on_data(Crypto_Connection *connection, uint8_t *data, uint16_t length) override;
+    virtual int on_lossy_data(Crypto_Connection *connection, uint8_t *data, uint16_t length) override;
+    virtual void on_dht_pk(Crypto_Connection *connection, const bitox::PublicKey &dht_public_key) override;
 };
 
 
 struct Friend_Connections
 {
+    /* Create a new friend connection.
+    * If one to that real public key already exists, increase lock count and return it.
+    *
+    * return -1 on failure.
+    * return connection id on success.
+    */
+    std::shared_ptr<Friend_Conn> new_friend_connection(const bitox::PublicKey &real_public_key);
+
     Net_Crypto *net_crypto;
     DHT *dht;
     Onion_Client *onion_c;
 
-    Friend_Conn *conns;
-    uint32_t num_cons;
+    std::map<bitox::PublicKey, Friend_Conn *> connections_map;
+    //Friend_Conn *conns;
+    //uint32_t num_cons;
 
     int (*fr_request_callback)(void *object, const bitox::PublicKey &source_pubkey, const uint8_t *data, uint16_t len);
     void *fr_request_object;
@@ -118,83 +156,16 @@ struct Friend_Connections
     uint64_t last_LANdiscovery;
 };
 
-/* return friendcon_id corresponding to the real public key on success.
- * return -1 on failure.
- */
-int getfriend_conn_id_pk(Friend_Connections *fr_c, const bitox::PublicKey &real_pk);
-
-/* Increases lock_count for the connection with friendcon_id by 1.
- *
- * return 0 on success.
- * return -1 on failure.
- */
-int friend_connection_lock(Friend_Connections *fr_c, int friendcon_id);
-
-/* return FRIENDCONN_STATUS_CONNECTED if the friend is connected.
- * return FRIENDCONN_STATUS_CONNECTING if the friend isn't connected.
- * return FRIENDCONN_STATUS_NONE on failure.
- */
-FriendConnectionStatus friend_con_connected(Friend_Connections *fr_c, int friendcon_id);
-
-/* Copy public keys associated to friendcon_id.
- *
- * return 0 on success.
- * return -1 on failure.
- */
-int get_friendcon_public_keys(bitox::PublicKey &real_pk, bitox::PublicKey &dht_temp_pk, Friend_Connections *fr_c, int friendcon_id);
-
-/* Set temp dht key for connection.
- */
-void set_dht_temp_pk(Friend_Connections *fr_c, int friendcon_id, const bitox::PublicKey &dht_temp_pk);
-
-/* Add a TCP relay associated to the friend.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int friend_add_tcp_relay(Friend_Connections *fr_c, int friendcon_id, bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
-
 /* Set the callbacks for the friend connection.
  * index is the index (0 to (MAX_FRIEND_CONNECTION_CALLBACKS - 1)) we want the callback to set in the array.
  *
  * return 0 on success.
  * return -1 on failure
  */
-int friend_connection_callbacks(Friend_Connections *fr_c, int friendcon_id, unsigned int index,
+int friend_connection_callbacks(Friend_Conn *friend_connection, unsigned int index,
                                 int (*status_callback)(void *object, int id, uint8_t status), int (*data_callback)(void *object, int id, uint8_t *data,
                                         uint16_t length), int (*lossy_data_callback)(void *object, int id, const uint8_t *data, uint16_t length), void *object,
                                 int number);
-
-/* return the crypt_connection_id for the connection.
- *
- * return crypt_connection_id on success.
- * return -1 on failure.
- */
-int friend_connection_crypt_connection_id(Friend_Connections *fr_c, int friendcon_id);
-
-/* Create a new friend connection.
- * If one to that real public key already exists, increase lock count and return it.
- *
- * return -1 on failure.
- * return connection id on success.
- */
-int new_friend_connection(Friend_Connections *fr_c, const bitox::PublicKey &real_public_key);
-
-/* Kill a friend connection.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int kill_friend_connection(Friend_Connections *fr_c, int friendcon_id);
-
-/* Send a Friend request packet.
- *
- *  return -1 if failure.
- *  return  0 if it sent the friend request directly to the friend.
- *  return the number of peers it was routed through if it did not send it directly.
- */
-int send_friend_request_packet(Friend_Connections *fr_c, int friendcon_id, uint32_t nospam_num, const uint8_t *data,
-                               uint16_t length);
 
 /* Set friend request callback.
  *

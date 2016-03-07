@@ -170,9 +170,10 @@ enum {
 
 struct Messenger;
 
-typedef struct {
+struct Friend
+{
     bitox::PublicKey real_pk;
-    int friendcon_id;
+    std::shared_ptr<Friend_Conn> friend_connection;
 
     uint64_t friendrequest_lastsent; // Time at which the last friend request was sent.
     uint32_t friendrequest_timeout; // The timeout between successful friendrequest sending attempts.
@@ -205,7 +206,7 @@ typedef struct {
 
     struct Receipts *receipts_start;
     struct Receipts *receipts_end;
-} Friend;
+};
 
 struct Group_Chats;
 
@@ -333,7 +334,7 @@ int get_real_pk(const Messenger *m, int32_t friendnumber, bitox::PublicKey &real
 /*  return friend connection id on success.
  *  return -1 if failure.
  */
-int getfriendcon_id(const Messenger *m, int32_t friendnumber);
+std::shared_ptr<Friend_Conn> getfriendcon_id(const Messenger *m, int32_t friendnumber);
 
 /* Remove a friend.
  *

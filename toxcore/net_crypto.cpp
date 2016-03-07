@@ -1200,8 +1200,8 @@ void Net_Crypto::connection_kill(int crypt_connection_id)
     if (conn == 0)
         return;
 
-    if (conn->connection_status_callback) {
-        conn->connection_status_callback(conn->connection_status_callback_object, conn->connection_status_callback_id, 0);
+    if (conn->event_listener) {
+        conn->event_listener->on_status(conn, 0);
     }
 
     this->crypto_kill(crypt_connection_id);
@@ -1269,8 +1269,8 @@ int Net_Crypto::handle_data_packet_helper(int crypt_connection_id, const uint8_t
         clear_temp_packet(crypt_connection_id);
         conn->status = CryptoConnectionStatus::CRYPTO_CONN_ESTABLISHED;
 
-        if (conn->connection_status_callback)
-            conn->connection_status_callback(conn->connection_status_callback_object, conn->connection_status_callback_id, 1);
+        if (conn->event_listener)
+            conn->event_listener->on_status(conn, 1);
     }
 
     if (real_data[0] == PACKET_ID_REQUEST) {
@@ -1310,9 +1310,8 @@ int Net_Crypto::handle_data_packet_helper(int crypt_connection_id, const uint8_t
             if (ret == -1)
                 break;
 
-            if (conn->connection_data_callback)
-                conn->connection_data_callback(conn->connection_data_callback_object, conn->connection_data_callback_id, dt.data,
-                                               dt.length);
+            if (conn->event_listener)
+                conn->event_listener->on_data(conn, dt.data, dt.length);
 
             /* conn might get killed in callback. */
             conn = get_crypto_connection(crypt_connection_id);
@@ -1328,9 +1327,8 @@ int Net_Crypto::handle_data_packet_helper(int crypt_connection_id, const uint8_t
 
         set_buffer_end(&conn->recv_array, num);
 
-        if (conn->connection_lossy_data_callback)
-            conn->connection_lossy_data_callback(conn->connection_lossy_data_callback_object,
-                                                 conn->connection_lossy_data_callback_id, real_data, real_length);
+        if (conn->event_listener)
+            conn->event_listener->on_lossy_data(conn, real_data, real_length);
 
     } else {
         return -1;
@@ -1404,8 +1402,8 @@ int Net_Crypto::handle_packet_connection(int crypt_connection_id, const uint8_t 
 
                     conn->status = CryptoConnectionStatus::CRYPTO_CONN_NOT_CONFIRMED;
                 } else {
-                    if (conn->dht_pk_callback)
-                        conn->dht_pk_callback(conn->dht_pk_callback_object, conn->dht_pk_callback_number, dht_public_key);
+                    if (conn->event_listener)
+                        conn->event_listener->on_dht_pk(conn, dht_public_key);
                 }
 
             } else {
@@ -1910,86 +1908,14 @@ void Net_Crypto::do_tcp()
  * return -1 on failure.
  * return 0 on success.
  */
-int connection_status_handler(Net_Crypto *c, int crypt_connection_id,
-                              int (*connection_status_callback)(void *object, int id, uint8_t status), void *object, int id)
+int set_event_listener(Net_Crypto *c, int crypt_connection_id, CryptoConnectionEventListener *listener)
 {
     Crypto_Connection *conn = c->get_crypto_connection(crypt_connection_id);
 
     if (conn == 0)
         return -1;
 
-    conn->connection_status_callback = connection_status_callback;
-    conn->connection_status_callback_object = object;
-    conn->connection_status_callback_id = id;
-    return 0;
-}
-
-/* Set function to be called when connection with crypt_connection_id receives a data packet of length.
- *
- * The set function should return -1 on failure and 0 on success.
- * Object and id will be passed to this function untouched.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int connection_data_handler(Net_Crypto *c, int crypt_connection_id, int (*connection_data_callback)(void *object,
-                            int id, uint8_t *data, uint16_t length), void *object, int id)
-{
-    Crypto_Connection *conn = c->get_crypto_connection(crypt_connection_id);
-
-    if (conn == 0)
-        return -1;
-
-    conn->connection_data_callback = connection_data_callback;
-    conn->connection_data_callback_object = object;
-    conn->connection_data_callback_id = id;
-    return 0;
-}
-
-/* Set function to be called when connection with crypt_connection_id receives a lossy data packet of length.
- *
- * The set function should return -1 on failure and 0 on success.
- * Object and id will be passed to this function untouched.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int connection_lossy_data_handler(Net_Crypto *c, int crypt_connection_id,
-                                  int (*connection_lossy_data_callback)(void *object, int id, const uint8_t *data, uint16_t length), void *object, int id)
-{
-    Crypto_Connection *conn = c->get_crypto_connection(crypt_connection_id);
-
-    if (conn == 0)
-        return -1;
-
-    conn->connection_lossy_data_callback = connection_lossy_data_callback;
-    conn->connection_lossy_data_callback_object = object;
-    conn->connection_lossy_data_callback_id = id;
-    return 0;
-}
-
-
-/* Set the function for this friend that will be callbacked with object and number if
- * the friend sends us a different dht public key than we have associated to him.
- *
- * If this function is called, the connection should be recreated with the new public key.
- *
- * object and number will be passed as argument to this function.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int nc_dht_pk_callback(Net_Crypto *c, int crypt_connection_id, void (*function)(void *data, int32_t number,
-                       const PublicKey &dht_public_key), void *object, uint32_t number)
-{
-    Crypto_Connection *conn = c->get_crypto_connection(crypt_connection_id);
-
-    if (conn == 0)
-        return -1;
-
-    conn->dht_pk_callback = function;
-    conn->dht_pk_callback_object = object;
-    conn->dht_pk_callback_number = number;
+    conn->event_listener = listener;
     return 0;
 }
 

@@ -1030,7 +1030,7 @@ int onion_addfriend(Onion_Client *onion_c, const PublicKey &public_key)
  */
 int onion_delfriend(Onion_Client *onion_c, int friend_num)
 {
-    if ((uint32_t)friend_num >= onion_c->friends_list.size())
+    if ((uint32_t)friend_num >= onion_c->friends_list.size() || friend_num < 0)
         return -1;
 
     //if (onion_c->friends_list[friend_num].know_dht_public_key)

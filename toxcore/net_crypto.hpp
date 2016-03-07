@@ -114,6 +114,57 @@ enum class CryptoConnectionStatus
     CRYPTO_CONN_ESTABLISHED = 4
 };
 
+struct Crypto_Connection;
+
+class CryptoConnectionEventListener
+{
+public:
+    
+    /* Set function to be called when connection with crypt_connection_id goes connects/disconnects.
+    *
+    * The set function should return -1 on failure and 0 on success.
+    * Note that if this function is set, the connection will clear itself on disconnect.
+    * Object and id will be passed to this function untouched.
+    * status is 1 if the connection is going online, 0 if it is going offline.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    virtual int on_status(Crypto_Connection *connection, uint8_t status) = 0;
+    
+    /* Set function to be called when connection with crypt_connection_id receives a lossless data packet of length.
+    *
+    * The set function should return -1 on failure and 0 on success.
+    * Object and id will be passed to this function untouched.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    virtual int on_data(Crypto_Connection *connection, uint8_t *data, uint16_t length) = 0;
+    
+    /* Set function to be called when connection with crypt_connection_id receives a lossy data packet of length.
+    *
+    * The set function should return -1 on failure and 0 on success.
+    * Object and id will be passed to this function untouched.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    virtual int on_lossy_data(Crypto_Connection *connection, uint8_t *data, uint16_t length) = 0;
+    
+    /* Set the function for this friend that will be callbacked with object and number if
+    * the friend sends us a different dht public key than we have associated to him.
+    *
+    * If this function is called, the connection should be recreated with the new public key.
+    *
+    * object and number will be passed as argument to this function.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    virtual void on_dht_pk(Crypto_Connection *connection, const bitox::PublicKey &dht_public_key) = 0;
+};
+
 struct Crypto_Connection
 {
     bitox::PublicKey public_key; /* The real public key of the peer. */
@@ -140,18 +191,8 @@ struct Crypto_Connection
 
     Packets_Array send_array;
     Packets_Array recv_array;
-
-    int (*connection_status_callback)(void *object, int id, uint8_t status) = nullptr;
-    void *connection_status_callback_object = nullptr;
-    int connection_status_callback_id = 0;
-
-    int (*connection_data_callback)(void *object, int id, uint8_t *data, uint16_t length) = nullptr;
-    void *connection_data_callback_object;
-    int connection_data_callback_id = 0;
-
-    int (*connection_lossy_data_callback)(void *object, int id, const uint8_t *data, uint16_t length) = nullptr;
-    void *connection_lossy_data_callback_object;
-    int connection_lossy_data_callback_id = 0;
+    
+    CryptoConnectionEventListener *event_listener;
 
     uint64_t last_request_packet_sent = 0;
     uint64_t direct_send_attempt_time = 0;
@@ -183,10 +224,6 @@ struct Crypto_Connection
     uint8_t maximum_speed_reached = 0;
 
     std::mutex mutex;
-
-    void (*dht_pk_callback)(void *data, int32_t number, const bitox::PublicKey &dht_public_key) = nullptr;
-    void *dht_pk_callback_object = nullptr;
-    uint32_t dht_pk_callback_number = 0;
 };
 
 struct New_Connection
@@ -637,44 +674,6 @@ void new_connection_handler(Net_Crypto *c, int (*new_connection_callback)(void *
  * return -1 on failure.
  * return 0 on success.
  */
-int connection_status_handler(const Net_Crypto *c, int crypt_connection_id,
-                              int (*connection_status_callback)(void *object, int id, uint8_t status), void *object, int id);
-
-/* Set function to be called when connection with crypt_connection_id receives a lossless data packet of length.
- *
- * The set function should return -1 on failure and 0 on success.
- * Object and id will be passed to this function untouched.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int connection_data_handler(const Net_Crypto *c, int crypt_connection_id, int (*connection_data_callback)(void *object,
-                            int id, uint8_t *data, uint16_t length), void *object, int id);
-
-
-/* Set function to be called when connection with crypt_connection_id receives a lossy data packet of length.
- *
- * The set function should return -1 on failure and 0 on success.
- * Object and id will be passed to this function untouched.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int connection_lossy_data_handler(Net_Crypto *c, int crypt_connection_id,
-                                  int (*connection_lossy_data_callback)(void *object, int id, const uint8_t *data, uint16_t length), void *object,
-                                  int id);
-
-/* Set the function for this friend that will be callbacked with object and number if
- * the friend sends us a different dht public key than we have associated to him.
- *
- * If this function is called, the connection should be recreated with the new public key.
- *
- * object and number will be passed as argument to this function.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int nc_dht_pk_callback(Net_Crypto *c, int crypt_connection_id, void (*function)(void *data, int32_t number,
-                       const bitox::PublicKey &dht_public_key), void *object, uint32_t number);
+int set_event_listener(const Net_Crypto *c, int crypt_connection_id, CryptoConnectionEventListener *listener);
 
 #endif

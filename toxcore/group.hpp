@@ -78,7 +78,7 @@ typedef struct {
     struct {
         uint8_t type; /* GROUPCHAT_CLOSE_* */
         uint8_t closest;
-        uint32_t number;
+        std::shared_ptr<Friend_Conn> friend_connection;
         uint16_t group_number;
     } close[MAX_GROUP_CONNECTIONS];
 
@@ -101,7 +101,7 @@ typedef struct {
 
     uint64_t last_sent_ping;
 
-    int number_joined; /* friendcon_id of person that invited us to the chat. (-1 means none) */
+    std::shared_ptr<Friend_Conn> number_joined; /* friendcon_id of person that invited us to the chat. (-1 means none) */
 
     void *object;
 

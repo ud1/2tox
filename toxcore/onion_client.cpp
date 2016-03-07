@@ -144,7 +144,7 @@ static uint16_t random_nodes_path_onion(const Onion_Client *onion_c, NodeFormat 
             nodes[i] = onion_c->path_nodes[rand() % num_nodes];
         }
     } else {
-        int random_tcp = get_random_tcp_con_number(onion_c->c);
+        int random_tcp = onion_c->c->get_random_tcp_con_number();
 
         if (random_tcp == -1) {
             return 0;
@@ -332,7 +332,7 @@ static int send_onion_packet_tcp_udp(const Onion_Client *onion_c, const Onion_Pa
         if (len == -1)
             return -1;
 
-        return send_tcp_onion_request(onion_c->c, path->ip_port1.ip.to_uint32(), packet, len); // TODO TCP_conn_number ???
+        return onion_c->c->send_tcp_onion_request(path->ip_port1.ip.to_uint32(), packet, len); // TODO TCP_conn_number ???
     } else {
         return -1;
     }
@@ -939,7 +939,7 @@ static int send_dhtpk_announce(Onion_Client *onion_c, uint16_t friend_num, uint8
     memcpy(data + 1, &no_replay, sizeof(no_replay));
     memcpy(data + 1 + sizeof(uint64_t), onion_c->dht->self_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
     NodeFormat nodes[MAX_SENT_NODES];
-    uint16_t num_relays = copy_connected_tcp_relays(onion_c->c, nodes, (MAX_SENT_NODES / 2));
+    uint16_t num_relays = onion_c->c->copy_connected_tcp_relays(nodes, (MAX_SENT_NODES / 2));
     uint16_t num_nodes = onion_c->dht->closelist_nodes(&nodes[num_relays], MAX_SENT_NODES - num_relays);
     num_nodes += num_relays;
     int nodes_len = 0;
@@ -1202,7 +1202,7 @@ static void populate_path_nodes_tcp(Onion_Client *onion_c)
 {
     NodeFormat nodes_list[MAX_SENT_NODES];
 
-    unsigned int num_nodes = copy_connected_tcp_relays(onion_c->c, nodes_list, MAX_SENT_NODES);;
+    unsigned int num_nodes = onion_c->c->copy_connected_tcp_relays(nodes_list, MAX_SENT_NODES);;
     unsigned int i;
 
     for (i = 0; i < num_nodes; ++i) {

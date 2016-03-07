@@ -89,9 +89,7 @@ int TCP_Connections::create_connection()
  */
 int TCP_Connections::create_tcp_connection()
 {
-    uint32_t i;
-
-    for (i = 0; i < this->tcp_connections.size(); ++i) {
+    for (size_t i = 0; i < this->tcp_connections.size(); ++i) {
         if (this->tcp_connections[i].status == TCPConnectionStatus::TCP_CONN_NONE)
             return i;
     }
@@ -484,7 +482,7 @@ int TCP_Connections::set_tcp_connection_to_status(int connections_number, bool s
                     continue;
 
                 if (tcp_con->status == TCPConnectionStatus::TCP_CONN_SLEEPING) {
-                    tcp_con->unsleep = 1;
+                    tcp_con->unsleep = true;
                 }
             }
         }
@@ -964,9 +962,6 @@ int TCP_Connections::add_tcp_relay_instance(IPPort ip_port, const PublicKey &rel
         return -1;
 
     int tcp_connections_number = create_tcp_connection();
-
-    if (tcp_connections_number == -1)
-        return -1;
 
     TCP_con *tcp_con = &this->tcp_connections[tcp_connections_number];
 

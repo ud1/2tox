@@ -233,7 +233,7 @@ Tox *tox_new(const struct Tox_Options *options, TOX_ERR_NEW *error)
     if (load_savedata_tox && messenger_load(m, options->savedata_data, options->savedata_length) == -1) {
         SET_ERROR_PARAMETER(error, TOX_ERR_NEW_LOAD_BAD_FORMAT);
     } else if (load_savedata_sk) {
-        load_secret_key(m->net_crypto, options->savedata_data);
+        m->net_crypto->load_secret_key(options->savedata_data);
         SET_ERROR_PARAMETER(error, TOX_ERR_NEW_OK);
     } else {
         SET_ERROR_PARAMETER(error, TOX_ERR_NEW_OK);
@@ -363,7 +363,7 @@ bool tox_add_tcp_relay(Tox *tox, const char *address, uint16_t port, const uint8
         }
 
         Messenger *m = tox;
-        add_tcp_relay(m->net_crypto, ip_port, PublicKey(public_key));
+        m->net_crypto->add_tcp_relay(ip_port, PublicKey(public_key));
         ++count;
     } while ((info = info->ai_next));
 

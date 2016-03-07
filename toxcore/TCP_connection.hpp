@@ -46,17 +46,17 @@ enum class TCPConnectionsStatus
     TCP_CONNECTIONS_STATUS_ONLINE = 2
 };
 
-#define MAX_FRIEND_TCP_CONNECTIONS 6
+constexpr unsigned MAX_FRIEND_TCP_CONNECTIONS = 6;
 
 /* Time until connection to friend gets killed (if it doesn't get locked withing that time) */
-#define TCP_CONNECTION_ANNOUNCE_TIMEOUT (TCP_CONNECTION_TIMEOUT)
+constexpr long TCP_CONNECTION_ANNOUNCE_TIMEOUT = TCP_CONNECTION_TIMEOUT;
 
 /* The amount of recommended connections for each friend
    NOTE: Must be at most (MAX_FRIEND_TCP_CONNECTIONS / 2) */
-#define RECOMMENDED_FRIEND_TCP_CONNECTIONS (MAX_FRIEND_TCP_CONNECTIONS / 2)
+constexpr unsigned RECOMMENDED_FRIEND_TCP_CONNECTIONS = MAX_FRIEND_TCP_CONNECTIONS / 2;
 
 /* Number of TCP connections used for onion purposes. */
-#define NUM_ONION_TCP_CONNECTIONS RECOMMENDED_FRIEND_TCP_CONNECTIONS
+constexpr unsigned NUM_ONION_TCP_CONNECTIONS = RECOMMENDED_FRIEND_TCP_CONNECTIONS;
 
 struct TCP_Connection_to
 {
@@ -265,6 +265,7 @@ struct TCP_Connections : TCPClientEventListener
     virtual int on_onion(TCP_Client_Connection *connection, const uint8_t *data, uint16_t length) override;
     
 private:
+    friend TCP_Connection_to;
     /* return 1 if the connections_number is not valid.
     * return 0 if the connections_number is valid.
     */

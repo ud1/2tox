@@ -213,11 +213,11 @@ Tox *tox_new(const struct Tox_Options *options, TOX_ERR_NEW *error)
         }
     }
 
-    unsigned int m_error;
-    Messenger *m = new_messenger(&m_options, &m_error);
+    unsigned int m_error = 0;
+    Messenger *m = new Messenger(&m_options);
 
     if (!new_groupchats(m)) {
-        kill_messenger(m);
+        delete m;
 
         if (m_error == MESSENGER_ERROR_PORT) {
             SET_ERROR_PARAMETER(error, TOX_ERR_NEW_PORT_ALLOC);
@@ -230,7 +230,7 @@ Tox *tox_new(const struct Tox_Options *options, TOX_ERR_NEW *error)
         return NULL;
     }
 
-    if (load_savedata_tox && messenger_load(m, options->savedata_data, options->savedata_length) == -1) {
+    if (load_savedata_tox && m->messenger_load(options->savedata_data, options->savedata_length) == -1) {
         SET_ERROR_PARAMETER(error, TOX_ERR_NEW_LOAD_BAD_FORMAT);
     } else if (load_savedata_sk) {
         m->net_crypto->load_secret_key(options->savedata_data);
@@ -246,21 +246,21 @@ void tox_kill(Tox *tox)
 {
     Messenger *m = tox;
     kill_groupchats(m->group_chat_object);
-    kill_messenger(m);
+    delete m;
     logger_kill_global();
 }
 
 size_t tox_get_savedata_size(const Tox *tox)
 {
     const Messenger *m = tox;
-    return messenger_size(m);
+    return m->messenger_size();
 }
 
 void tox_get_savedata(const Tox *tox, uint8_t *data)
 {
     if (data) {
         const Messenger *m = tox;
-        messenger_save(m, data);
+        m->messenger_save(data);
     }
 }
 
@@ -305,7 +305,7 @@ bool tox_bootstrap(Tox *tox, const char *address, uint16_t port, const PublicKey
         }
 
         Messenger *m = tox;
-        onion_add_bs_path_node(m->onion_c, ip_port, public_key);
+        onion_add_bs_path_node(m->onion_c.get(), ip_port, public_key);
         m->dht->bootstrap(ip_port, public_key);
         ++count;
     } while ((info = info->ai_next));
@@ -382,7 +382,7 @@ TOX_CONNECTION tox_self_get_connection_status(const Tox *tox)
 {
     const Messenger *m = tox;
 
-    unsigned int ret = onion_connection_status(m->onion_c);
+    unsigned int ret = onion_connection_status(m->onion_c.get());
 
     if (ret == 2) {
         return TOX_CONNECTION_UDP;
@@ -403,7 +403,7 @@ void tox_callback_self_connection_status(Tox *tox, tox_self_connection_status_cb
 uint32_t tox_iteration_interval(const Tox *tox)
 {
     const Messenger *m = tox;
-    return messenger_run_interval(m);
+    return m->messenger_run_interval();
 }
 
 void tox_iterate(Tox *tox)
@@ -417,7 +417,7 @@ void tox_self_get_address(const Tox *tox, uint8_t *address)
 {
     if (address) {
         const Messenger *m = tox;
-        getaddress(m, address);
+        m->getaddress(address);
     }
 }
 
@@ -458,7 +458,7 @@ bool tox_self_set_name(Tox *tox, const uint8_t *name, size_t length, TOX_ERR_SET
 
     Messenger *m = tox;
 
-    if (setname(m, name, length) == 0) {
+    if (m->setname(name, length) == 0) {
         //TODO: function to set different per group names?
         send_name_all_groups(m->group_chat_object);
         SET_ERROR_PARAMETER(error, TOX_ERR_SET_INFO_OK);
@@ -472,14 +472,14 @@ bool tox_self_set_name(Tox *tox, const uint8_t *name, size_t length, TOX_ERR_SET
 size_t tox_self_get_name_size(const Tox *tox)
 {
     const Messenger *m = tox;
-    return m_get_self_name_size(m);
+    return m->m_get_self_name_size();
 }
 
 void tox_self_get_name(const Tox *tox, uint8_t *name)
 {
     if (name) {
         const Messenger *m = tox;
-        getself_name(m, name);
+        m->getself_name(name);
     }
 }
 
@@ -492,7 +492,7 @@ bool tox_self_set_status_message(Tox *tox, const uint8_t *status, size_t length,
 
     Messenger *m = tox;
 
-    if (m_set_statusmessage(m, status, length) == 0) {
+    if (m->m_set_statusmessage(status, length) == 0) {
         SET_ERROR_PARAMETER(error, TOX_ERR_SET_INFO_OK);
         return 1;
     } else {
@@ -504,27 +504,27 @@ bool tox_self_set_status_message(Tox *tox, const uint8_t *status, size_t length,
 size_t tox_self_get_status_message_size(const Tox *tox)
 {
     const Messenger *m = tox;
-    return m_get_self_statusmessage_size(m);
+    return m->m_get_self_statusmessage_size();
 }
 
 void tox_self_get_status_message(const Tox *tox, uint8_t *status)
 {
     if (status) {
         const Messenger *m = tox;
-        m_copy_self_statusmessage(m, status);
+        m->m_copy_self_statusmessage(status);
     }
 }
 
 void tox_self_set_status(Tox *tox, TOX_USER_STATUS user_status)
 {
     Messenger *m = tox;
-    m_set_userstatus(m, user_status);
+    m->m_set_userstatus(user_status);
 }
 
 int tox_self_get_status(const Tox *tox)
 {
     const Messenger *m = tox;
-    return m_get_self_userstatus(m);
+    return m->m_get_self_userstatus();
 }
 
 static void set_friend_error(int32_t ret, TOX_ERR_FRIEND_ADD *error)
@@ -570,7 +570,7 @@ uint32_t tox_friend_add(Tox *tox, const uint8_t *address, const uint8_t *message
     }
 
     Messenger *m = tox;
-    int32_t ret = m_addfriend(m, address, message, length);
+    int32_t ret = m->m_addfriend(address, message, length);
 
     if (ret >= 0) {
         SET_ERROR_PARAMETER(error, TOX_ERR_FRIEND_ADD_OK);
@@ -589,7 +589,7 @@ uint32_t tox_friend_add_norequest(Tox *tox, const uint8_t *public_key, TOX_ERR_F
     }
 
     Messenger *m = tox;
-    int32_t ret = m_addfriend_norequest(m, PublicKey(public_key));
+    int32_t ret = m->m_addfriend_norequest(PublicKey(public_key));
 
     if (ret >= 0) {
         SET_ERROR_PARAMETER(error, TOX_ERR_FRIEND_ADD_OK);
@@ -623,7 +623,7 @@ uint32_t tox_friend_by_public_key(const Tox *tox, const uint8_t *public_key, TOX
     }
 
     const Messenger *m = tox;
-    int32_t ret = getfriend_id(m, PublicKey(public_key));
+    int32_t ret = m->getfriend_id(PublicKey(public_key));
 
     if (ret == -1) {
         SET_ERROR_PARAMETER(error, TOX_ERR_FRIEND_BY_PUBLIC_KEY_NOT_FOUND);
@@ -637,25 +637,29 @@ uint32_t tox_friend_by_public_key(const Tox *tox, const uint8_t *public_key, TOX
 bool tox_friend_get_public_key(const Tox *tox, uint32_t friend_number, uint8_t *public_key,
                                TOX_ERR_FRIEND_GET_PUBLIC_KEY *error)
 {
-    /*if (!public_key) {//TODO
+    if (!public_key) {//TODO
         return 0;
     }
 
     const Messenger *m = tox;
 
-    if (get_real_pk(m, friend_number, public_key) == -1) {
+    const Friend *f = m->get_friend(friend_number);
+    
+    if (!f) {
         SET_ERROR_PARAMETER(error, TOX_ERR_FRIEND_GET_PUBLIC_KEY_FRIEND_NOT_FOUND);
         return 0;
     }
+    
+    memcpy(public_key, f->real_pk.data.data(), f->real_pk.data.size());
 
-    SET_ERROR_PARAMETER(error, TOX_ERR_FRIEND_GET_PUBLIC_KEY_OK);*/
+    SET_ERROR_PARAMETER(error, TOX_ERR_FRIEND_GET_PUBLIC_KEY_OK);
     return 1;
 }
 
 bool tox_friend_exists(const Tox *tox, uint32_t friend_number)
 {
     const Messenger *m = tox;
-    return m_friend_exists(m, friend_number);
+    return m->get_friend(friend_number) != nullptr;
 }
 
 uint64_t tox_friend_get_last_online(const Tox *tox, uint32_t friend_number, TOX_ERR_FRIEND_GET_LAST_ONLINE *error)
@@ -675,7 +679,7 @@ uint64_t tox_friend_get_last_online(const Tox *tox, uint32_t friend_number, TOX_
 size_t tox_self_get_friend_list_size(const Tox *tox)
 {
     const Messenger *m = tox;
-    return count_friendlist(m);
+    return m->count_friendlist();
 }
 
 void tox_self_get_friend_list(const Tox *tox, uint32_t *list)
@@ -683,7 +687,7 @@ void tox_self_get_friend_list(const Tox *tox, uint32_t *list)
     if (list) {
         const Messenger *m = tox;
         //TODO: size parameter?
-        copy_friendlist(m, list, tox_self_get_friend_list_size(tox));
+        m->copy_friendlist(list, tox_self_get_friend_list_size(tox));
     }
 }
 
@@ -1055,7 +1059,7 @@ uint32_t tox_file_send(Tox *tox, uint32_t friend_number, uint32_t kind, uint64_t
     }
 
     Messenger *m = tox;
-    long int file_num = new_filesender(m, friend_number, kind, file_size, file_id, filename, filename_length);
+    long int file_num = m->get_friend(friend_number)->new_filesender(kind, file_size, file_id, filename, filename_length);
 
     if (file_num >= 0) {
         SET_ERROR_PARAMETER(error, TOX_ERR_FILE_SEND_OK);

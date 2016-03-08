@@ -28,6 +28,8 @@
 
 #include "friend_requests.hpp"
 #include "friend_connection.hpp"
+#include <string>
+#include <memory>
 
 #define MAX_NAME_LENGTH 128
 /* TODO: this must depend on other variable. */
@@ -185,8 +187,7 @@ struct Friend : public ConnectionEventListener
     uint32_t friendrequest_timeout; // The timeout between successful friendrequest sending attempts.
     uint8_t status; // 0 if no friend, 1 if added, 2 if friend request sent, 3 if confirmed friend, 4 if online.
     uint8_t info[MAX_FRIEND_REQUEST_DATA_SIZE]; // the data that is sent during the friend requests we do.
-    uint8_t name[MAX_NAME_LENGTH];
-    uint16_t name_length;
+    std::string name;
     uint8_t name_sent; // 0 if we didn't send our name to this friend 1 if we have.
     uint8_t statusmessage[MAX_STATUSMESSAGE_LENGTH];
     uint16_t statusmessage_length;
@@ -321,6 +322,12 @@ struct Friend : public ConnectionEventListener
     void set_friend_typing(uint8_t is_typing);
     int write_cryptpacket_id(uint8_t packet_id, const uint8_t *data,
                                 uint32_t length, uint8_t congestion_control);
+    
+    /* Send a group invite packet.
+    *
+    *  return 1 on success
+    *  return 0 on failure
+    */
     int send_group_invite_packet(const uint8_t *data, uint16_t length);
     
     /* Copy the file transfer file id to file_id
@@ -332,6 +339,16 @@ struct Friend : public ConnectionEventListener
     int file_get_id(uint32_t filenumber, uint8_t *file_id) const;
     int file_sendrequest(uint8_t filenumber, uint32_t file_type,
                             uint64_t filesize, const uint8_t *file_id, const uint8_t *filename, uint16_t filename_length);
+    
+    /* Send a file send request.
+    * Maximum filename length is 255 bytes.
+    *  return file number on success
+    *  return -1 if friend not found.
+    *  return -2 if filename length invalid.
+    *  return -3 if no more file sending slots left.
+    *  return -4 if could not send packet (friend offline).
+    *
+    */
     long int new_filesender(uint32_t file_type, uint64_t filesize,
                         const uint8_t *file_id, const uint8_t *filename, uint16_t filename_length);
     
@@ -427,12 +444,20 @@ struct Friend : public ConnectionEventListener
 
 struct Group_Chats;
 
-struct Messenger {
+struct Messenger
+{
+    Messenger(Messenger_Options *options);
+    ~Messenger();
 
-    int32_t getfriend_id(const bitox::PublicKey &real_pk); // TODO const
+    int32_t getfriend_id(const bitox::PublicKey &real_pk) const;
     Friend *get_friend(const bitox::PublicKey &real_pk);
     Friend *get_friend(uint32_t id);
     const Friend *get_friend(uint32_t id) const;
+    
+    /*  return friend connection id on success.
+    *  return -1 if failure.
+    */
+    std::shared_ptr<Friend_Conn> getfriendcon_id(int32_t friendnumber) const;
     
     /* The main loop that needs to be run at least 20 times per second. */
     void do_messenger();
@@ -442,17 +467,117 @@ struct Messenger {
     
     int delete_friend(uint32_t id);
     
+    /* Format: [real_pk (32 bytes)][nospam number (4 bytes)][checksum (2 bytes)]
+    *
+    *  return FRIEND_ADDRESS_SIZE byte address to give to others.
+    */
+    void getaddress(uint8_t *address) const;
+    
+    /* Add a friend.
+    * Set the data that will be sent along with friend request.
+    * address is the address of the friend (returned by getaddress of the friend you wish to add) it must be FRIEND_ADDRESS_SIZE bytes. TODO: add checksum.
+    * data is the data and length is the length.
+    *
+    *  return the friend number if success.
+    *  return -1 if message length is too long.
+    *  return -2 if no message (message length must be >= 1 byte).
+    *  return -3 if user's own key.
+    *  return -4 if friend request already sent or already a friend.
+    *  return -6 if bad checksum in address.
+    *  return -7 if the friend was already there but the nospam was different.
+    *  (the nospam for that friend was set to the new one).
+    *  return -8 if increasing the friend list size fails.
+    */
+    int32_t m_addfriend(const uint8_t *address, const uint8_t *data, uint16_t length);
+    
+    /* Add a friend without sending a friendrequest.
+    *  return the friend number if success.
+    *  return -3 if user's own key.
+    *  return -4 if friend request already sent or already a friend.
+    *  return -6 if bad checksum in address.
+    *  return -8 if increasing the friend list size fails.
+    */
+    int32_t m_addfriend_norequest(const bitox::PublicKey &real_pk);
+    
+    /* Set our nickname.
+    * name must be a string of maximum MAX_NAME_LENGTH length.
+    * length must be at least 1 byte.
+    * length is the length of name with the NULL terminator.
+    *
+    *  return 0 if success.
+    *  return -1 if failure.
+    */
+    int setname(const uint8_t *name, uint16_t length);
+    
+    /*
+    * Get your nickname.
+    * m - The messenger context to use.
+    * name needs to be a valid memory location with a size of at least MAX_NAME_LENGTH bytes.
+    *
+    *  return length of the name.
+    *  return 0 on error.
+    */
+    uint16_t getself_name(uint8_t *name) const;
+    
+    int m_get_self_name_size() const;
+    
+    /* Set our user status.
+    * You are responsible for freeing status after.
+    *
+    *  returns 0 on success.
+    *  returns -1 on failure.
+    */
+    int m_set_statusmessage(const uint8_t *status, uint16_t length);
+    
+    int m_set_userstatus(uint8_t status);
+    
+    int m_get_self_statusmessage_size() const;
+
+    int m_copy_self_statusmessage(uint8_t *buf) const;
+
+    uint8_t m_get_self_userstatus() const;
+    
+    /* Return the time in milliseconds before do_messenger() should be called again
+    * for optimal performance.
+    *
+    * returns time (in ms) before the next do_messenger() needs to be run on success.
+    */
+    uint32_t messenger_run_interval() const;
+
+    /* SAVING AND LOADING FUNCTIONS: */
+
+    /* return size of the messenger data (for saving). */
+    uint32_t messenger_size() const;
+
+    /* Save the messenger in data (must be allocated memory of size Messenger_size()) */
+    void messenger_save(uint8_t *data) const;
+
+    /* Load the messenger from data of size length. */
+    int messenger_load(const uint8_t *data, uint32_t length);
+    
+    /* Return the number of friends in the instance m.
+    * You should use this to determine how much memory to allocate
+    * for copy_friendlist. */
+    uint32_t count_friendlist() const;
+
+    /* Copy a list of valid friend IDs into the array out_list.
+    * If out_list is NULL, returns 0.
+    * Otherwise, returns the number of elements copied.
+    * If the array was too small, the contents
+    * of out_list will be truncated to list_size. */
+    uint32_t copy_friendlist(uint32_t *out_list, uint32_t list_size) const;
+    
     bitox::network::Networking_Core *net;
-    Net_Crypto *net_crypto;
-    DHT *dht;
+    std::unique_ptr<Net_Crypto> net_crypto;
+    std::unique_ptr<DHT> dht;
 
-    Onion *onion;
+    std::unique_ptr<Onion> onion;
     Onion_Announce *onion_a;
-    Onion_Client *onion_c;
+    std::unique_ptr<Onion_Client> onion_c;
 
-    Friend_Connections *fr_c;
+    std::unique_ptr<Friend_Connections> fr_c;
 
-    TCP_Server *tcp_server;
+    std::unique_ptr<TCP_Server> tcp_server;
     Friend_Requests fr;
     uint8_t name[MAX_NAME_LENGTH];
     uint16_t name_length;
@@ -515,106 +640,8 @@ struct Messenger {
     Messenger_Options options;
     
     void connection_status_cb();
+    uint32_t saved_friendslist_size() const;
 };
-
-/* Format: [real_pk (32 bytes)][nospam number (4 bytes)][checksum (2 bytes)]
- *
- *  return FRIEND_ADDRESS_SIZE byte address to give to others.
- */
-void getaddress(const Messenger *m, uint8_t *address);
-
-/* Add a friend.
- * Set the data that will be sent along with friend request.
- * address is the address of the friend (returned by getaddress of the friend you wish to add) it must be FRIEND_ADDRESS_SIZE bytes. TODO: add checksum.
- * data is the data and length is the length.
- *
- *  return the friend number if success.
- *  return -1 if message length is too long.
- *  return -2 if no message (message length must be >= 1 byte).
- *  return -3 if user's own key.
- *  return -4 if friend request already sent or already a friend.
- *  return -6 if bad checksum in address.
- *  return -7 if the friend was already there but the nospam was different.
- *  (the nospam for that friend was set to the new one).
- *  return -8 if increasing the friend list size fails.
- */
-int32_t m_addfriend(Messenger *m, const uint8_t *address, const uint8_t *data, uint16_t length);
-
-
-/* Add a friend without sending a friendrequest.
- *  return the friend number if success.
- *  return -3 if user's own key.
- *  return -4 if friend request already sent or already a friend.
- *  return -6 if bad checksum in address.
- *  return -8 if increasing the friend list size fails.
- */
-int32_t m_addfriend_norequest(Messenger *m, const bitox::PublicKey &real_pk);
-
-/*  return the friend number associated to that client id.
- *  return -1 if no such friend.
- */
-int32_t getfriend_id(const Messenger *m, const bitox::PublicKey &real_pk);
-
-/* Copies the public key associated to that friend id into real_pk buffer.
- * Make sure that real_pk is of size crypto_box_PUBLICKEYBYTES.
- *
- *  return 0 if success
- *  return -1 if failure
- */
-//int get_real_pk(const Messenger *m, int32_t friendnumber, bitox::PublicKey &real_pk);
-
-/*  return friend connection id on success.
- *  return -1 if failure.
- */
-//std::shared_ptr<Friend_Conn> getfriendcon_id(const Messenger *m, int32_t friendnumber);
-
-/* Checks if there exists a friend with given friendnumber.
- *
- *  return 1 if friend exists.
- *  return 0 if friend doesn't exist.
- */
-int m_friend_exists(const Messenger *m, int32_t friendnumber);
-
-
-/* Set our nickname.
- * name must be a string of maximum MAX_NAME_LENGTH length.
- * length must be at least 1 byte.
- * length is the length of name with the NULL terminator.
- *
- *  return 0 if success.
- *  return -1 if failure.
- */
-int setname(Messenger *m, const uint8_t *name, uint16_t length);
-
-/*
- * Get your nickname.
- * m - The messenger context to use.
- * name needs to be a valid memory location with a size of at least MAX_NAME_LENGTH bytes.
- *
- *  return length of the name.
- *  return 0 on error.
- */
-uint16_t getself_name(const Messenger *m, uint8_t *name);
-
-int m_get_self_name_size(const Messenger *m);
-
-/* Set our user status.
- * You are responsible for freeing status after.
- *
- *  returns 0 on success.
- *  returns -1 on failure.
- */
-int m_set_statusmessage(Messenger *m, const uint8_t *status, uint16_t length);
-int m_set_userstatus(Messenger *m, uint8_t status);
-
-int m_get_self_statusmessage_size(const Messenger *m);
-
-int m_copy_self_statusmessage(const Messenger *m, uint8_t *buf);
-
-
-uint8_t m_get_self_userstatus(const Messenger *m);
-
-
 
 /* Set the function that will be executed when a friend request is received.
  *  Function format is function(uint8_t * public_key, uint8_t * data, size_t length)
@@ -696,12 +723,6 @@ void m_callback_core_connection(Messenger *m, void (*function)(Messenger *m, uns
  */
 void m_callback_group_invite(Messenger *m, void (*function)(Friend *, const uint8_t *, uint16_t));
 
-/* Send a group invite packet.
- *
- *  return 1 on success
- *  return 0 on failure
- */
-int send_group_invite_packet(const Messenger *m, int32_t friendnumber, const uint8_t *data, uint16_t length);
 
 /****************FILE SENDING*****************/
 
@@ -738,19 +759,6 @@ void callback_file_data(Messenger *m, void (*function)(Friend *, uint32_t, uint6
 void callback_file_reqchunk(Messenger *m, void (*function)(Friend *, uint32_t, uint64_t, size_t, void *),
                             void *userdata);
 
-
-
-/* Send a file send request.
- * Maximum filename length is 255 bytes.
- *  return file number on success
- *  return -1 if friend not found.
- *  return -2 if filename length invalid.
- *  return -3 if no more file sending slots left.
- *  return -4 if could not send packet (friend offline).
- *
- */
-long int new_filesender(const Messenger *m, int32_t friendnumber, uint32_t file_type, uint64_t filesize,
-                        const uint8_t *file_id, const uint8_t *filename, uint16_t filename_length);
 
 
 
@@ -790,48 +798,5 @@ enum {
     MESSENGER_ERROR_TCP_SERVER,
     MESSENGER_ERROR_OTHER
 };
-
-/* Run this at startup.
- *  return allocated instance of Messenger on success.
- *  return 0 if there are problems.
- *
- *  if error is not NULL it will be set to one of the values in the enum above.
- */
-Messenger *new_messenger(Messenger_Options *options, unsigned int *error);
-
-/* Run this before closing shop
- * Free all datastructures.
- */
-void kill_messenger(Messenger *m);
-
-/* Return the time in milliseconds before do_messenger() should be called again
- * for optimal performance.
- *
- * returns time (in ms) before the next do_messenger() needs to be run on success.
- */
-uint32_t messenger_run_interval(const Messenger *m);
-
-/* SAVING AND LOADING FUNCTIONS: */
-
-/* return size of the messenger data (for saving). */
-uint32_t messenger_size(const Messenger *m);
-
-/* Save the messenger in data (must be allocated memory of size Messenger_size()) */
-void messenger_save(const Messenger *m, uint8_t *data);
-
-/* Load the messenger from data of size length. */
-int messenger_load(Messenger *m, const uint8_t *data, uint32_t length);
-
-/* Return the number of friends in the instance m.
- * You should use this to determine how much memory to allocate
- * for copy_friendlist. */
-uint32_t count_friendlist(const Messenger *m);
-
-/* Copy a list of valid friend IDs into the array out_list.
- * If out_list is NULL, returns 0.
- * Otherwise, returns the number of elements copied.
- * If the array was too small, the contents
- * of out_list will be truncated to list_size. */
-uint32_t copy_friendlist(const Messenger *m, uint32_t *out_list, uint32_t list_size);
 
 #endif

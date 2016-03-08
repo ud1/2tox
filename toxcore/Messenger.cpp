@@ -42,10 +42,16 @@ using namespace bitox::dht;
 /*  return the friend id associated to that public key.
  *  return -1 if no such friend.
  */
-int32_t Messenger::getfriend_id(const PublicKey &real_pk)
+int32_t Messenger::getfriend_id(const PublicKey &real_pk) const
 {
-    Friend *f = get_friend(real_pk);
-    return f ? f->id : -1;
+    for (auto &kv : friends)
+    {
+        if (kv.second.status > 0)
+            if (real_pk == kv.second.real_pk)
+                return kv.first;
+    }
+
+    return -1;
 }
 
 Friend *Messenger::get_friend(const bitox::PublicKey &real_pk)
@@ -74,31 +80,17 @@ const Friend *Messenger::get_friend(uint32_t id) const
     return const_cast<const Friend *>(const_cast<Messenger *>(this)->get_friend(id));
 }
 
-/* Copies the public key associated to that friend id into real_pk buffer.
- * Make sure that real_pk is of size crypto_box_PUBLICKEYBYTES.
- *
- *  return 0 if success.
- *  return -1 if failure.
- */
-/*int get_real_pk(const Messenger *m, int32_t friendnumber, PublicKey &real_pk)
-{
-    if (friend_not_valid(m, friendnumber))
-        return -1;
-
-    real_pk = m->friendlist[friendnumber].real_pk;
-    return 0;
-}*/
-
 /*  return friend connection id on success.
  *  return -1 if failure.
  */
-/*std::shared_ptr<Friend_Conn> getfriendcon_id(const Messenger *m, int32_t friendnumber)
+std::shared_ptr<Friend_Conn> Messenger::getfriendcon_id(int32_t friendnumber) const
 {
-    if (friend_not_valid(m, friendnumber))
+    const Friend *f = get_friend(friendnumber);
+    if (!f)
         return std::shared_ptr<Friend_Conn>();
 
-    return m->friendlist[friendnumber].friend_connection;
-}*/
+    return f->friend_connection;
+}
 
 /*
  *  return a uint16_t that represents the checksum of address of length len.
@@ -120,10 +112,10 @@ static uint16_t address_checksum(const uint8_t *address, uint32_t len)
  *
  *  return FRIEND_ADDRESS_SIZE byte address to give to others.
  */
-void getaddress(const Messenger *m, uint8_t *address)
+void Messenger::getaddress(uint8_t *address) const
 {
-    id_copy(address, m->net_crypto->self_public_key.data.data());
-    uint32_t nospam = get_nospam(&(m->fr));
+    id_copy(address, net_crypto->self_public_key.data.data());
+    uint32_t nospam = get_nospam(&fr);
     memcpy(address + crypto_box_PUBLICKEYBYTES, &nospam, sizeof(nospam));
     uint16_t checksum = address_checksum(address, FRIEND_ADDRESS_SIZE - sizeof(checksum));
     memcpy(address + crypto_box_PUBLICKEYBYTES + sizeof(nospam), &checksum, sizeof(checksum));
@@ -193,7 +185,7 @@ static int32_t init_new_friend(Messenger *m, const PublicKey &real_pk, uint8_t s
  *  (the nospam for that friend was set to the new one).
  *  return FAERR_NOMEM if increasing the friend list size fails.
  */
-int32_t m_addfriend(Messenger *m, const uint8_t *address, const uint8_t *data, uint16_t length)
+int32_t Messenger::m_addfriend(const uint8_t *address, const uint8_t *data, uint16_t length)
 {
     if (length > MAX_FRIEND_REQUEST_DATA_SIZE)
         return FAERR_TOOLONG;
@@ -213,14 +205,14 @@ int32_t m_addfriend(Messenger *m, const uint8_t *address, const uint8_t *data, u
     if (length < 1)
         return FAERR_NOMESSAGE;
 
-    if (real_pk == m->net_crypto->self_public_key)
+    if (real_pk == net_crypto->self_public_key)
         return FAERR_OWNKEY;
 
-    int32_t friend_id = getfriend_id(m, real_pk);
+    int32_t friend_id = getfriend_id(real_pk);
 
     if (friend_id != -1)
     {
-        Friend *f = m->get_friend(friend_id);
+        Friend *f = get_friend(friend_id);
         if (f->status >= FRIEND_CONFIRMED)
             return FAERR_ALREADYSENT;
 
@@ -234,13 +226,13 @@ int32_t m_addfriend(Messenger *m, const uint8_t *address, const uint8_t *data, u
         return FAERR_SETNEWNOSPAM;
     }
 
-    int32_t ret = init_new_friend(m, real_pk, FRIEND_ADDED);
+    int32_t ret = init_new_friend(this, real_pk, FRIEND_ADDED);
 
     if (ret < 0) {
         return ret;
     }
     
-    Friend *f = m->get_friend(ret);
+    Friend *f = get_friend(ret);
 
     f->friendrequest_timeout = FRIENDREQUEST_TIMEOUT;
     memcpy(f->info, data, length);
@@ -250,18 +242,18 @@ int32_t m_addfriend(Messenger *m, const uint8_t *address, const uint8_t *data, u
     return ret;
 }
 
-int32_t m_addfriend_norequest(Messenger *m, const PublicKey &real_pk)
+int32_t Messenger::m_addfriend_norequest(const PublicKey &real_pk)
 {
-    if (getfriend_id(m, real_pk) != -1)
+    if (getfriend_id(real_pk) != -1)
         return FAERR_ALREADYSENT;
 
     if (!public_key_valid(real_pk))
         return FAERR_BADCHECKSUM;
 
-    if (real_pk == m->net_crypto->self_public_key)
+    if (real_pk == net_crypto->self_public_key)
         return FAERR_OWNKEY;
 
-    return init_new_friend(m, real_pk, FRIEND_CONFIRMED);
+    return init_new_friend(this, real_pk, FRIEND_CONFIRMED);
 }
 
 int Friend::clear_receipts()
@@ -446,8 +438,7 @@ int Friend::setfriendname(const uint8_t *name, uint16_t length)
     if (length > MAX_NAME_LENGTH || length == 0)
         return -1;
 
-    name_length = length;
-    memcpy(this->name, name, length);
+    this->name = std::string((const char *)name, length);
     return 0;
 }
 
@@ -459,21 +450,21 @@ int Friend::setfriendname(const uint8_t *name, uint16_t length)
  *  return 0 if success.
  *  return -1 if failure.
  */
-int setname(Messenger *m, const uint8_t *name, uint16_t length)
+int Messenger::setname(const uint8_t *name, uint16_t length)
 {
     if (length > MAX_NAME_LENGTH)
         return -1;
 
-    if (m->name_length == length && (length == 0 || memcmp(name, m->name, length) == 0))
+    if (this->name_length == length && (length == 0 || memcmp(name, this->name, length) == 0))
         return 0;
 
     if (length)
-        memcpy(m->name, name, length);
+        memcpy(this->name, name, length);
 
-    m->name_length = length;
+    this->name_length = length;
     uint32_t i;
 
-    for (auto &kv : m->friends)
+    for (auto &kv : this->friends)
         kv.second.name_sent = 0;
 
     return 0;
@@ -484,15 +475,15 @@ int setname(Messenger *m, const uint8_t *name, uint16_t length)
  *
  *  return the length of the name.
  */
-uint16_t getself_name(const Messenger *m, uint8_t *name)
+uint16_t Messenger::getself_name(uint8_t *name) const
 {
     if (name == NULL) {
         return 0;
     }
 
-    memcpy(name, m->name, m->name_length);
+    memcpy(name, this->name, this->name_length);
 
-    return m->name_length;
+    return this->name_length;
 }
 
 /* Get name of friendnumber and put it in name.
@@ -503,53 +494,53 @@ uint16_t getself_name(const Messenger *m, uint8_t *name)
  */
 int Friend::getname(uint8_t *name) const
 {
-    memcpy(name, this->name, name_length);
-    return name_length;
+    memcpy(name, this->name.c_str(), this->name.size());
+    return this->name.size();
 }
 
 int Friend::m_get_name_size() const
 {
+    return this->name.size();
+}
+
+int Messenger::m_get_self_name_size() const
+{
     return name_length;
 }
 
-int m_get_self_name_size(const Messenger *m)
-{
-    return m->name_length;
-}
-
-int m_set_statusmessage(Messenger *m, const uint8_t *status, uint16_t length)
+int Messenger::m_set_statusmessage(const uint8_t *status, uint16_t length)
 {
     if (length > MAX_STATUSMESSAGE_LENGTH)
         return -1;
 
-    if (m->statusmessage_length == length && (length == 0 || memcmp(m->statusmessage, status, length) == 0))
+    if (statusmessage_length == length && (length == 0 || memcmp(statusmessage, status, length) == 0))
         return 0;
 
     if (length)
-        memcpy(m->statusmessage, status, length);
+        memcpy(statusmessage, status, length);
 
-    m->statusmessage_length = length;
+    statusmessage_length = length;
 
     uint32_t i;
 
-    for (auto &kv : m->friends)
+    for (auto &kv : friends)
         kv.second.statusmessage_sent = 0;
         
     return 0;
 }
 
-int m_set_userstatus(Messenger *m, uint8_t status)
+int Messenger::m_set_userstatus(uint8_t status)
 {
     if (status >= USERSTATUS_INVALID)
         return -1;
 
-    if (m->userstatus == status)
+    if (userstatus == status)
         return 0;
 
-    m->userstatus = (USERSTATUS) status;
+    userstatus = (USERSTATUS) status;
     uint32_t i;
 
-    for (auto &kv : m->friends)
+    for (auto &kv : friends)
         kv.second.userstatus_sent = 0;
         
     return 0;
@@ -578,15 +569,15 @@ int Friend::m_copy_statusmessage(uint8_t *buf, uint32_t maxlen) const
 /* return the size of friendnumber's user status.
  * Guaranteed to be at most MAX_STATUSMESSAGE_LENGTH.
  */
-int m_get_self_statusmessage_size(const Messenger *m)
+int Messenger::m_get_self_statusmessage_size() const
 {
-    return m->statusmessage_length;
+    return statusmessage_length;
 }
 
-int m_copy_self_statusmessage(const Messenger *m, uint8_t *buf)
+int Messenger::m_copy_self_statusmessage(uint8_t *buf) const
 {
-    memcpy(buf, m->statusmessage, m->statusmessage_length);
-    return m->statusmessage_length;
+    memcpy(buf, statusmessage, statusmessage_length);
+    return statusmessage_length;
 }
 
 uint8_t Friend::m_get_userstatus() const
@@ -600,9 +591,9 @@ uint8_t Friend::m_get_userstatus() const
     return status;
 }
 
-uint8_t m_get_self_userstatus(const Messenger *m)
+uint8_t Messenger::m_get_self_userstatus() const
 {
-    return m->userstatus;
+    return userstatus;
 }
 
 uint64_t Friend::m_get_last_online() const
@@ -1592,133 +1583,57 @@ static int friend_already_added(const PublicKey &real_pk, void *data)
 {
     const Messenger *m = (const Messenger *) data;
 
-    if (getfriend_id(m, real_pk) == -1)
+    if (m->getfriend_id(real_pk) == -1)
         return 0;
 
     return -1;
 }
 
 /* Run this at startup. */
-Messenger *new_messenger(Messenger_Options *options, unsigned int *error)
+Messenger::Messenger(Messenger_Options *options)
 {
-    Messenger *m = (Messenger *) calloc(1, sizeof(Messenger));
-
-    if (error)
-        *error = MESSENGER_ERROR_OTHER;
-
-    if ( ! m )
-        return NULL;
-
     unsigned int net_err = 0;
 
     if (options->udp_disabled) {
         /* this is the easiest way to completely disable UDP without changing too much code. */
-        m->net = (Networking_Core *) calloc(1, sizeof(Networking_Core));
+        net = new Networking_Core;
     } else {
         IP ip;
         ip_init(&ip, options->ipv6enabled);
-        m->net = new_networking_ex(ip, options->port_range[0], options->port_range[1], &net_err);
+        net = new_networking_ex(ip, options->port_range[0], options->port_range[1], &net_err);
     }
 
-    if (m->net == NULL) {
-        free(m);
+    dht = std::unique_ptr<DHT>(new DHT(net));
 
-        if (error && net_err == 1) {
-            *error = MESSENGER_ERROR_PORT;
-        }
+    // TODO kill_networking ?
 
-        return NULL;
-    }
+    net_crypto = std::unique_ptr<Net_Crypto>(new Net_Crypto(dht.get(), &options->proxy_info));
 
-    m->dht = new DHT(m->net);
-
-    if (m->dht == NULL) {
-        kill_networking(m->net);
-        free(m);
-        return NULL;
-    }
-
-    m->net_crypto = new Net_Crypto(m->dht, &options->proxy_info);
-
-    if (m->net_crypto == NULL) {
-        kill_networking(m->net);
-        delete m->dht;
-        free(m);
-        return NULL;
-    }
-
-    m->onion = new Onion(*m->dht);
-    m->onion_a = new_onion_announce(m->dht);
-    m->onion_c = new Onion_Client(m->net_crypto);
-    m->fr_c = new Friend_Connections(m->onion_c);
-
-    if (!(m->onion && m->onion_a && m->onion_c)) {
-        delete m->fr_c;
-        delete m->onion;
-        kill_onion_announce(m->onion_a);
-        delete m->onion_c;
-        delete m->net_crypto;
-        delete m->dht;
-        kill_networking(m->net);
-        free(m);
-        return NULL;
-    }
+    onion = std::unique_ptr<Onion>(new Onion(*dht));
+    onion_a = new_onion_announce(dht.get());
+    onion_c = std::unique_ptr<Onion_Client>(new Onion_Client(net_crypto.get()));
+    fr_c = std::unique_ptr<Friend_Connections>(new Friend_Connections(onion_c.get()));
 
     if (options->tcp_server_port) {
-        m->tcp_server = new TCP_Server(options->ipv6enabled, 1, &options->tcp_server_port, m->dht->self_secret_key, m->onion);
-
-        if (m->tcp_server == NULL) {
-            delete m->fr_c;
-            delete m->onion;
-            kill_onion_announce(m->onion_a);
-            delete m->onion_c;
-            delete m->net_crypto;
-            delete m->dht;
-            kill_networking(m->net);
-            free(m);
-
-            if (error)
-                *error = MESSENGER_ERROR_TCP_SERVER;
-
-            return NULL;
-        }
+        tcp_server = std::unique_ptr<TCP_Server>(new TCP_Server(options->ipv6enabled, 1, &options->tcp_server_port, dht->self_secret_key, onion.get()));
     }
 
-    m->options = *options;
-    friendreq_init(&(m->fr), m->fr_c);
-    set_nospam(&(m->fr), random_int());
-    set_filter_function(&(m->fr), &friend_already_added, m);
-
-    if (error)
-        *error = MESSENGER_ERROR_NONE;
-
-    return m;
+    this->options = *options;
+    friendreq_init(&fr, fr_c.get());
+    set_nospam(&fr, random_int());
+    set_filter_function(&fr, &friend_already_added, this);
 }
 
 /* Run this before closing shop. */
-void kill_messenger(Messenger *m)
+Messenger::~Messenger()
 {
-    if (!m)
-        return;
-
     uint32_t i;
 
-    if (m->tcp_server) {
-        delete m->tcp_server;
-    }
+    kill_onion_announce(onion_a);
+    kill_networking(net);
 
-    delete m->fr_c;
-    delete m->onion;
-    kill_onion_announce(m->onion_a);
-    delete m->onion_c;
-    delete m->net_crypto;
-    delete m->dht;
-    kill_networking(m->net);
-
-    for (auto &kv : m->friends)
+    for (auto &kv : friends)
         kv.second.clear_receipts();
-        
-    free(m);
 }
 
 /* Check for and handle a timed-out friend request. If the request has
@@ -1790,9 +1705,7 @@ int Friend::on_data(uint8_t *temp, uint16_t length)
             if (messenger->friend_namechange)
                 messenger->friend_namechange(this, data_terminated, data_length, messenger->friend_namechange_userdata);
 
-            memcpy(name, data_terminated, data_length);
-            name_length = data_length;
-
+            name = std::string((const char *) data_terminated, data_length);
             break;
         }
 
@@ -2080,7 +1993,7 @@ void Messenger::do_friends()
 
 void Messenger::connection_status_cb()
 {
-    unsigned int conn_status = onion_connection_status(onion_c);
+    unsigned int conn_status = onion_connection_status(onion_c.get());
 
     if (conn_status != last_connection_status) {
         if (core_connection_change)
@@ -2116,9 +2029,9 @@ static char *ID2String(const uint8_t *pk)
  *
  * returns time (in ms) before the next do_messenger() needs to be run on success.
  */
-uint32_t messenger_run_interval(const Messenger *m)
+uint32_t Messenger::messenger_run_interval() const
 {
-    uint32_t crypto_interval = m->net_crypto->crypto_run_interval();
+    uint32_t crypto_interval = net_crypto->crypto_run_interval();
 
     if (crypto_interval > MIN_RUN_INTERVAL) {
         return MIN_RUN_INTERVAL;
@@ -2162,8 +2075,8 @@ void Messenger::do_messenger()
     }
 
     net_crypto->do_net_crypto();
-    do_onion_client(onion_c);
-    delete fr_c;
+    do_onion_client(onion_c.get());
+    fr_c->do_friend_connections();
     do_friends();
     connection_status_cb();
 
@@ -2300,9 +2213,9 @@ struct SAVED_FRIEND {
     uint64_t last_seen_time;
 };
 
-static uint32_t saved_friendslist_size(const Messenger *m)
+uint32_t Messenger::saved_friendslist_size() const
 {
-    return count_friendlist(m) * sizeof(struct SAVED_FRIEND);
+    return count_friendlist() * sizeof(struct SAVED_FRIEND);
 }
 
 uint32_t Messenger::friends_list_save(uint8_t *data) const
@@ -2328,8 +2241,8 @@ uint32_t Messenger::friends_list_save(uint8_t *data) const
                 temp.info_size = htons(f.info_size);
                 temp.friendrequest_nospam = f.friendrequest_nospam;
             } else {
-                memcpy(temp.name, f.name, f.name_length);
-                temp.name_length = htons(f.name_length);
+                memcpy(temp.name, f.name.c_str(), f.name.size());
+                temp.name_length = htons(f.name.size());
                 memcpy(temp.statusmessage, f.statusmessage, f.statusmessage_length);
                 temp.statusmessage_length = htons(f.statusmessage_length);
                 temp.userstatus = f.userstatus;
@@ -2362,7 +2275,7 @@ static int friends_list_load(Messenger *m, const uint8_t *data, uint32_t length)
         memcpy(&temp, data + i * sizeof(struct SAVED_FRIEND), sizeof(struct SAVED_FRIEND));
 
         if (temp.status >= 3) {
-            int fnum = m_addfriend_norequest(m, temp.real_pk);
+            int fnum = m->m_addfriend_norequest(temp.real_pk);
 
             if (fnum < 0)
                 continue;
@@ -2382,7 +2295,7 @@ static int friends_list_load(Messenger *m, const uint8_t *data, uint32_t length)
             memcpy(address + crypto_box_PUBLICKEYBYTES, &(temp.friendrequest_nospam), sizeof(uint32_t));
             uint16_t checksum = address_checksum(address, FRIEND_ADDRESS_SIZE - sizeof(checksum));
             memcpy(address + crypto_box_PUBLICKEYBYTES + sizeof(uint32_t), &checksum, sizeof(checksum));
-            m_addfriend(m, address, temp.info, ntohs(temp.info_size));
+            m->m_addfriend(address, temp.info, ntohs(temp.info_size));
         }
     }
 
@@ -2390,15 +2303,15 @@ static int friends_list_load(Messenger *m, const uint8_t *data, uint32_t length)
 }
 
 /*  return size of the messenger data (for saving) */
-uint32_t messenger_size(const Messenger *m)
+uint32_t Messenger::messenger_size() const
 {
     uint32_t size32 = sizeof(uint32_t), sizesubhead = size32 * 2;
     return   size32 * 2                                      // global cookie
              + sizesubhead + sizeof(uint32_t) + crypto_box_PUBLICKEYBYTES + crypto_box_SECRETKEYBYTES
-             + sizesubhead + m->dht->size()                  // DHT
-             + sizesubhead + saved_friendslist_size(m)         // Friendlist itself.
-             + sizesubhead + m->name_length                    // Own nickname.
-             + sizesubhead + m->statusmessage_length           // status message
+             + sizesubhead + dht->size()                  // DHT
+             + sizesubhead + saved_friendslist_size()         // Friendlist itself.
+             + sizesubhead + name_length                    // Own nickname.
+             + sizesubhead + statusmessage_length           // status message
              + sizesubhead + 1                                 // status
              + sizesubhead + NUM_SAVED_TCP_RELAYS * packed_node_size(TCP_INET6) //TCP relays
              + sizesubhead + NUM_SAVED_PATH_NODES * packed_node_size(TCP_INET6) //saved path nodes
@@ -2415,9 +2328,9 @@ static uint8_t *z_state_save_subheader(uint8_t *data, uint32_t len, uint16_t typ
 }
 
 /* Save the messenger in data of size Messenger_size(). */
-void messenger_save(const Messenger *m, uint8_t *data)
+void Messenger::messenger_save(uint8_t *data) const
 {
-    memset(data, 0, messenger_size(m));
+    memset(data, 0, messenger_size());
 
     uint32_t len;
     uint16_t type;
@@ -2434,45 +2347,45 @@ void messenger_save(const Messenger *m, uint8_t *data)
     len = size32 + crypto_box_PUBLICKEYBYTES + crypto_box_SECRETKEYBYTES;
     type = MESSENGER_STATE_TYPE_NOSPAMKEYS;
     data = z_state_save_subheader(data, len, type);
-    *(uint32_t *)data = get_nospam(&(m->fr));
-    m->net_crypto->save_keys(data + size32);
+    *(uint32_t *)data = get_nospam(&(fr));
+    net_crypto->save_keys(data + size32);
     data += len;
 
-    len = saved_friendslist_size(m);
+    len = saved_friendslist_size();
     type = MESSENGER_STATE_TYPE_FRIENDS;
     data = z_state_save_subheader(data, len, type);
-    m->friends_list_save(data);
+    friends_list_save(data);
     data += len;
 
-    len = m->name_length;
+    len = name_length;
     type = MESSENGER_STATE_TYPE_NAME;
     data = z_state_save_subheader(data, len, type);
-    memcpy(data, m->name, len);
+    memcpy(data, name, len);
     data += len;
 
-    len = m->statusmessage_length;
+    len = statusmessage_length;
     type = MESSENGER_STATE_TYPE_STATUSMESSAGE;
     data = z_state_save_subheader(data, len, type);
-    memcpy(data, m->statusmessage, len);
+    memcpy(data, statusmessage, len);
     data += len;
 
     len = 1;
     type = MESSENGER_STATE_TYPE_STATUS;
     data = z_state_save_subheader(data, len, type);
-    *data = m->userstatus;
+    *data = userstatus;
     data += len;
 
-    len = m->dht->size();
+    len = dht->size();
     type = MESSENGER_STATE_TYPE_DHT;
     data = z_state_save_subheader(data, len, type);
-    m->dht->save(data);
+    dht->save(data);
     data += len;
 
     NodeFormat relays[NUM_SAVED_TCP_RELAYS];
     type = MESSENGER_STATE_TYPE_TCP_RELAY;
     uint8_t *temp_data = data;
     data = z_state_save_subheader(temp_data, 0, type);
-    unsigned int num = m->net_crypto->copy_connected_tcp_relays(relays, NUM_SAVED_TCP_RELAYS);
+    unsigned int num = net_crypto->copy_connected_tcp_relays(relays, NUM_SAVED_TCP_RELAYS);
     int l = pack_nodes(data, NUM_SAVED_TCP_RELAYS * packed_node_size(TCP_INET6), relays, num);
 
     if (l > 0) {
@@ -2486,7 +2399,7 @@ void messenger_save(const Messenger *m, uint8_t *data)
     temp_data = data;
     data = z_state_save_subheader(data, 0, type);
     memset(nodes, 0, sizeof(nodes));
-    num = onion_backup_nodes(m->onion_c, nodes, NUM_SAVED_PATH_NODES);
+    num = onion_backup_nodes(onion_c.get(), nodes, NUM_SAVED_PATH_NODES);
     l = pack_nodes(data, NUM_SAVED_PATH_NODES * packed_node_size(TCP_INET6), nodes, num);
 
     if (l > 0) {
@@ -2526,21 +2439,21 @@ static int messenger_load_state_callback(void *outer, const uint8_t *data, uint3
 
         case MESSENGER_STATE_TYPE_NAME:
             if ((length > 0) && (length <= MAX_NAME_LENGTH)) {
-                setname(m, data, length);
+                m->setname(data, length);
             }
 
             break;
 
         case MESSENGER_STATE_TYPE_STATUSMESSAGE:
             if ((length > 0) && (length < MAX_STATUSMESSAGE_LENGTH)) {
-                m_set_statusmessage(m, data, length);
+                m->m_set_statusmessage(data, length);
             }
 
             break;
 
         case MESSENGER_STATE_TYPE_STATUS:
             if (length == 1) {
-                m_set_userstatus(m, *data);
+                m->m_set_userstatus(*data);
             }
 
             break;
@@ -2566,7 +2479,7 @@ static int messenger_load_state_callback(void *outer, const uint8_t *data, uint3
             int i, num = unpack_nodes(nodes, NUM_SAVED_PATH_NODES, 0, data, length, 0);
 
             for (i = 0; i < num; ++i) {
-                onion_add_bs_path_node(m->onion_c, nodes[i].ip_port, nodes[i].public_key);
+                onion_add_bs_path_node(m->onion_c.get(), nodes[i].ip_port, nodes[i].public_key);
             }
 
             break;
@@ -2594,7 +2507,7 @@ static int messenger_load_state_callback(void *outer, const uint8_t *data, uint3
 }
 
 /* Load the messenger from data of size length. */
-int messenger_load(Messenger *m, const uint8_t *data, uint32_t length)
+int Messenger::messenger_load(const uint8_t *data, uint32_t length)
 {
     uint32_t data32[2];
     uint32_t cookie_len = sizeof(data32);
@@ -2606,7 +2519,7 @@ int messenger_load(Messenger *m, const uint8_t *data, uint32_t length)
     lendian_to_host32(data32 + 1, data + sizeof(uint32_t));
 
     if (!data32[0] && (data32[1] == MESSENGER_STATE_COOKIE_GLOBAL))
-        return load_state(messenger_load_state_callback, m, data + cookie_len,
+        return load_state(messenger_load_state_callback, this, data + cookie_len,
                           length - cookie_len, MESSENGER_STATE_COOKIE_TYPE);
     else
         return -1;
@@ -2615,9 +2528,9 @@ int messenger_load(Messenger *m, const uint8_t *data, uint32_t length)
 /* Return the number of friends in the instance m.
  * You should use this to determine how much memory to allocate
  * for copy_friendlist. */
-uint32_t count_friendlist(const Messenger *m)
+uint32_t Messenger::count_friendlist() const
 {
-    return m->friends.size();
+    return friends.size();
 }
 
 /* Copy a list of valid friend IDs into the array out_list.
@@ -2625,19 +2538,19 @@ uint32_t count_friendlist(const Messenger *m)
  * Otherwise, returns the number of elements copied.
  * If the array was too small, the contents
  * of out_list will be truncated to list_size. */
-uint32_t copy_friendlist(Messenger const *m, uint32_t *out_list, uint32_t list_size)
+uint32_t Messenger::copy_friendlist(uint32_t *out_list, uint32_t list_size) const
 {
     if (!out_list)
         return 0;
 
-    if (m->friends.empty()) {
+    if (friends.empty()) {
         return 0;
     }
 
     uint32_t i;
     uint32_t ret = 0;
 
-    for (auto &kv : m->friends) {
+    for (auto &kv : friends) {
         const Friend &f = kv.second;
         if (ret >= list_size) {
             break; /* Abandon ship */

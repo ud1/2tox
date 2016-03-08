@@ -172,7 +172,12 @@ struct Messenger;
 
 struct Friend : public ConnectionEventListener
 {
-    Messenger *manager; // TODO fill manager
+    Friend(Messenger *messenger, uint32_t id);
+    ~Friend();
+    
+    Messenger *const messenger;
+    const uint32_t id;
+    
     bitox::PublicKey real_pk;
     std::shared_ptr<Friend_Conn> friend_connection;
 
@@ -226,17 +231,10 @@ struct Friend : public ConnectionEventListener
     *  return CONNECTION_NONE (0) if friend is not connected to us (Offline).
     *  return -1 on failure.
     */
-    int m_get_friend_connectionstatus();
+    int m_get_friend_connectionstatus() const;
     int do_receipts();
     int add_receipt(uint32_t packet_num, uint32_t msg_id);
     int friend_received_packet(uint32_t number);
-    
-    /* Remove a friend.
-    *
-    *  return 0 if success
-    *  return -1 if failure
-    */
-    int m_delfriend(); // TODO destructor
     
     /* Send a message of type to an online friend.
     *
@@ -268,17 +266,17 @@ struct Friend : public ConnectionEventListener
     *  return length of name if success.
     *  return -1 if failure.
     */
-    int getname(uint8_t *name);
+    int getname(uint8_t *name) const;
     
     /*  return the length of name, including null on success.
     *  return -1 on failure.
     */
-    int m_get_name_size();
+    int m_get_name_size() const;
     
     /*  return the length of friendnumber's status message, including null on success.
     *  return -1 on failure.
     */
-    int m_get_statusmessage_size();
+    int m_get_statusmessage_size() const;
     
     /* Copy friendnumber's status message into buf, truncating if size is over maxlen.
     * Get the size you need to allocate from m_get_statusmessage_size.
@@ -314,7 +312,7 @@ struct Friend : public ConnectionEventListener
     * returns 0 if friend is not typing.
     * returns 1 if friend is typing.
     */
-    int m_get_istyping();
+    int m_get_istyping() const;
     int send_statusmessage(const uint8_t *status, uint16_t length);
     int send_userstatus(uint8_t status);
     int send_user_istyping(uint8_t is_typing);
@@ -331,7 +329,7 @@ struct Friend : public ConnectionEventListener
     * return -1 if friend not valid.
     * return -2 if filenumber not valid
     */
-    int file_get_id(uint32_t filenumber, uint8_t *file_id);
+    int file_get_id(uint32_t filenumber, uint8_t *file_id) const;
     int file_sendrequest(uint8_t filenumber, uint32_t file_type,
                             uint64_t filesize, const uint8_t *file_id, const uint8_t *filename, uint16_t filename_length);
     long int new_filesender(uint32_t file_type, uint64_t filesize,
@@ -431,6 +429,19 @@ struct Group_Chats;
 
 struct Messenger {
 
+    int32_t getfriend_id(const bitox::PublicKey &real_pk); // TODO const
+    Friend *get_friend(const bitox::PublicKey &real_pk);
+    Friend *get_friend(uint32_t id);
+    const Friend *get_friend(uint32_t id) const;
+    
+    /* The main loop that needs to be run at least 20 times per second. */
+    void do_messenger();
+    
+    void do_friends();
+    uint32_t friends_list_save(uint8_t *data) const;
+    
+    int delete_friend(uint32_t id);
+    
     bitox::network::Networking_Core *net;
     Net_Crypto *net_crypto;
     DHT *dht;
@@ -451,8 +462,8 @@ struct Messenger {
 
     USERSTATUS userstatus;
 
-    Friend *friendlist;
-    uint32_t numfriends;
+    std::map<uint32_t, Friend> friends;
+    uint32_t friend_id_sequence = 0;
 
 #define NUM_SAVED_TCP_RELAYS 8
     uint8_t has_added_relays; // If the first connection has occurred in do_messenger
@@ -502,6 +513,8 @@ struct Messenger {
     unsigned int last_connection_status;
 
     Messenger_Options options;
+    
+    void connection_status_cb();
 };
 
 /* Format: [real_pk (32 bytes)][nospam number (4 bytes)][checksum (2 bytes)]
@@ -790,9 +803,6 @@ Messenger *new_messenger(Messenger_Options *options, unsigned int *error);
  * Free all datastructures.
  */
 void kill_messenger(Messenger *m);
-
-/* The main loop that needs to be run at least 20 times per second. */
-void do_messenger(Messenger *m);
 
 /* Return the time in milliseconds before do_messenger() should be called again
  * for optimal performance.

@@ -910,7 +910,7 @@ int Friend::file_get_id(uint32_t filenumber, uint8_t *file_id) const
         ft = &file_sending[file_number];
     }
 
-    if (ft->status == FILESTATUS_NONE)
+    if (ft->status == FileStatus::FILESTATUS_NONE)
         return -2;
 
     memcpy(file_id, ft->id, FILE_ID_LENGTH);
@@ -961,7 +961,7 @@ long int Friend::new_filesender(uint32_t file_type, uint64_t filesize,
     uint32_t i;
 
     for (i = 0; i < MAX_CONCURRENT_FILE_PIPES; ++i) {
-        if (file_sending[i].status == FILESTATUS_NONE)
+        if (file_sending[i].status == FileStatus::FILESTATUS_NONE)
             break;
     }
 
@@ -972,7 +972,7 @@ long int Friend::new_filesender(uint32_t file_type, uint64_t filesize,
         return -4;
 
     struct File_Transfers *ft = &file_sending[i];
-    ft->status = FILESTATUS_NOT_ACCEPTED;
+    ft->status = FileStatus::FILESTATUS_NOT_ACCEPTED;
     ft->size = filesize;
     ft->transferred = 0;
     ft->requested = 0;
@@ -1045,17 +1045,17 @@ int Friend::file_control(uint32_t filenumber, unsigned int control)
         ft = &file_sending[file_number];
     }
 
-    if (ft->status == FILESTATUS_NONE)
+    if (ft->status == FileStatus::FILESTATUS_NONE)
         return -3;
 
     if (control > FILECONTROL_KILL)
         return -4;
 
-    if (control == FILECONTROL_PAUSE && ((ft->paused & FILE_PAUSE_US) || ft->status != FILESTATUS_TRANSFERRING))
+    if (control == FILECONTROL_PAUSE && ((ft->paused & FILE_PAUSE_US) || ft->status != FileStatus::FILESTATUS_TRANSFERRING))
         return -5;
 
     if (control == FILECONTROL_ACCEPT) {
-        if (ft->status == FILESTATUS_TRANSFERRING) {
+        if (ft->status == FileStatus::FILESTATUS_TRANSFERRING) {
             if (!(ft->paused & FILE_PAUSE_US)) {
                 if (ft->paused & FILE_PAUSE_OTHER) {
                     return -6;
@@ -1064,7 +1064,7 @@ int Friend::file_control(uint32_t filenumber, unsigned int control)
                 }
             }
         } else {
-            if (ft->status != FILESTATUS_NOT_ACCEPTED)
+            if (ft->status != FileStatus::FILESTATUS_NOT_ACCEPTED)
                 return -7;
 
             if (!send_receive)
@@ -1074,7 +1074,7 @@ int Friend::file_control(uint32_t filenumber, unsigned int control)
 
     if (send_file_control_packet(send_receive, file_number, control, 0, 0)) {
         if (control == FILECONTROL_KILL) {
-            ft->status = FILESTATUS_NONE;
+            ft->status = FileStatus::FILESTATUS_NONE;
 
             if (send_receive == 0) {
                 --num_sending_files;
@@ -1082,7 +1082,7 @@ int Friend::file_control(uint32_t filenumber, unsigned int control)
         } else if (control == FILECONTROL_PAUSE) {
             ft->paused |= FILE_PAUSE_US;
         } else if (control == FILECONTROL_ACCEPT) {
-            ft->status = FILESTATUS_TRANSFERRING;
+            ft->status = FileStatus::FILESTATUS_TRANSFERRING;
 
             if (ft->paused & FILE_PAUSE_US) {
                 ft->paused ^=  FILE_PAUSE_US;
@@ -1134,10 +1134,10 @@ int Friend::file_seek(uint32_t filenumber, uint64_t position)
         ft = &file_sending[file_number];
     }
 
-    if (ft->status == FILESTATUS_NONE)
+    if (ft->status == FileStatus::FILESTATUS_NONE)
         return -3;
 
-    if (ft->status != FILESTATUS_NOT_ACCEPTED)
+    if (ft->status != FileStatus::FILESTATUS_NOT_ACCEPTED)
         return -5;
 
     if (position >= ft->size) {
@@ -1198,7 +1198,7 @@ int Friend::file_data(uint32_t filenumber, uint64_t position, const uint8_t *dat
 
     struct File_Transfers *ft = &file_sending[filenumber];
 
-    if (ft->status != FILESTATUS_TRANSFERRING)
+    if (ft->status != FileStatus::FILESTATUS_TRANSFERRING)
         return -4;
 
     if (length > MAX_FILE_DATA_SIZE)
@@ -1231,7 +1231,7 @@ int Friend::file_data(uint32_t filenumber, uint64_t position, const uint8_t *dat
         }
 
         if (length != MAX_FILE_DATA_SIZE || ft->size == ft->transferred) {
-            ft->status = FILESTATUS_FINISHED;
+            ft->status = FileStatus::FILESTATUS_FINISHED;
             ft->last_packet_number = ret;
         }
 
@@ -1252,13 +1252,13 @@ int Friend::file_data(uint32_t filenumber, uint64_t position, const uint8_t *dat
 uint64_t Friend::file_dataremaining(uint8_t filenumber, uint8_t send_receive)
 {
     if (send_receive == 0) {
-        if (file_sending[filenumber].status == FILESTATUS_NONE)
+        if (file_sending[filenumber].status == FileStatus::FILESTATUS_NONE)
             return 0;
 
         return file_sending[filenumber].size -
                file_sending[filenumber].transferred;
     } else {
-        if (file_receiving[filenumber].status == FILESTATUS_NONE)
+        if (file_receiving[filenumber].status == FileStatus::FILESTATUS_NONE)
             return 0;
 
         return file_receiving[filenumber].size -
@@ -1284,16 +1284,16 @@ void Friend::do_reqchunk_filecb()
     for (i = 0; i < MAX_CONCURRENT_FILE_PIPES; ++i) {
         struct File_Transfers *ft = &file_sending[i];
 
-        if (ft->status != FILESTATUS_NONE) {
+        if (ft->status != FileStatus::FILESTATUS_NONE) {
             --num;
 
-            if (ft->status == FILESTATUS_FINISHED) {
+            if (ft->status == FileStatus::FILESTATUS_FINISHED) {
                 /* Check if file was entirely sent. */
                 if (friend_received_packet(ft->last_packet_number) == 0) {
                     if (messenger->file_reqchunk)
                         (*messenger->file_reqchunk)(this, i, ft->transferred, 0, messenger->file_reqchunk_userdata);
 
-                    ft->status = FILESTATUS_NONE;
+                    ft->status = FileStatus::FILESTATUS_NONE;
                     --num_sending_files;
                 }
             }
@@ -1306,7 +1306,7 @@ void Friend::do_reqchunk_filecb()
             }
         }
 
-        while (ft->status == FILESTATUS_TRANSFERRING && (ft->paused == FILE_PAUSE_NOT)) {
+        while (ft->status == FileStatus::FILESTATUS_TRANSFERRING && (ft->paused == FILE_PAUSE_NOT)) {
             if (messenger->net_crypto->max_speed_reached(friend_connection->crypt_connection_id)) {
                 free_slots = 0;
             }
@@ -1356,11 +1356,11 @@ void Friend::break_files()
 
     //TODO: Inform the client which file transfers get killed with a callback?
     for (i = 0; i < MAX_CONCURRENT_FILE_PIPES; ++i) {
-        if (file_sending[i].status != FILESTATUS_NONE)
-            file_sending[i].status = FILESTATUS_NONE;
+        if (file_sending[i].status != FileStatus::FILESTATUS_NONE)
+            file_sending[i].status = FileStatus::FILESTATUS_NONE;
 
-        if (file_receiving[i].status != FILESTATUS_NONE)
-            file_receiving[i].status = FILESTATUS_NONE;
+        if (file_receiving[i].status != FileStatus::FILESTATUS_NONE)
+            file_receiving[i].status = FileStatus::FILESTATUS_NONE;
     }
 }
 
@@ -1386,15 +1386,15 @@ int Friend::handle_filecontrol(uint8_t receive_send, uint8_t filenumber,
         ft = &file_sending[filenumber];
     }
 
-    if (ft->status == FILESTATUS_NONE) {
+    if (ft->status == FileStatus::FILESTATUS_NONE) {
         /* File transfer doesn't exist, tell the other to kill it. */
         send_file_control_packet(!receive_send, filenumber, FILECONTROL_KILL, 0, 0);
         return -1;
     }
 
     if (control_type == FILECONTROL_ACCEPT) {
-        if (receive_send && ft->status == FILESTATUS_NOT_ACCEPTED) {
-            ft->status = FILESTATUS_TRANSFERRING;
+        if (receive_send && ft->status == FileStatus::FILESTATUS_NOT_ACCEPTED) {
+            ft->status = FileStatus::FILESTATUS_TRANSFERRING;
         } else {
             if (ft->paused & FILE_PAUSE_OTHER) {
                 ft->paused ^= FILE_PAUSE_OTHER;
@@ -1406,7 +1406,7 @@ int Friend::handle_filecontrol(uint8_t receive_send, uint8_t filenumber,
         if (messenger->file_filecontrol)
             (*messenger->file_filecontrol)(this, real_filenumber, control_type, messenger->file_filecontrol_userdata);
     } else if (control_type == FILECONTROL_PAUSE) {
-        if ((ft->paused & FILE_PAUSE_OTHER) || ft->status != FILESTATUS_TRANSFERRING) {
+        if ((ft->paused & FILE_PAUSE_OTHER) || ft->status != FileStatus::FILESTATUS_TRANSFERRING) {
             return -1;
         }
 
@@ -1419,7 +1419,7 @@ int Friend::handle_filecontrol(uint8_t receive_send, uint8_t filenumber,
         if (messenger->file_filecontrol)
             (*messenger->file_filecontrol)(this, real_filenumber, control_type, messenger->file_filecontrol_userdata);
 
-        ft->status = FILESTATUS_NONE;
+        ft->status = FileStatus::FILESTATUS_NONE;
 
         if (receive_send) {
             --num_sending_files;
@@ -1433,7 +1433,7 @@ int Friend::handle_filecontrol(uint8_t receive_send, uint8_t filenumber,
         }
 
         /* seek can only be sent by the receiver to seek before resuming broken transfers. */
-        if (ft->status != FILESTATUS_NOT_ACCEPTED || !receive_send) {
+        if (ft->status != FileStatus::FILESTATUS_NOT_ACCEPTED || !receive_send) {
             return -1;
         }
 
@@ -1811,10 +1811,10 @@ int Friend::on_data(uint8_t *temp, uint16_t length)
             net_to_host((uint8_t *) &filesize, sizeof(filesize));
             struct File_Transfers *ft = &file_receiving[filenumber];
 
-            if (ft->status != FILESTATUS_NONE)
+            if (ft->status != FileStatus::FILESTATUS_NONE)
                 break;
 
-            ft->status = FILESTATUS_NOT_ACCEPTED;
+            ft->status = FileStatus::FILESTATUS_NOT_ACCEPTED;
             ft->size = filesize;
             ft->transferred = 0;
             ft->paused = FILE_PAUSE_NOT;
@@ -1869,7 +1869,7 @@ int Friend::on_data(uint8_t *temp, uint16_t length)
 
             struct File_Transfers *ft = &file_receiving[filenumber];
 
-            if (ft->status != FILESTATUS_TRANSFERRING)
+            if (ft->status != FileStatus::FILESTATUS_TRANSFERRING)
                 break;
 
             uint64_t position = ft->transferred;
@@ -1907,7 +1907,7 @@ int Friend::on_data(uint8_t *temp, uint16_t length)
 
             /* Data is zero, filetransfer is over. */
             if (file_data_length == 0) {
-                ft->status = FILESTATUS_NONE;
+                ft->status = FileStatus::FILESTATUS_NONE;
             }
 
             break;

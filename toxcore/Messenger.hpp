@@ -39,32 +39,37 @@
 #define FRIEND_ADDRESS_SIZE (crypto_box_PUBLICKEYBYTES + sizeof(uint32_t) + sizeof(uint16_t))
 
 enum {
-    MESSAGE_NORMAL,
-    MESSAGE_ACTION
+    MESSAGE_NORMAL = 0,
+    MESSAGE_ACTION = 1
 };
 
 /* NOTE: Packet ids below 24 must never be used. */
-#define PACKET_ID_ONLINE 24
-#define PACKET_ID_OFFLINE 25
-#define PACKET_ID_NICKNAME 48
-#define PACKET_ID_STATUSMESSAGE 49
-#define PACKET_ID_USERSTATUS 50
-#define PACKET_ID_TYPING 51
-#define PACKET_ID_MESSAGE 64
-#define PACKET_ID_ACTION (PACKET_ID_MESSAGE + MESSAGE_ACTION) /* 65 */
-#define PACKET_ID_MSI 69
-#define PACKET_ID_FILE_SENDREQUEST 80
-#define PACKET_ID_FILE_CONTROL 81
-#define PACKET_ID_FILE_DATA 82
-#define PACKET_ID_INVITE_GROUPCHAT 96
-#define PACKET_ID_ONLINE_PACKET 97
-#define PACKET_ID_DIRECT_GROUPCHAT 98
-#define PACKET_ID_MESSAGE_GROUPCHAT 99
-#define PACKET_ID_LOSSY_GROUPCHAT 199
+enum MessengerPacketType
+{
+    PACKET_ID_ONLINE = 24,
+    PACKET_ID_OFFLINE = 25,
+    PACKET_ID_NICKNAME = 48,
+    PACKET_ID_STATUSMESSAGE = 49,
+    PACKET_ID_USERSTATUS = 50,
+    PACKET_ID_TYPING = 51,
+    PACKET_ID_MESSAGE = 64,
+    PACKET_ID_ACTION = 65, // PACKET_ID_MESSAGE + MESSAGE_ACTION
+    PACKET_ID_MSI = 69,
+    PACKET_ID_FILE_SENDREQUEST = 80,
+    PACKET_ID_FILE_CONTROL = 81,
+    PACKET_ID_FILE_DATA = 82,
+    PACKET_ID_INVITE_GROUPCHAT = 96,
+    PACKET_ID_ONLINE_PACKET = 97,
+    PACKET_ID_DIRECT_GROUPCHAT = 98,
+    PACKET_ID_MESSAGE_GROUPCHAT = 99,
+    PACKET_ID_LOSSY_GROUPCHAT = 199,
 
-/* All packets starting with a byte in this range can be used for anything. */
-#define PACKET_ID_LOSSLESS_RANGE_START 160
-#define PACKET_ID_LOSSLESS_RANGE_SIZE 32
+    /* All packets starting with a byte in this range can be used for anything. */
+    PACKET_ID_LOSSLESS_RANGE_START = 160, // * - PACKET_ID_LOSSLESS_RANGE_SIZE
+};
+
+constexpr int PACKET_ID_LOSSLESS_RANGE_SIZE = 32;
+
 #define PACKET_LOSSY_AV_RESERVED 8 /* Number of lossy packet types at start of range reserved for A/V. */
 
 typedef struct {
@@ -129,29 +134,41 @@ USERSTATUS;
 
 #define FILE_ID_LENGTH 32
 
+enum PauseStatus
+{
+    // not paused
+    FILE_PAUSE_NOT,
+    // paused by us
+    FILE_PAUSE_US,
+    // paused by other
+    FILE_PAUSE_OTHER,
+    //paused by both
+    FILE_PAUSE_BOTH
+};
+
+enum class FileStatus
+{
+    // no transfer
+    FILESTATUS_NONE,
+    // not accepted
+    FILESTATUS_NOT_ACCEPTED,
+    //transferring
+    FILESTATUS_TRANSFERRING,
+    // broken
+    FILESTATUS_BROKEN,
+    // finished
+    FILESTATUS_FINISHED
+};
+
 struct File_Transfers {
     uint64_t size;
     uint64_t transferred;
-    uint8_t status; /* 0 == no transfer, 1 = not accepted, 3 = transferring, 4 = broken, 5 = finished */
-    uint8_t paused; /* 0: not paused, 1 = paused by us, 2 = paused by other, 3 = paused by both. */
+    FileStatus status;
+    uint8_t paused = FILE_PAUSE_NOT;
     uint32_t last_packet_number; /* number of the last packet sent. */
     uint64_t requested; /* total data requested by the request chunk callback */
     unsigned int slots_allocated; /* number of slots allocated to this transfer. */
     uint8_t id[FILE_ID_LENGTH];
-};
-enum {
-    FILESTATUS_NONE,
-    FILESTATUS_NOT_ACCEPTED,
-    FILESTATUS_TRANSFERRING,
-    //FILESTATUS_BROKEN,
-    FILESTATUS_FINISHED
-};
-
-enum {
-    FILE_PAUSE_NOT,
-    FILE_PAUSE_US,
-    FILE_PAUSE_OTHER,
-    FILE_PAUSE_BOTH
 };
 
 /* This cannot be bigger than 256 */

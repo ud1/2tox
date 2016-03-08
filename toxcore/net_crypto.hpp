@@ -27,6 +27,7 @@
 #include "DHT.hpp"
 #include "LAN_discovery.hpp"
 #include "TCP_connection.hpp"
+#include "id_pool.hpp"
 #include <pthread.h>
 #include <map>
 #include <mutex>
@@ -173,8 +174,35 @@ class CryptoConnectionEventListener : public ConnectionEventListener, public DHT
 {
 };
 
-struct Crypto_Connection
+struct Net_Crypto;
+
+struct Crypto_Connection : public std::enable_shared_from_this<Crypto_Connection>
 {
+    Crypto_Connection(Net_Crypto *net_crypto);
+    ~Crypto_Connection();
+    
+    /* Add a tcp relay, associating it to a crypt_connection_id.
+    *
+    * return 0 if it was added.
+    * return -1 if it wasn't.
+    */
+    int add_tcp_relay_peer(bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
+    
+    /* Sends a lossless cryptopacket.
+    *
+    * return -1 if data could not be put in packet queue.
+    * return positive packet number if data was put into the queue.
+    *
+    * The first byte of data must be in the CRYPTO_RESERVED_PACKETS to PACKET_ID_LOSSY_RANGE_START range.
+    *
+    * congestion_control: should congestion control apply to this packet?
+    */
+    int64_t write_cryptpacket(const uint8_t *data, uint16_t length,
+                            uint8_t congestion_control);
+    
+    const uint32_t id;
+    Net_Crypto *const net_crypto;
+    
     bitox::PublicKey public_key; /* The real public key of the peer. */
     bitox::Nonce recv_nonce = bitox::Nonce::create_empty(); /* Nonce of received packets. */
     bitox::Nonce sent_nonce = bitox::Nonce::create_empty(); /* Nonce of sent packets. */
@@ -258,7 +286,7 @@ struct Net_Crypto
     * return -1 on failure.
     * return connection id on success.
     */
-    int accept_crypto_connection(New_Connection *n_c);
+    std::shared_ptr<Crypto_Connection> accept_crypto_connection(New_Connection *n_c);
     
     /* Create a crypto connection.
     * If one to that real public key already exists, return it.
@@ -266,7 +294,7 @@ struct Net_Crypto
     * return -1 on failure.
     * return connection id on success.
     */
-    int new_crypto_connection(const bitox::PublicKey &real_public_key, const bitox::PublicKey &dht_public_key);
+    std::shared_ptr<Crypto_Connection> new_crypto_connection(const bitox::PublicKey &real_public_key, const bitox::PublicKey &dht_public_key);
     
     /* Set the direct ip of the crypto connection.
     *
@@ -287,18 +315,6 @@ struct Net_Crypto
     */
     bool max_speed_reached(int crypt_connection_id);
 
-    /* Sends a lossless cryptopacket.
-    *
-    * return -1 if data could not be put in packet queue.
-    * return positive packet number if data was put into the queue.
-    *
-    * The first byte of data must be in the CRYPTO_RESERVED_PACKETS to PACKET_ID_LOSSY_RANGE_START range.
-    *
-    * congestion_control: should congestion control apply to this packet?
-    */
-    int64_t write_cryptpacket(int crypt_connection_id, const uint8_t *data, uint16_t length,
-                            uint8_t congestion_control);
-    
     /* Check if packet_number was received by the other side.
     *
     * packet_number must be a valid packet number of a packet sent on this connection.
@@ -314,13 +330,6 @@ struct Net_Crypto
     * Sends a lossy cryptopacket. (first byte must in the PACKET_ID_LOSSY_RANGE_*)
     */
     int send_lossy_cryptpacket(int crypt_connection_id, const uint8_t *data, uint16_t length);
-
-    /* Add a tcp relay, associating it to a crypt_connection_id.
-    *
-    * return 0 if it was added.
-    * return -1 if it wasn't.
-    */
-    int add_tcp_relay_peer(int crypt_connection_id, bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
 
     /* Add a tcp relay to the array.
     *
@@ -391,7 +400,9 @@ struct Net_Crypto
     DHT *dht;
     TCP_Connections *tcp_c;
 
-    std::vector<std::unique_ptr<Crypto_Connection> > crypto_connections;
+    std::map<uint32_t, Crypto_Connection *> crypto_connections;
+    IDPool id_pool;
+    
     std::mutex tcp_mutex; // TODO recursive?
 
     pthread_mutex_t connections_mutex;
@@ -613,7 +624,7 @@ struct Net_Crypto
     * return -1 on failure.
     * return connection id on success.
     */
-    int create_crypto_connection();
+    std::shared_ptr<Crypto_Connection> create_crypto_connection();
 
     /* Wipe a crypto connection.
     *
@@ -628,6 +639,8 @@ struct Net_Crypto
     *  return id if it found it.
     */
     int getcryptconnection_id(const bitox::PublicKey &public_key) const;
+    
+    Crypto_Connection *find(const bitox::PublicKey &public_key);
 
     /* Add a source to the crypto connection.
     * This is to be used only when we have received a packet from that source.

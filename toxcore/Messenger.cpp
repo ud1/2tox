@@ -124,13 +124,13 @@ void Messenger::getaddress(uint8_t *address) const
 int Friend::send_online_packet()
 {
     uint8_t packet = PACKET_ID_ONLINE;
-    return messenger->net_crypto->write_cryptpacket(friend_connection->crypt_connection_id, &packet, sizeof(packet), 0) != -1;
+    return friend_connection->crypt_connection && friend_connection->crypt_connection->write_cryptpacket(&packet, sizeof(packet), 0) != -1;
 }
 
 static int send_offline_packet(Messenger *m, Friend_Conn *friend_connection)
 {
     uint8_t packet = PACKET_ID_OFFLINE;
-    return m->net_crypto->write_cryptpacket(friend_connection->crypt_connection_id, &packet,
+    return friend_connection->crypt_connection && friend_connection->crypt_connection->write_cryptpacket(&packet,
                              sizeof(packet), 0) != -1;
 }
 
@@ -141,14 +141,17 @@ Friend::Friend(Messenger *messenger, uint32_t id) : messenger(messenger), id(id)
 
 static int32_t init_new_friend(Messenger *m, const PublicKey &real_pk, uint8_t status)
 {
-    uint32_t id = ++m->friend_id_sequence;
+    uint32_t id = m->id_pool.next();
 
     Friend &f = m->friends.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(m, id)).first->second;
 
     std::shared_ptr<Friend_Conn> friend_connection = m->fr_c->new_friend_connection(real_pk);
 
     if (!friend_connection)
+    {
+        m->id_pool.release(id);
         return FAERR_NOMEM;
+    }
 
     uint32_t i;
 
@@ -297,7 +300,10 @@ int Friend::add_receipt(uint32_t packet_num, uint32_t msg_id)
  */
 int Friend::friend_received_packet(uint32_t number)
 {
-    return messenger->net_crypto->cryptpacket_received(friend_connection->crypt_connection_id, number);
+    if (!friend_connection->crypt_connection)
+        return -1;
+    
+    return messenger->net_crypto->cryptpacket_received(friend_connection->crypt_connection->id, number);
 }
 
 int Friend::do_receipts()
@@ -350,6 +356,7 @@ int Messenger::delete_friend(uint32_t id)
     if (friends.count(id))
     {
         friends.erase(id);
+        id_pool.release(id);
         return 0;
     }
     return -1;
@@ -357,10 +364,10 @@ int Messenger::delete_friend(uint32_t id)
 
 int Friend::m_get_friend_connectionstatus() const
 {
-    if (status == FRIEND_ONLINE) {
+    if (status == FRIEND_ONLINE && friend_connection->crypt_connection) {
         bool direct_connected = false;
         unsigned int num_online_relays = 0;
-        messenger->net_crypto->crypto_connection_status(friend_connection->crypt_connection_id, &direct_connected, &num_online_relays);
+        messenger->net_crypto->crypto_connection_status(friend_connection->crypt_connection->id, &direct_connected, &num_online_relays);
 
         if (direct_connected) {
             return CONNECTION_UDP;
@@ -402,7 +409,10 @@ int Friend::m_send_message_generic(uint8_t type, const uint8_t *message, uint32_
     if (length != 0)
         memcpy(packet + 1, message, length);
 
-    int64_t packet_num = messenger->net_crypto->write_cryptpacket(friend_connection->crypt_connection_id, packet, length + 1, 0);
+    if (!friend_connection->crypt_connection)
+        return -4;
+    
+    int64_t packet_num = friend_connection->crypt_connection->write_cryptpacket(packet, length + 1, 0);
 
     if (packet_num == -1)
         return -4;
@@ -797,7 +807,7 @@ int Friend::write_cryptpacket_id(uint8_t packet_id, const uint8_t *data,
     if (length != 0)
         memcpy(packet + 1, data, length);
 
-    return messenger->net_crypto->write_cryptpacket(friend_connection->crypt_connection_id, packet, length + 1, congestion_control) != -1;
+    return friend_connection->crypt_connection && friend_connection->crypt_connection->write_cryptpacket(packet, length + 1, congestion_control) != -1;
 }
 
 /**********GROUP CHATS************/
@@ -1171,7 +1181,10 @@ int64_t Friend::send_file_data_packet(uint8_t filenumber, const uint8_t *data,
         memcpy(packet + 2, data, length);
     }
 
-    return messenger->net_crypto->write_cryptpacket(friend_connection->crypt_connection_id, packet, sizeof(packet), 1);
+    if (!friend_connection)
+        return -1;
+    
+    return friend_connection->crypt_connection->write_cryptpacket(packet, sizeof(packet), 1);
 }
 
 #define MAX_FILE_DATA_SIZE (MAX_CRYPTO_DATA_SIZE - 2)
@@ -1217,7 +1230,7 @@ int Friend::file_data(uint32_t filenumber, uint64_t position, const uint8_t *dat
     }
 
     /* Prevent file sending from filling up the entire buffer preventing messages from being sent. TODO: remove */
-    if (messenger->net_crypto->crypto_num_free_sendqueue_slots(friend_connection->crypt_connection_id) < MIN_SLOTS_FREE)
+    if (!friend_connection->crypt_connection || messenger->net_crypto->crypto_num_free_sendqueue_slots(friend_connection->crypt_connection->id) < MIN_SLOTS_FREE)
         return -6;
 
     int64_t ret = send_file_data_packet(filenumber, data, length);
@@ -1271,7 +1284,7 @@ void Friend::do_reqchunk_filecb()
     if (!num_sending_files)
         return;
 
-    int free_slots = messenger->net_crypto->crypto_num_free_sendqueue_slots(friend_connection->crypt_connection_id);
+    int free_slots = friend_connection->crypt_connection && messenger->net_crypto->crypto_num_free_sendqueue_slots(friend_connection->crypt_connection->id);
 
     if (free_slots < MIN_SLOTS_FREE) {
         free_slots = 0;
@@ -1307,7 +1320,7 @@ void Friend::do_reqchunk_filecb()
         }
 
         while (ft->status == FileStatus::FILESTATUS_TRANSFERRING && (ft->paused == FILE_PAUSE_NOT)) {
-            if (messenger->net_crypto->max_speed_reached(friend_connection->crypt_connection_id)) {
+            if (!friend_connection->crypt_connection || messenger->net_crypto->max_speed_reached(friend_connection->crypt_connection->id)) {
                 free_slots = 0;
             }
 
@@ -1528,7 +1541,7 @@ int Friend::send_custom_lossy_packet(const uint8_t *data, uint32_t length)
     if (status != FRIEND_ONLINE)
         return -4;
 
-    if (messenger->net_crypto->send_lossy_cryptpacket(friend_connection->crypt_connection_id, data, length) == -1) {
+    if (!friend_connection->crypt_connection || messenger->net_crypto->send_lossy_cryptpacket(friend_connection->crypt_connection->id, data, length) == -1) {
         return -5;
     } else {
         return 0;
@@ -1571,7 +1584,7 @@ int Friend::send_custom_lossless_packet(const uint8_t *data, uint32_t length) co
     if (status != FRIEND_ONLINE)
         return -4;
 
-    if (messenger->net_crypto->write_cryptpacket(friend_connection->crypt_connection_id, data, length, 1) == -1) {
+    if (!friend_connection->crypt_connection || friend_connection->crypt_connection->write_cryptpacket(data, length, 1) == -1) {
         return -5;
     } else {
         return 0;

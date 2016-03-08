@@ -63,7 +63,9 @@ int Friend_Conn::friend_add_tcp_relay(IPPort ip_port, const PublicKey &public_ke
     tcp_relays[index].public_key = public_key;
     ++tcp_relay_counter;
 
-    return connections->net_crypto->add_tcp_relay_peer(crypt_connection_id, ip_port, public_key);
+    if (!crypt_connection)
+        return -1;
+    return crypt_connection->add_tcp_relay_peer(ip_port, public_key);
 }
 
 /* Connect to number saved relays for friend. */
@@ -74,8 +76,8 @@ void Friend_Conn::connect_to_saved_tcp_relays(unsigned int number)
     for (i = 0; (i < FRIEND_MAX_STORED_TCP_RELAYS) && (number != 0); ++i) {
         uint16_t index = (tcp_relay_counter - (i + 1)) % FRIEND_MAX_STORED_TCP_RELAYS;
 
-        if (tcp_relays[index].ip_port.ip.family != Family::FAMILY_NULL) {
-            if (connections->net_crypto->add_tcp_relay_peer(crypt_connection_id, tcp_relays[index].ip_port,
+        if (tcp_relays[index].ip_port.ip.family != Family::FAMILY_NULL && crypt_connection) {
+            if (crypt_connection->add_tcp_relay_peer(tcp_relays[index].ip_port,
                                    tcp_relays[index].public_key) == 0) {
                 --number;
             }
@@ -106,8 +108,11 @@ unsigned int Friend_Conn::send_relays()
 
     data[0] = PACKET_ID_SHARE_RELAYS;
     ++length;
+    
+    if (!crypt_connection)
+        return 0;
 
-    if (connections->net_crypto->write_cryptpacket(crypt_connection_id, data, length, 0) != -1) {
+    if (crypt_connection->write_cryptpacket(data, length, 0) != -1) {
         share_relays_lastsent = unix_time();
         return 1;
     }
@@ -189,7 +194,7 @@ int Friend_Conn::on_status(uint8_t status)
         }
 
         this->status = FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING;
-        this->crypt_connection_id = -1;
+        this->crypt_connection.reset();
         this->hosting_tcp_relay = 0;
     }
 
@@ -214,9 +219,9 @@ void Friend_Conn::on_dht_pk(const bitox::PublicKey &dht_public_key)
     change_dht_pk(dht_public_key);
 
     /* if pk changed, create a new connection.*/
-    if (crypt_connection_id != -1) {
-        connections->net_crypto->crypto_kill(crypt_connection_id);
-        crypt_connection_id = -1;
+    if (crypt_connection) {
+        connections->net_crypto->crypto_kill(crypt_connection->id); // TODO
+        crypt_connection.reset();
         on_status(0); /* Going offline. */
     }
 
@@ -290,20 +295,19 @@ static int handle_new_connections(void *object, New_Connection *n_c)
 
     if (friend_con) {
 
-        if (friend_con->crypt_connection_id != -1)
+        if (friend_con->crypt_connection)
             return -1;
 
-        int id = fr_c->net_crypto->accept_crypto_connection(n_c);
+        friend_con->crypt_connection = fr_c->net_crypto->accept_crypto_connection(n_c);
 
-        if (id == -1) {
+        if (!friend_con->crypt_connection) {
             return -1;
         }
 
-        set_event_listener(fr_c->net_crypto, id, friend_con);
-        friend_con->crypt_connection_id = id;
+        set_event_listener(fr_c->net_crypto, friend_con->crypt_connection->id, friend_con);
 
         if (n_c->source.ip.family != Family::FAMILY_AF_INET && n_c->source.ip.family != Family::FAMILY_AF_INET6) {
-            fr_c->net_crypto->set_direct_ip_port(friend_con->crypt_connection_id, friend_con->dht_ip_port, 0);
+            fr_c->net_crypto->set_direct_ip_port(friend_con->crypt_connection->id, friend_con->dht_ip_port, 0);
         } else {
             friend_con->dht_ip_port = n_c->source;
             friend_con->dht_ip_port_lastrecv = unix_time();
@@ -321,7 +325,7 @@ static int handle_new_connections(void *object, New_Connection *n_c)
 
 int Friend_Conn::friend_new_connection()
 {
-    if (crypt_connection_id != -1) {
+    if (crypt_connection) {
         return -1;
     }
 
@@ -330,13 +334,12 @@ int Friend_Conn::friend_new_connection()
         return -1;
     }
 
-    int id = connections->net_crypto->new_crypto_connection(real_public_key, dht_temp_pk);
+    crypt_connection = connections->net_crypto->new_crypto_connection(real_public_key, dht_temp_pk);
 
-    if (id == -1)
+    if (!crypt_connection)
         return -1;
 
-    crypt_connection_id = id;
-    set_event_listener(connections->net_crypto, id, this);
+    set_event_listener(connections->net_crypto, crypt_connection->id, this);
 
     return 0;
 }
@@ -344,7 +347,10 @@ int Friend_Conn::friend_new_connection()
 int Friend_Conn::send_ping()
 {
     uint8_t ping = PACKET_ID_ALIVE;
-    int64_t ret = connections->net_crypto->write_cryptpacket(crypt_connection_id, &ping, sizeof(ping), 0);
+    if (!crypt_connection)
+        return -1;
+    
+    int64_t ret = crypt_connection->write_cryptpacket(&ping, sizeof(ping), 0);
 
     if (ret != -1) {
         ping_lastsent = unix_time();
@@ -382,7 +388,7 @@ std::shared_ptr<Friend_Conn> Friend_Connections::new_friend_connection(const bit
         return std::shared_ptr<Friend_Conn>();
 
     Friend_Conn *friend_con = result.get();
-    friend_con->crypt_connection_id = -1;
+    friend_con->crypt_connection.reset();
     friend_con->status = FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING;
     friend_con->onion_friendnum = onion_friendnum;
 
@@ -395,7 +401,7 @@ std::shared_ptr<Friend_Conn> Friend_Connections::new_friend_connection(const bit
 Friend_Conn::~Friend_Conn()
 {
     onion_delfriend(connections->onion_c, onion_friendnum);
-    connections->net_crypto->crypto_kill(crypt_connection_id);
+    // connections->net_crypto->crypto_kill(crypt_connection_id); // TODO
 
     if (dht_lock) {
         connections->dht->delfriend(dht_temp_pk, dht_lock);
@@ -431,9 +437,9 @@ int Friend_Conn::send_friend_request_packet(uint32_t nospam_num, const uint8_t *
     memcpy(packet + 1, &nospam_num, sizeof(nospam_num));
     memcpy(packet + 1 + sizeof(nospam_num), data, length);
 
-    if (status == FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTED) {
+    if (status == FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTED && crypt_connection) {
         packet[0] = PACKET_ID_FRIEND_REQUESTS;
-        return connections->net_crypto->write_cryptpacket(crypt_connection_id, packet, sizeof(packet), 0) != -1;
+        return crypt_connection->write_cryptpacket(packet, sizeof(packet), 0) != -1;
     } else {
         packet[0] = CRYPTO_PACKET_FRIEND_REQ;
         int num = send_onion_data(connections->onion_c, onion_friendnum, packet, sizeof(packet));
@@ -489,8 +495,8 @@ void Friend_Connections::do_friend_connections()
                 }
 
                 if (friend_con->dht_lock) {
-                    if (friend_con->friend_new_connection() == 0) {
-                        net_crypto->set_direct_ip_port(friend_con->crypt_connection_id, friend_con->dht_ip_port, 0);
+                    if (friend_con->friend_new_connection() == 0 && friend_con->crypt_connection) {
+                        net_crypto->set_direct_ip_port(friend_con->crypt_connection->id, friend_con->dht_ip_port, 0);
                         friend_con->connect_to_saved_tcp_relays((MAX_FRIEND_TCP_CONNECTIONS / 2)); /* Only fill it half up. */
                     }
                 }
@@ -506,8 +512,8 @@ void Friend_Connections::do_friend_connections()
 
                 if (friend_con->ping_lastrecv + FRIEND_CONNECTION_TIMEOUT < temp_time) {
                     /* If we stopped receiving ping packets, kill it. */
-                    net_crypto->crypto_kill(friend_con->crypt_connection_id);
-                    friend_con->crypt_connection_id = -1;
+                    //net_crypto->crypto_kill(friend_con->crypt_connection_id->id); TODO
+                    friend_con->crypt_connection.reset();
                     friend_con->on_status(0); /* Going offline. */
                 }
             }

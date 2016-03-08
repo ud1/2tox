@@ -98,7 +98,7 @@ struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public Cr
     uint64_t dht_pk_lastrecv, dht_ip_port_lastrecv;
 
     int onion_friendnum = -1;
-    int crypt_connection_id;
+    std::shared_ptr<Crypto_Connection> crypt_connection;
 
     uint64_t ping_lastrecv, ping_lastsent;
     uint64_t share_relays_lastsent;

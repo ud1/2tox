@@ -40,11 +40,12 @@ using namespace bitox::impl;
 
 uint8_t Net_Crypto::crypt_connection_id_not_valid(int crypt_connection_id) const
 {
-    if ((uint32_t)crypt_connection_id >= this->crypto_connections.size())
+    auto it = crypto_connections.find(crypt_connection_id);
+    if (it == crypto_connections.end())
         return 1;
-
-    if (this->crypto_connections[crypt_connection_id]->status == CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION)
-        return 1;
+    
+//    if (this->crypto_connections[crypt_connection_id]->status == CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION)
+//        return 1;
 
     return 0;
 }
@@ -380,10 +381,11 @@ int Net_Crypto::handle_crypto_handshake(Nonce &nonce, PublicKey &session_pk, Pub
 
 Crypto_Connection *Net_Crypto::get_crypto_connection(int crypt_connection_id)
 {
-    if (crypt_connection_id_not_valid(crypt_connection_id))
-        return 0;
-
-    return this->crypto_connections[crypt_connection_id].get();
+    auto it = crypto_connections.find(crypt_connection_id);
+    if (it == crypto_connections.end())
+        return nullptr;
+    
+    return it->second;
 }
 
 /* Associate an ip_port to a connection.
@@ -1431,20 +1433,20 @@ int Net_Crypto::handle_packet_connection(int crypt_connection_id, const uint8_t 
     return 0;
 }
 
+Crypto_Connection::Crypto_Connection(Net_Crypto *net_crypto) :
+    net_crypto(net_crypto),
+    id(net_crypto->id_pool.next())
+{
+    net_crypto->crypto_connections[id] = this;
+}
+
 /* Create a new empty crypto connection.
  *
  * return -1 on failure.
  * return connection id on success.
  */
-int Net_Crypto::create_crypto_connection()
+std::shared_ptr<Crypto_Connection> Net_Crypto::create_crypto_connection()
 {
-    uint32_t i;
-
-    for (i = 0; i < this->crypto_connections.size(); ++i) {
-        if (this->crypto_connections[i]->status == CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION)
-            return i;
-    }
-
     while (1) { /* TODO: is this really the best way to do this? */
         pthread_mutex_lock(&this->connections_mutex);
 
@@ -1455,13 +1457,16 @@ int Net_Crypto::create_crypto_connection()
         pthread_mutex_unlock(&this->connections_mutex);
     }
 
-    int id = -1;
-
-    this->crypto_connections.emplace_back(new Crypto_Connection());
-    id = this->crypto_connections.size() - 1;
+    std::shared_ptr<Crypto_Connection> result = std::shared_ptr<Crypto_Connection>(new Crypto_Connection(this));
 
     pthread_mutex_unlock(&this->connections_mutex);
-    return id;
+    return result;
+}
+
+Crypto_Connection::~Crypto_Connection()
+{
+    net_crypto->crypto_connections.erase(id);
+    net_crypto->id_pool.release(id);
 }
 
 /* Wipe a crypto connection.
@@ -1471,22 +1476,6 @@ int Net_Crypto::create_crypto_connection()
  */
 int Net_Crypto::wipe_crypto_connection(int crypt_connection_id)
 {
-    if (crypt_connection_id_not_valid(crypt_connection_id))
-        return -1;
-
-    uint32_t i;
-
-    /* TODO ? Keep mutex, only destroy it when connection is realloced out. */
-    this->crypto_connections[crypt_connection_id]->status = CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION;
-
-    for (size_t i = this->crypto_connections.size(); i --> 0;) {
-        if (this->crypto_connections[i]->status == CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION) {
-            this->crypto_connections.pop_back();
-        } else {
-            break;
-        }
-    }
-
     return 0;
 }
 
@@ -1497,15 +1486,26 @@ int Net_Crypto::wipe_crypto_connection(int crypt_connection_id)
  */
 int Net_Crypto::getcryptconnection_id(const PublicKey &public_key) const
 {
-    uint32_t i;
-
-    for (i = 0; i < this->crypto_connections.size(); ++i) {
-        if (this->crypto_connections[i]->status != CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION)
-            if (public_key == this->crypto_connections[i]->public_key)
-                return i;
+    for (auto &kv : crypto_connections)
+    {
+        Crypto_Connection *c = kv.second;
+        if (public_key == c->public_key)
+            return c->id;
     }
 
     return -1;
+}
+
+Crypto_Connection *Net_Crypto::find(const bitox::PublicKey &public_key)
+{
+    for (auto &kv : crypto_connections)
+    {
+        Crypto_Connection *c = kv.second;
+        if (public_key == c->public_key)
+            return c;
+    }
+
+    return nullptr;
 }
 
 /* Add a source to the crypto connection.
@@ -1609,53 +1609,47 @@ int Net_Crypto::handle_new_connection_handshake(IPPort source, const uint8_t *da
  * return -1 on failure.
  * return connection id on success.
  */
-int Net_Crypto::accept_crypto_connection(New_Connection *n_c)
+std::shared_ptr<Crypto_Connection> Net_Crypto::accept_crypto_connection(New_Connection *n_c)
 {
     if (getcryptconnection_id(n_c->public_key) != -1)
-        return -1;
-
-    int crypt_connection_id = create_crypto_connection();
-
-    if (crypt_connection_id == -1)
-        return -1;
-
-    Crypto_Connection *conn = this->crypto_connections[crypt_connection_id].get();
+        return std::shared_ptr<Crypto_Connection>();
 
     if (n_c->cookie.size() != COOKIE_LENGTH)
-        return -1;
+        return std::shared_ptr<Crypto_Connection>();
+    
+    std::shared_ptr<Crypto_Connection> crypt_connection = create_crypto_connection();
 
     int connection_number_tcp = -1;
     {
         std::lock_guard<std::mutex> lock(this->tcp_mutex);
-        connection_number_tcp = this->tcp_c->new_tcp_connection_to(n_c->dht_public_key, crypt_connection_id);
+        connection_number_tcp = this->tcp_c->new_tcp_connection_to(n_c->dht_public_key, crypt_connection->id);
     }
     
     if (connection_number_tcp == -1)
-        return -1;
+        return std::shared_ptr<Crypto_Connection>();
 
-    conn->connection_number_tcp = connection_number_tcp;
-    conn->public_key = n_c->public_key;
-    conn->recv_nonce = n_c->recv_nonce;
-    conn->peersessionpublic_key = n_c->peersessionpublic_key;
-    random_nonce(conn->sent_nonce.data.data());
-    crypto_box_keypair(conn->sessionpublic_key.data.data(), conn->sessionsecret_key.data.data());
-    encrypt_precompute(conn->peersessionpublic_key, conn->sessionsecret_key, conn->shared_key.data.data());
-    conn->status = CryptoConnectionStatus::CRYPTO_CONN_NOT_CONFIRMED;
+    crypt_connection->connection_number_tcp = connection_number_tcp;
+    crypt_connection->public_key = n_c->public_key;
+    crypt_connection->recv_nonce = n_c->recv_nonce;
+    crypt_connection->peersessionpublic_key = n_c->peersessionpublic_key;
+    random_nonce(crypt_connection->sent_nonce.data.data());
+    crypto_box_keypair(crypt_connection->sessionpublic_key.data.data(), crypt_connection->sessionsecret_key.data.data());
+    encrypt_precompute(crypt_connection->peersessionpublic_key, crypt_connection->sessionsecret_key, crypt_connection->shared_key.data.data());
+    crypt_connection->status = CryptoConnectionStatus::CRYPTO_CONN_NOT_CONFIRMED;
 
-    if (create_send_handshake(crypt_connection_id, n_c->cookie.data(), n_c->dht_public_key) != 0) {
+    if (create_send_handshake(crypt_connection->id, n_c->cookie.data(), n_c->dht_public_key) != 0) {
         std::lock_guard<std::mutex> lock(this->tcp_mutex);
-        this->tcp_c->kill_tcp_connection_to(conn->connection_number_tcp);
-        conn->status = CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION;
-        return -1;
+        this->tcp_c->kill_tcp_connection_to(crypt_connection->connection_number_tcp);
+        return std::shared_ptr<Crypto_Connection>();
     }
 
-    conn->dht_public_key = n_c->dht_public_key;
-    conn->packet_send_rate = CRYPTO_PACKET_MIN_RATE;
-    conn->packet_send_rate_requested = CRYPTO_PACKET_MIN_RATE;
-    conn->packets_left = CRYPTO_MIN_QUEUE_LENGTH;
-    conn->rtt_time = DEFAULT_PING_CONNECTION;
-    crypto_connection_add_source(crypt_connection_id, n_c->source);
-    return crypt_connection_id;
+    crypt_connection->dht_public_key = n_c->dht_public_key;
+    crypt_connection->packet_send_rate = CRYPTO_PACKET_MIN_RATE;
+    crypt_connection->packet_send_rate_requested = CRYPTO_PACKET_MIN_RATE;
+    crypt_connection->packets_left = CRYPTO_MIN_QUEUE_LENGTH;
+    crypt_connection->rtt_time = DEFAULT_PING_CONNECTION;
+    crypto_connection_add_source(crypt_connection->id, n_c->source);
+    return crypt_connection;
 }
 
 /* Create a crypto connection.
@@ -1664,31 +1658,23 @@ int Net_Crypto::accept_crypto_connection(New_Connection *n_c)
  * return -1 on failure.
  * return connection id on success.
  */
-int Net_Crypto::new_crypto_connection(const PublicKey &real_public_key, const PublicKey &dht_public_key)
+std::shared_ptr<Crypto_Connection> Net_Crypto::new_crypto_connection(const PublicKey &real_public_key, const PublicKey &dht_public_key)
 {
-    int crypt_connection_id = getcryptconnection_id(real_public_key);
+    Crypto_Connection *c = find(real_public_key);
 
-    if (crypt_connection_id != -1)
-        return crypt_connection_id;
+    if (c)
+        return c->shared_from_this();
 
-    crypt_connection_id = create_crypto_connection();
-
-    if (crypt_connection_id == -1)
-        return -1;
-
-    Crypto_Connection *conn = this->crypto_connections[crypt_connection_id].get();
-
-    if (conn == 0)
-        return -1;
+    std::shared_ptr<Crypto_Connection> conn = create_crypto_connection();
 
     int connection_number_tcp = -1;
     {
         std::lock_guard<std::mutex> lock(this->tcp_mutex);
-        connection_number_tcp = this->tcp_c->new_tcp_connection_to(dht_public_key, crypt_connection_id);
+        connection_number_tcp = this->tcp_c->new_tcp_connection_to(dht_public_key, conn->id);
     }
     
     if (connection_number_tcp == -1)
-        return -1;
+        return std::shared_ptr<Crypto_Connection>();
 
     conn->connection_number_tcp = connection_number_tcp;
     conn->public_key = real_public_key;
@@ -1706,14 +1692,13 @@ int Net_Crypto::new_crypto_connection(const PublicKey &real_public_key, const Pu
 
     if (create_cookie_request(cookie_request, conn->dht_public_key, conn->cookie_request_number,
                               conn->shared_key) != sizeof(cookie_request)
-            || new_temp_packet(crypt_connection_id, cookie_request, sizeof(cookie_request)) != 0) {
+            || new_temp_packet(conn->id, cookie_request, sizeof(cookie_request)) != 0) {
         std::lock_guard<std::mutex> lock(this->tcp_mutex);
         this->tcp_c->kill_tcp_connection_to(conn->connection_number_tcp);
-        conn->status = CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION;
-        return -1;
+        return std::shared_ptr<Crypto_Connection>();
     }
 
-    return crypt_connection_id;
+    return conn;
 }
 
 /* Set the direct ip of the crypto connection.
@@ -1811,15 +1796,10 @@ static int tcp_oob_callback(void *object, const PublicKey &public_key, unsigned 
  * return 0 if it was added.
  * return -1 if it wasn't.
  */
-int Net_Crypto::add_tcp_relay_peer(int crypt_connection_id, IPPort ip_port, const PublicKey &public_key)
+int Crypto_Connection::add_tcp_relay_peer(IPPort ip_port, const PublicKey &public_key)
 {
-    Crypto_Connection *conn = get_crypto_connection(crypt_connection_id);
-
-    if (conn == 0)
-        return -1;
-
-    std::lock_guard<std::mutex> lock(this->tcp_mutex);
-    return this->tcp_c->add_tcp_relay_connection(conn->connection_number_tcp, ip_port, public_key);
+    std::lock_guard<std::mutex> lock(net_crypto->tcp_mutex);
+    return net_crypto->tcp_c->add_tcp_relay_connection(connection_number_tcp, ip_port, public_key);
 }
 
 /* Add a tcp relay to the array.
@@ -2263,7 +2243,7 @@ uint32_t Net_Crypto::crypto_num_free_sendqueue_slots(int crypt_connection_id)
  *
  * congestion_control: should congestion control apply to this packet?
  */
-int64_t Net_Crypto::write_cryptpacket(int crypt_connection_id, const uint8_t *data, uint16_t length,
+int64_t Crypto_Connection::write_cryptpacket(const uint8_t *data, uint16_t length,
                           uint8_t congestion_control)
 {
     if (length == 0)
@@ -2275,26 +2255,21 @@ int64_t Net_Crypto::write_cryptpacket(int crypt_connection_id, const uint8_t *da
     if (data[0] >= PACKET_ID_LOSSY_RANGE_START)
         return -1;
 
-    Crypto_Connection *conn = get_crypto_connection(crypt_connection_id);
-
-    if (conn == 0)
+    if (status != CryptoConnectionStatus::CRYPTO_CONN_ESTABLISHED)
         return -1;
 
-    if (conn->status != CryptoConnectionStatus::CRYPTO_CONN_ESTABLISHED)
+    if (congestion_control && packets_left == 0)
         return -1;
 
-    if (congestion_control && conn->packets_left == 0)
-        return -1;
-
-    int64_t ret = send_lossless_packet(crypt_connection_id, data, length, congestion_control);
+    int64_t ret = net_crypto->send_lossless_packet(id, data, length, congestion_control);
 
     if (ret == -1)
         return -1;
 
     if (congestion_control) {
-        --conn->packets_left;
-        --conn->packets_left_requested;
-        conn->packets_sent++;
+        --packets_left;
+        --packets_left_requested;
+        packets_sent++;
     }
 
     return ret;
@@ -2507,9 +2482,6 @@ void Net_Crypto::kill_timedout()
 
         if (conn == 0)
             return;
-
-        if (conn->status == CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION)
-            continue;
 
         if (conn->status == CryptoConnectionStatus::CRYPTO_CONN_COOKIE_REQUESTING || conn->status == CryptoConnectionStatus::CRYPTO_CONN_HANDSHAKE_SENT
                 || conn->status == CryptoConnectionStatus::CRYPTO_CONN_NOT_CONFIRMED) {

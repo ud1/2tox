@@ -28,6 +28,7 @@
 
 #include "friend_requests.hpp"
 #include "friend_connection.hpp"
+#include "id_pool.hpp"
 #include <string>
 #include <memory>
 
@@ -605,7 +606,7 @@ struct Messenger
     USERSTATUS userstatus;
 
     std::map<uint32_t, Friend> friends;
-    uint32_t friend_id_sequence = 0;
+    IDPool id_pool;
 
 #define NUM_SAVED_TCP_RELAYS 8
     uint8_t has_added_relays; // If the first connection has occurred in do_messenger

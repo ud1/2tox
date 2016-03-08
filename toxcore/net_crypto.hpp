@@ -200,6 +200,42 @@ struct Crypto_Connection : public std::enable_shared_from_this<Crypto_Connection
     int64_t write_cryptpacket(const uint8_t *data, uint16_t length,
                             uint8_t congestion_control);
     
+    /* return -1 on failure.
+    * return 0 on success.
+    *
+    * Sends a lossy cryptopacket. (first byte must in the PACKET_ID_LOSSY_RANGE_*)
+    */
+    int send_lossy_cryptpacket(const uint8_t *data, uint16_t length);
+    
+    /* Check if packet_number was received by the other side.
+    *
+    * packet_number must be a valid packet number of a packet sent on this connection.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int cryptpacket_received(uint32_t packet_number) const;
+    
+    /* return one of CRYPTO_CONN_* values indicating the state of the connection.
+    *
+    * sets direct_connected to 1 if connection connects directly to other, 0 if it isn't.
+    * sets online_tcp_relays to the number of connected tcp relays this connection has.
+    */
+    CryptoConnectionStatus crypto_connection_status(bool *direct_connected,
+                                        unsigned int *online_tcp_relays) const;
+    
+    /* returns the number of packet slots left in the sendbuffer.
+    * return 0 if failure.
+    */
+    uint32_t crypto_num_free_sendqueue_slots() const;
+    
+    /* Return 1 if max speed was reached for this connection (no more data can be physically through the pipe).
+    * Return 0 if it wasn't reached.
+    */
+    bool max_speed_reached();
+    
+    int reset_max_speed_reached();
+    
     const uint32_t id;
     Net_Crypto *const net_crypto;
     
@@ -305,32 +341,6 @@ struct Net_Crypto
     */
     int set_direct_ip_port(int crypt_connection_id, bitox::network::IPPort ip_port, bool connected);
     
-    /* returns the number of packet slots left in the sendbuffer.
-    * return 0 if failure.
-    */
-    uint32_t crypto_num_free_sendqueue_slots(int crypt_connection_id);
-    
-    /* Return 1 if max speed was reached for this connection (no more data can be physically through the pipe).
-    * Return 0 if it wasn't reached.
-    */
-    bool max_speed_reached(int crypt_connection_id);
-
-    /* Check if packet_number was received by the other side.
-    *
-    * packet_number must be a valid packet number of a packet sent on this connection.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int cryptpacket_received(int crypt_connection_id, uint32_t packet_number);
-
-    /* return -1 on failure.
-    * return 0 on success.
-    *
-    * Sends a lossy cryptopacket. (first byte must in the PACKET_ID_LOSSY_RANGE_*)
-    */
-    int send_lossy_cryptpacket(int crypt_connection_id, const uint8_t *data, uint16_t length);
-
     /* Add a tcp relay to the array.
     *
     * return 0 if it was added.
@@ -360,14 +370,6 @@ struct Net_Crypto
     */
     unsigned int copy_connected_tcp_relays(bitox::dht::NodeFormat *tcp_relays, uint16_t num);
     
-    /* return one of CRYPTO_CONN_* values indicating the state of the connection.
-    *
-    * sets direct_connected to 1 if connection connects directly to other, 0 if it isn't.
-    * sets online_tcp_relays to the number of connected tcp relays this connection has.
-    */
-    CryptoConnectionStatus crypto_connection_status(int crypt_connection_id, bool *direct_connected,
-                                        unsigned int *online_tcp_relays);
-
     /* Generate our public and private keys.
     *  Only call this function the first time the program starts.
     */
@@ -539,8 +541,6 @@ struct Net_Crypto
     */
     int send_data_packet_helper(int crypt_connection_id, uint32_t buffer_start, uint32_t num,
                                     const uint8_t *data, uint16_t length);
-
-    int reset_max_speed_reached(int crypt_connection_id);
 
     /*  return -1 if data could not be put in packet queue.
     *  return positive packet number if data was put into the queue.

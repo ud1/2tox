@@ -89,7 +89,7 @@ private:
     /* return number of online connections on success.
     * return -1 on failure.
     */
-    unsigned int online_tcp_connection_from_conn();
+    unsigned int online_tcp_connection_from_conn() const;
     
     /* return index on success.
     * return -1 on failure.
@@ -197,7 +197,7 @@ struct TCP_Connections : TCPClientEventListener
     /* return number of online tcp relays tied to the connection on success.
     * return 0 on failure.
     */
-    unsigned int tcp_connection_to_online_tcp_relays(int connections_number);
+    unsigned int tcp_connection_to_online_tcp_relays(int connections_number) const;
     
     /* Add a TCP relay tied to a connection.
     *
@@ -269,7 +269,7 @@ private:
     /* return 1 if the connections_number is not valid.
     * return 0 if the connections_number is valid.
     */
-    bool connections_number_not_valid(int connections_number);
+    bool connections_number_not_valid(int connections_number) const;
     
     /* return 1 if the tcp_connections_number is not valid.
     * return 0 if the tcp_connections_number is valid.

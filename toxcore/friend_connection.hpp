@@ -72,6 +72,54 @@ struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public Cr
     Friend_Conn(Friend_Connections *connections, const bitox::PublicKey &real_public_key);
     ~Friend_Conn();
     
+    int64_t write_cryptpacket(const uint8_t *data, uint16_t length, uint8_t congestion_control)
+    {
+        if (!crypt_connection)
+            return -1;
+        
+        return crypt_connection->write_cryptpacket(data, length, congestion_control);
+    }
+    
+    int send_lossy_cryptpacket(const uint8_t *data, uint16_t length)
+    {
+        if (!crypt_connection)
+            return -1;
+        
+        return crypt_connection->send_lossy_cryptpacket(data, length);
+    }
+    
+    int cryptpacket_received(uint32_t packet_number) const
+    {
+        if (!crypt_connection)
+            return -1;
+        
+        return crypt_connection->cryptpacket_received(packet_number);
+    }
+    
+    CryptoConnectionStatus crypto_connection_status(bool *direct_connected, unsigned int *online_tcp_relays) const
+    {
+        if (!crypt_connection)
+            return CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION;
+        
+        return crypt_connection->crypto_connection_status(direct_connected, online_tcp_relays);
+    }
+    
+    uint32_t crypto_num_free_sendqueue_slots() const
+    {
+        if (!crypt_connection)
+            return 0;
+        
+        return crypt_connection->crypto_num_free_sendqueue_slots();
+    }
+    
+    bool max_speed_reached()
+    {
+        if (!crypt_connection)
+            return -1;
+        
+        return crypt_connection->max_speed_reached();
+    }
+    
     /* Send a Friend request packet.
     *
     *  return -1 if failure.
@@ -81,11 +129,8 @@ struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public Cr
     int send_friend_request_packet(uint32_t nospam_num, const uint8_t *data, uint16_t length);
     
     /* Add a TCP relay associated to the friend.
-    *
-    * return -1 on failure.
-    * return 0 on success.
     */
-    int friend_add_tcp_relay(bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
+    bool friend_add_tcp_relay(bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
     
     Friend_Connections * const connections;
     

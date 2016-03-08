@@ -844,8 +844,7 @@ static unsigned int send_packet_group_peer(Friend_Conn *connection, uint8_t pack
     packet[0] = packet_id;
     memcpy(packet + 1, &group_num, sizeof(uint16_t));
     memcpy(packet + 1 + sizeof(uint16_t), data, length);
-    return connection->crypt_connection && connection->crypt_connection->write_cryptpacket(packet,
-                             sizeof(packet), 0) != -1;
+    return connection->write_cryptpacket(packet, sizeof(packet), 0) != -1;
 }
 
 /* Send a group lossy packet to friendcon_id.
@@ -864,8 +863,7 @@ static unsigned int send_lossy_group_peer(Friend_Conn *connection, uint8_t packe
     packet[0] = packet_id;
     memcpy(packet + 1, &group_num, sizeof(uint16_t));
     memcpy(packet + 1 + sizeof(uint16_t), data, length);
-    return connection->crypt_connection && connection->connections->net_crypto->send_lossy_cryptpacket(connection->crypt_connection->id, packet,
-                                  sizeof(packet)) != -1;
+    return connection->send_lossy_cryptpacket(packet, sizeof(packet)) != -1;
 }
 
 #define INVITE_PACKET_SIZE (1 + sizeof(uint16_t) + GROUP_IDENTIFIER_LENGTH)
@@ -1344,8 +1342,7 @@ static int send_packet_online(Friend_Conn *friend_connection, uint16_t group_num
     packet[0] = PACKET_ID_ONLINE_PACKET;
     memcpy(packet + 1, &group_num, sizeof(uint16_t));
     memcpy(packet + 1 + sizeof(uint16_t), identifier, GROUP_IDENTIFIER_LENGTH);
-    return friend_connection->crypt_connection && friend_connection->crypt_connection->write_cryptpacket(packet,
-                             sizeof(packet), 0) != -1;
+    return friend_connection->write_cryptpacket(packet, sizeof(packet), 0) != -1;
 }
 
 static unsigned int send_peer_kill(Friend_Conn *friend_connection, uint16_t group_num);

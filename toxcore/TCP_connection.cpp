@@ -41,7 +41,7 @@ using namespace bitox::dht;
 /* return 1 if the connections_number is not valid.
  * return 0 if the connections_number is valid.
  */
-bool TCP_Connections::connections_number_not_valid(int connections_number)
+bool TCP_Connections::connections_number_not_valid(int connections_number) const
 {
     if ((unsigned int)connections_number >= this->connections.size())
         return 1;
@@ -572,7 +572,7 @@ int TCP_Connection_to::rm_tcp_connection_from_conn(unsigned int tcp_connections_
 /* return number of online connections on success.
  * return -1 on failure.
  */
-unsigned int TCP_Connection_to::online_tcp_connection_from_conn()
+unsigned int TCP_Connection_to::online_tcp_connection_from_conn() const
 {
     unsigned int i, count = 0;
 
@@ -1069,12 +1069,12 @@ int TCP_Connections::add_tcp_relay_connection(int connections_number, IPPort ip_
 /* return number of online tcp relays tied to the connection on success.
  * return 0 on failure.
  */
-unsigned int TCP_Connections::tcp_connection_to_online_tcp_relays(int connections_number)
+unsigned int TCP_Connections::tcp_connection_to_online_tcp_relays(int connections_number) const
 {
-    TCP_Connection_to *con_to = get_connection(connections_number);
-
-    if (!con_to)
+    if (connections_number_not_valid(connections_number))
         return 0;
+    
+    const TCP_Connection_to *con_to = &connections[connections_number];
 
     return con_to->online_tcp_connection_from_conn();
 }

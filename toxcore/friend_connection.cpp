@@ -33,12 +33,12 @@ using namespace bitox::network;
 using namespace bitox::dht;
 
 /* Add a TCP relay associated to the friend.
- *
- * return -1 on failure.
- * return 0 on success.
  */
-int Friend_Conn::friend_add_tcp_relay(IPPort ip_port, const PublicKey &public_key)
+bool Friend_Conn::friend_add_tcp_relay(IPPort ip_port, const PublicKey &public_key)
 {
+    if (!crypt_connection)
+        return false;
+        
     /* Local ip and same pk means that they are hosting a TCP relay. */
     if (Local_ip(ip_port.ip) && dht_temp_pk == public_key) {
         if (dht_ip_port.ip.family != Family::FAMILY_NULL) {
@@ -63,22 +63,23 @@ int Friend_Conn::friend_add_tcp_relay(IPPort ip_port, const PublicKey &public_ke
     tcp_relays[index].public_key = public_key;
     ++tcp_relay_counter;
 
-    if (!crypt_connection)
-        return -1;
-    return crypt_connection->add_tcp_relay_peer(ip_port, public_key);
+    return crypt_connection->add_tcp_relay_peer(ip_port, public_key) == 0;
 }
 
 /* Connect to number saved relays for friend. */
 void Friend_Conn::connect_to_saved_tcp_relays(unsigned int number)
 {
-    unsigned int i;
-
-    for (i = 0; (i < FRIEND_MAX_STORED_TCP_RELAYS) && (number != 0); ++i) {
+    if (!crypt_connection)
+        return;
+    
+    for (size_t i = 0; (i < FRIEND_MAX_STORED_TCP_RELAYS) && (number != 0); ++i)
+    {
         uint16_t index = (tcp_relay_counter - (i + 1)) % FRIEND_MAX_STORED_TCP_RELAYS;
 
-        if (tcp_relays[index].ip_port.ip.family != Family::FAMILY_NULL && crypt_connection) {
-            if (crypt_connection->add_tcp_relay_peer(tcp_relays[index].ip_port,
-                                   tcp_relays[index].public_key) == 0) {
+        if (tcp_relays[index].ip_port.ip.family != Family::FAMILY_NULL)
+        {
+            if (crypt_connection->add_tcp_relay_peer(tcp_relays[index].ip_port, tcp_relays[index].public_key) == 0)
+            {
                 --number;
             }
         }
@@ -87,15 +88,17 @@ void Friend_Conn::connect_to_saved_tcp_relays(unsigned int number)
 
 unsigned int Friend_Conn::send_relays()
 {
+    if (!crypt_connection)
+        return 0;
+        
     NodeFormat nodes[MAX_SHARED_RELAYS];
     uint8_t data[1024];
     int n, length;
 
     n = connections->net_crypto->copy_connected_tcp_relays(nodes, MAX_SHARED_RELAYS);
 
-    int i;
-
-    for (i = 0; i < n; ++i) {
+    for (size_t i = 0; i < n; ++i)
+    {
         /* Associated the relays being sent with this connection.
            On receiving the peer will do the same which will establish the connection. */
         friend_add_tcp_relay(nodes[i].ip_port, nodes[i].public_key);
@@ -109,10 +112,8 @@ unsigned int Friend_Conn::send_relays()
     data[0] = PACKET_ID_SHARE_RELAYS;
     ++length;
     
-    if (!crypt_connection)
-        return 0;
-
-    if (crypt_connection->write_cryptpacket(data, length, 0) != -1) {
+    if (crypt_connection->write_cryptpacket(data, length, 0) != -1)
+    {
         share_relays_lastsent = unix_time();
         return 1;
     }
@@ -346,9 +347,10 @@ int Friend_Conn::friend_new_connection()
 
 int Friend_Conn::send_ping()
 {
-    uint8_t ping = PACKET_ID_ALIVE;
     if (!crypt_connection)
         return -1;
+    
+    uint8_t ping = PACKET_ID_ALIVE;
     
     int64_t ret = crypt_connection->write_cryptpacket(&ping, sizeof(ping), 0);
 

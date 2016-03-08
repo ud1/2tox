@@ -484,7 +484,7 @@ int Net_Crypto::send_packet_to(int crypt_connection_id, const uint8_t *data, siz
         //TODO: on bad networks, direct connections might not last indefinitely.
         if (ip_port.ip.family != Family::FAMILY_NULL) {
             bool direct_connected = 0;
-            this->crypto_connection_status(crypt_connection_id, &direct_connected, nullptr);
+            conn->crypto_connection_status(&direct_connected, nullptr);
 
             if (direct_connected) {
                 if ((uint32_t)sendpacket(this->dht->net, ip_port, data, length) == length) {
@@ -878,25 +878,20 @@ int Net_Crypto::send_data_packet_helper(int crypt_connection_id, uint32_t buffer
     return send_data_packet(crypt_connection_id, packet, sizeof(packet));
 }
 
-int Net_Crypto::reset_max_speed_reached(int crypt_connection_id)
+int Crypto_Connection::reset_max_speed_reached()
 {
-    Crypto_Connection *conn = get_crypto_connection(crypt_connection_id);
-
-    if (conn == 0)
-        return -1;
-
     /* If last packet send failed, try to send packet again.
        If sending it fails we won't be able to send the new packet. */
-    if (conn->maximum_speed_reached) {
+    if (maximum_speed_reached) {
         Packet_Data *dt = nullptr;
-        uint32_t packet_num = conn->send_array.buffer_end - 1;
-        int ret = get_data_pointer(&conn->send_array, &dt, packet_num);
+        uint32_t packet_num = send_array.buffer_end - 1;
+        int ret = get_data_pointer(&send_array, &dt, packet_num);
 
         uint8_t send_failed = 0;
 
         if (ret == 1) {
             if (!dt->sent_time) {
-                if (send_data_packet_helper(crypt_connection_id, conn->recv_array.buffer_start, packet_num, dt->data,
+                if (net_crypto->send_data_packet_helper(id, recv_array.buffer_start, packet_num, dt->data,
                                             dt->length) != 0) {
                     send_failed = 1;
                 } else {
@@ -906,7 +901,7 @@ int Net_Crypto::reset_max_speed_reached(int crypt_connection_id)
         }
 
         if (!send_failed) {
-            conn->maximum_speed_reached = 0;
+            maximum_speed_reached = 0;
         } else {
             return -1;
         }
@@ -931,7 +926,7 @@ int64_t Net_Crypto::send_lossless_packet(int crypt_connection_id, const uint8_t 
 
     /* If last packet send failed, try to send packet again.
        If sending it fails we won't be able to send the new packet. */
-    reset_max_speed_reached(crypt_connection_id);
+    conn->reset_max_speed_reached();
 
     if (conn->maximum_speed_reached && congestion_control) {
         return -1;
@@ -1870,7 +1865,7 @@ void Net_Crypto::do_tcp()
 
         if (conn->status == CryptoConnectionStatus::CRYPTO_CONN_ESTABLISHED) {
             bool direct_connected = false;
-            this->crypto_connection_status(i, &direct_connected, nullptr);
+            conn->crypto_connection_status(&direct_connected, nullptr);
 
             std::lock_guard<std::mutex> lock(this->tcp_mutex);
             this->tcp_c->set_tcp_connection_to_status(conn->connection_number_tcp, !direct_connected);
@@ -2065,7 +2060,7 @@ void Net_Crypto::send_crypto_packets()
                 conn->last_num_packets_resent[n_p_pos] = packets_resent;
 
                 bool direct_connected = 0;
-                this->crypto_connection_status(i, &direct_connected, nullptr);
+                conn->crypto_connection_status(&direct_connected, nullptr);
 
                 if (direct_connected && conn->last_tcp_sent + CONGESTION_EVENT_TIMEOUT > temp_time) {
                     /* When switching from TCP to UDP, don't change the packet send rate for CONGESTION_EVENT_TIMEOUT ms. */
@@ -2212,25 +2207,20 @@ void Net_Crypto::send_crypto_packets()
 /* Return 1 if max speed was reached for this connection (no more data can be physically through the pipe).
  * Return 0 if it wasn't reached.
  */
-bool Net_Crypto::max_speed_reached(int crypt_connection_id)
+bool Crypto_Connection::max_speed_reached()
 {
-    return reset_max_speed_reached(crypt_connection_id) != 0;
+    return reset_max_speed_reached() != 0;
 }
 
 /* returns the number of packet slots left in the sendbuffer.
  * return 0 if failure.
  */
-uint32_t Net_Crypto::crypto_num_free_sendqueue_slots(int crypt_connection_id)
+uint32_t Crypto_Connection::crypto_num_free_sendqueue_slots() const
 {
-    Crypto_Connection *conn = get_crypto_connection(crypt_connection_id);
+    uint32_t max_packets = CRYPTO_PACKET_BUFFER_SIZE - num_packets_array(&send_array);
 
-    if (conn == 0)
-        return 0;
-
-    uint32_t max_packets = CRYPTO_PACKET_BUFFER_SIZE - num_packets_array(&conn->send_array);
-
-    if (conn->packets_left < max_packets) {
-        return conn->packets_left;
+    if (packets_left < max_packets) {
+        return packets_left;
     } else {
         return max_packets;
     }
@@ -2282,15 +2272,10 @@ int64_t Crypto_Connection::write_cryptpacket(const uint8_t *data, uint16_t lengt
  * return -1 on failure.
  * return 0 on success.
  */
-int Net_Crypto::cryptpacket_received(int crypt_connection_id, uint32_t packet_number)
+int Crypto_Connection::cryptpacket_received(uint32_t packet_number) const
 {
-    Crypto_Connection *conn = get_crypto_connection(crypt_connection_id);
-
-    if (conn == 0)
-        return -1;
-
-    uint32_t num = conn->send_array.buffer_end - conn->send_array.buffer_start;
-    uint32_t num1 = packet_number - conn->send_array.buffer_start;
+    uint32_t num = send_array.buffer_end - send_array.buffer_start;
+    uint32_t num1 = packet_number - send_array.buffer_start;
 
     if (num < num1) {
         return 0;
@@ -2304,7 +2289,7 @@ int Net_Crypto::cryptpacket_received(int crypt_connection_id, uint32_t packet_nu
  *
  * Sends a lossy cryptopacket. (first byte must in the PACKET_ID_LOSSY_RANGE_*)
  */
-int Net_Crypto::send_lossy_cryptpacket(int crypt_connection_id, const uint8_t *data, uint16_t length)
+int Crypto_Connection::send_lossy_cryptpacket(const uint8_t *data, uint16_t length)
 {
     if (length == 0 || length > MAX_CRYPTO_DATA_SIZE)
         return -1;
@@ -2315,27 +2300,21 @@ int Net_Crypto::send_lossy_cryptpacket(int crypt_connection_id, const uint8_t *d
     if (data[0] >= (PACKET_ID_LOSSY_RANGE_START + PACKET_ID_LOSSY_RANGE_SIZE))
         return -1;
 
-    pthread_mutex_lock(&this->connections_mutex);
-    ++this->connection_use_counter;
-    pthread_mutex_unlock(&this->connections_mutex);
+    pthread_mutex_lock(&net_crypto->connections_mutex);
+    ++net_crypto->connection_use_counter;
+    pthread_mutex_unlock(&net_crypto->connections_mutex);
 
-    Crypto_Connection *conn = get_crypto_connection(crypt_connection_id);
-
-    int ret = -1;
-
-    if (conn) {
-        uint32_t buffer_start, buffer_end;
-        {
-            std::lock_guard<std::mutex> lock(conn->mutex);
-            buffer_start = conn->recv_array.buffer_start;
-            buffer_end = conn->send_array.buffer_end;
-        }
-        ret = send_data_packet_helper(crypt_connection_id, buffer_start, buffer_end, data, length);
+    uint32_t buffer_start, buffer_end;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        buffer_start = recv_array.buffer_start;
+        buffer_end = send_array.buffer_end;
     }
+    int ret = net_crypto->send_data_packet_helper(id, buffer_start, buffer_end, data, length);
 
-    pthread_mutex_lock(&this->connections_mutex);
-    --this->connection_use_counter;
-    pthread_mutex_unlock(&this->connections_mutex);
+    pthread_mutex_lock(&net_crypto->connections_mutex);
+    --net_crypto->connection_use_counter;
+    pthread_mutex_unlock(&net_crypto->connections_mutex);
 
     return ret;
 }
@@ -2388,31 +2367,26 @@ int Net_Crypto::crypto_kill(int crypt_connection_id)
  * sets direct_connected to 1 if connection connects directly to other, 0 if it isn't.
  * sets online_tcp_relays to the number of connected tcp relays this connection has.
  */
-CryptoConnectionStatus Net_Crypto::crypto_connection_status(int crypt_connection_id, bool *direct_connected,
-                                      unsigned int *online_tcp_relays)
+CryptoConnectionStatus Crypto_Connection::crypto_connection_status(bool *direct_connected,
+                                      unsigned int *online_tcp_relays) const
 {
-    Crypto_Connection *conn = get_crypto_connection(crypt_connection_id);
-
-    if (conn == 0)
-        return CryptoConnectionStatus::CRYPTO_CONN_NO_CONNECTION;
-
     if (direct_connected) {
         *direct_connected = false;
 
         uint64_t current_time = unix_time();
 
-        if ((UDP_DIRECT_TIMEOUT + conn->direct_lastrecv_timev4) > current_time)
+        if ((UDP_DIRECT_TIMEOUT + direct_lastrecv_timev4) > current_time)
             *direct_connected = true;
 
-        if ((UDP_DIRECT_TIMEOUT + conn->direct_lastrecv_timev6) > current_time)
+        if ((UDP_DIRECT_TIMEOUT + direct_lastrecv_timev6) > current_time)
             *direct_connected = true;
     }
 
     if (online_tcp_relays) {
-        *online_tcp_relays = this->tcp_c->tcp_connection_to_online_tcp_relays(conn->connection_number_tcp);
+        *online_tcp_relays = net_crypto->tcp_c->tcp_connection_to_online_tcp_relays(connection_number_tcp);
     }
 
-    return conn->status;
+    return status;
 }
 
 void Net_Crypto::new_keys()

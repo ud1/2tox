@@ -1857,11 +1857,8 @@ void Net_Crypto::do_tcp()
 
     uint32_t i;
 
-    for (i = 0; i < this->crypto_connections.size(); ++i) {
-        Crypto_Connection *conn = get_crypto_connection(i);
-
-        if (conn == 0)
-            return;
+    for (auto &kv : crypto_connections) {
+        Crypto_Connection *conn =  kv.second;
 
         if (conn->status == CryptoConnectionStatus::CRYPTO_CONN_ESTABLISHED) {
             bool direct_connected = false;
@@ -1982,8 +1979,8 @@ void Net_Crypto::send_crypto_packets()
     double total_send_rate = 0;
     uint32_t peak_request_packet_interval = ~0;
 
-    for (i = 0; i < this->crypto_connections.size(); ++i) {
-        Crypto_Connection *conn = get_crypto_connection(i);
+    for (auto &kv : crypto_connections) {
+        Crypto_Connection *conn = kv.second;
 
         if (conn == 0)
             return;
@@ -2451,11 +2448,8 @@ void Net_Crypto::kill_timedout()
     uint32_t i;
     //uint64_t temp_time = current_time_monotonic();
 
-    for (i = 0; i < this->crypto_connections.size(); ++i) {
-        Crypto_Connection *conn = get_crypto_connection(i);
-
-        if (conn == 0)
-            return;
+    for (auto &kv : crypto_connections) {
+        Crypto_Connection *conn = kv.second;
 
         if (conn->status == CryptoConnectionStatus::CRYPTO_CONN_COOKIE_REQUESTING || conn->status == CryptoConnectionStatus::CRYPTO_CONN_HANDSHAKE_SENT
                 || conn->status == CryptoConnectionStatus::CRYPTO_CONN_NOT_CONFIRMED) {
@@ -2463,7 +2457,6 @@ void Net_Crypto::kill_timedout()
                 continue;
 
             connection_kill(i);
-
         }
 
         if (conn->status == CryptoConnectionStatus::CRYPTO_CONN_ESTABLISHED) {
@@ -2492,8 +2485,8 @@ Net_Crypto::~Net_Crypto()
 {
     uint32_t i;
 
-    for (i = 0; i < crypto_connections.size(); ++i) {
-        crypto_kill(i);
+    for (auto &kv : crypto_connections) {
+        crypto_kill(kv.first);
     }
 
     pthread_mutex_destroy(&connections_mutex);

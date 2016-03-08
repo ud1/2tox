@@ -264,7 +264,7 @@ struct Crypto_Connection : public std::enable_shared_from_this<Crypto_Connection
     Packets_Array send_array;
     Packets_Array recv_array;
     
-    CryptoConnectionEventListener *event_listener;
+    CryptoConnectionEventListener *event_listener = nullptr;
 
     uint64_t last_request_packet_sent = 0;
     uint64_t direct_send_attempt_time = 0;

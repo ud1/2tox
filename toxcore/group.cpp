@@ -910,56 +910,56 @@ static unsigned int send_peer_query(Friend_Conn *friend_connection, uint16_t gro
  */
 int join_groupchat(Group_Chats *g_c, int32_t friendnumber, uint8_t expected_type, const uint8_t *data, uint16_t length)
 {
-    if (length != sizeof(uint16_t) + GROUP_IDENTIFIER_LENGTH)
-        return -1;
-
-    if (data[sizeof(uint16_t)] != expected_type)
-        return -1;
-
-    std::shared_ptr<Friend_Conn> friend_connection = getfriendcon_id(g_c->m, friendnumber);
-
-    if (!friend_connection)
-        return -1;
-
-    if (get_group_num(g_c, data + sizeof(uint16_t)) != -1)
-        return -1;
-
-    int groupnumber = create_group_chat(g_c);
-
-    if (groupnumber == -1)
-        return -1;
-
-    Group_c *g = &g_c->chats[groupnumber];
-
-    uint16_t group_num = htons(groupnumber);
-    g->status = GROUPCHAT_STATUS_VALID;
-    g->number_joined.reset();
-    g->real_pk = g_c->m->net_crypto->self_public_key;
-
-    uint8_t response[INVITE_RESPONSE_PACKET_SIZE];
-    response[0] = INVITE_RESPONSE_ID;
-    memcpy(response + 1, &group_num, sizeof(uint16_t));
-    memcpy(response + 1 + sizeof(uint16_t), data, sizeof(uint16_t) + GROUP_IDENTIFIER_LENGTH);
-
-    if (send_group_invite_packet(g_c->m, friendnumber, response, sizeof(response))) {
-        uint16_t other_groupnum;
-        memcpy(&other_groupnum, data, sizeof(other_groupnum));
-        other_groupnum = ntohs(other_groupnum);
-        memcpy(g->identifier, data + sizeof(uint16_t), GROUP_IDENTIFIER_LENGTH);
-        int close_index = add_conn_to_groupchat(g_c, friend_connection, groupnumber, 0);
-
-        if (close_index != -1) {
-            g->close[close_index].group_number = other_groupnum;
-            g->close[close_index].type = GROUPCHAT_CLOSE_ONLINE;
-            g->number_joined = friend_connection;
-        }
-
-        send_peer_query(friend_connection.get(), other_groupnum);
-        return groupnumber;
-    } else {
-        g->status = GROUPCHAT_STATUS_NONE;
-        return -1;
-    }
+//     if (length != sizeof(uint16_t) + GROUP_IDENTIFIER_LENGTH)
+//         return -1;
+// 
+//     if (data[sizeof(uint16_t)] != expected_type)
+//         return -1;
+// 
+//     std::shared_ptr<Friend_Conn> friend_connection = getfriendcon_id(g_c->m, friendnumber);
+// 
+//     if (!friend_connection)
+//         return -1;
+// 
+//     if (get_group_num(g_c, data + sizeof(uint16_t)) != -1)
+//         return -1;
+// 
+//     int groupnumber = create_group_chat(g_c);
+// 
+//     if (groupnumber == -1)
+//         return -1;
+// 
+//     Group_c *g = &g_c->chats[groupnumber];
+// 
+//     uint16_t group_num = htons(groupnumber);
+//     g->status = GROUPCHAT_STATUS_VALID;
+//     g->number_joined.reset();
+//     g->real_pk = g_c->m->net_crypto->self_public_key;
+// 
+//     uint8_t response[INVITE_RESPONSE_PACKET_SIZE];
+//     response[0] = INVITE_RESPONSE_ID;
+//     memcpy(response + 1, &group_num, sizeof(uint16_t));
+//     memcpy(response + 1 + sizeof(uint16_t), data, sizeof(uint16_t) + GROUP_IDENTIFIER_LENGTH);
+// 
+//     if (send_group_invite_packet(g_c->m, friendnumber, response, sizeof(response))) {
+//         uint16_t other_groupnum;
+//         memcpy(&other_groupnum, data, sizeof(other_groupnum));
+//         other_groupnum = ntohs(other_groupnum);
+//         memcpy(g->identifier, data + sizeof(uint16_t), GROUP_IDENTIFIER_LENGTH);
+//         int close_index = add_conn_to_groupchat(g_c, friend_connection, groupnumber, 0);
+// 
+//         if (close_index != -1) {
+//             g->close[close_index].group_number = other_groupnum;
+//             g->close[close_index].type = GROUPCHAT_CLOSE_ONLINE;
+//             g->number_joined = friend_connection;
+//         }
+// 
+//         send_peer_query(friend_connection.get(), other_groupnum);
+//         return groupnumber;
+//     } else {
+//         g->status = GROUPCHAT_STATUS_NONE;
+//         return -1;
+//     }
 }
 
 /* Set the callback for group invites.
@@ -1219,83 +1219,83 @@ int group_title_get(const Group_Chats *g_c, int groupnumber, uint8_t *title, uin
 
 static void handle_friend_invite_packet(Messenger *m, uint32_t friendnumber, const uint8_t *data, uint16_t length)
 {
-    Group_Chats *g_c = m->group_chat_object;
-
-    if (length <= 1)
-        return;
-
-    const uint8_t *invite_data = data + 1;
-    uint16_t invite_length = length - 1;
-
-    switch (data[0]) {
-        case INVITE_ID: {
-            if (length != INVITE_PACKET_SIZE)
-                return;
-
-            int groupnumber = get_group_num(g_c, data + 1 + sizeof(uint16_t));
-
-            if (groupnumber == -1) {
-                if (g_c->invite_callback)
-                    g_c->invite_callback(m, friendnumber, *(invite_data + sizeof(uint16_t)), invite_data, invite_length,
-                                         g_c->invite_callback_userdata);
-
-                return;
-            }
-
-            break;
-        }
-
-        case INVITE_RESPONSE_ID: {
-            if (length != INVITE_RESPONSE_PACKET_SIZE)
-                return;
-
-            uint16_t other_groupnum, groupnum;
-            memcpy(&groupnum, data + 1 + sizeof(uint16_t), sizeof(uint16_t));
-            groupnum = ntohs(groupnum);
-
-            Group_c *g = get_group_c(g_c, groupnum);
-
-            if (!g)
-                return;
-
-            if (sodium_memcmp(data + 1 + sizeof(uint16_t) * 2, g->identifier, GROUP_IDENTIFIER_LENGTH) != 0)
-                return;
-
-            uint16_t peer_number = rand(); /* TODO: what if two people enter the group at the same time and
-  are given the same peer_number by different nodes? */
-
-            unsigned int tries = 0;
-
-            while (get_peer_index(g, peer_number) != -1) {
-                peer_number = rand();
-                ++tries;
-
-                if (tries > 32)
-                    return;
-            }
-
-            memcpy(&other_groupnum, data + 1, sizeof(uint16_t));
-            other_groupnum = ntohs(other_groupnum);
-
-            std::shared_ptr<Friend_Conn> friend_connection = getfriendcon_id(m, friendnumber);
-            PublicKey real_pk = friend_connection->real_public_key;
-            PublicKey temp_pk = friend_connection->dht_temp_pk;
-
-            addpeer(g_c, groupnum, real_pk, temp_pk, peer_number);
-            int close_index = add_conn_to_groupchat(g_c, friend_connection, groupnum, 0);
-
-            if (close_index != -1) {
-                g->close[close_index].group_number = other_groupnum;
-                g->close[close_index].type = GROUPCHAT_CLOSE_ONLINE;
-            }
-
-            group_new_peer_send(g_c, groupnum, peer_number, real_pk, temp_pk);
-            break;
-        }
-
-        default:
-            return;
-    }
+//     Group_Chats *g_c = m->group_chat_object;
+// 
+//     if (length <= 1)
+//         return;
+// 
+//     const uint8_t *invite_data = data + 1;
+//     uint16_t invite_length = length - 1;
+// 
+//     switch (data[0]) {
+//         case INVITE_ID: {
+//             if (length != INVITE_PACKET_SIZE)
+//                 return;
+// 
+//             int groupnumber = get_group_num(g_c, data + 1 + sizeof(uint16_t));
+// 
+//             if (groupnumber == -1) {
+//                 if (g_c->invite_callback)
+//                     g_c->invite_callback(m, friendnumber, *(invite_data + sizeof(uint16_t)), invite_data, invite_length,
+//                                          g_c->invite_callback_userdata);
+// 
+//                 return;
+//             }
+// 
+//             break;
+//         }
+// 
+//         case INVITE_RESPONSE_ID: {
+//             if (length != INVITE_RESPONSE_PACKET_SIZE)
+//                 return;
+// 
+//             uint16_t other_groupnum, groupnum;
+//             memcpy(&groupnum, data + 1 + sizeof(uint16_t), sizeof(uint16_t));
+//             groupnum = ntohs(groupnum);
+// 
+//             Group_c *g = get_group_c(g_c, groupnum);
+// 
+//             if (!g)
+//                 return;
+// 
+//             if (sodium_memcmp(data + 1 + sizeof(uint16_t) * 2, g->identifier, GROUP_IDENTIFIER_LENGTH) != 0)
+//                 return;
+// 
+//             uint16_t peer_number = rand(); /* TODO: what if two people enter the group at the same time and
+//   are given the same peer_number by different nodes? */
+// 
+//             unsigned int tries = 0;
+// 
+//             while (get_peer_index(g, peer_number) != -1) {
+//                 peer_number = rand();
+//                 ++tries;
+// 
+//                 if (tries > 32)
+//                     return;
+//             }
+// 
+//             memcpy(&other_groupnum, data + 1, sizeof(uint16_t));
+//             other_groupnum = ntohs(other_groupnum);
+// 
+//             std::shared_ptr<Friend_Conn> friend_connection = getfriendcon_id(m, friendnumber);
+//             PublicKey real_pk = friend_connection->real_public_key;
+//             PublicKey temp_pk = friend_connection->dht_temp_pk;
+// 
+//             addpeer(g_c, groupnum, real_pk, temp_pk, peer_number);
+//             int close_index = add_conn_to_groupchat(g_c, friend_connection, groupnum, 0);
+// 
+//             if (close_index != -1) {
+//                 g->close[close_index].group_number = other_groupnum;
+//                 g->close[close_index].type = GROUPCHAT_CLOSE_ONLINE;
+//             }
+// 
+//             group_new_peer_send(g_c, groupnum, peer_number, real_pk, temp_pk);
+//             break;
+//         }
+// 
+//         default:
+//             return;
+//     }
 }
 
 /* Find index of friend in the close list;
@@ -2211,7 +2211,7 @@ Group_Chats *new_groupchats(Messenger *m)
     temp->m = m;
     temp->fr_c = m->fr_c;
     m->group_chat_object = temp;
-    m_callback_group_invite(m, &handle_friend_invite_packet);
+    //m_callback_group_invite(m, &handle_friend_invite_packet); TODO
 
     return temp;
 }

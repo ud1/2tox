@@ -1201,7 +1201,7 @@ void Net_Crypto::connection_kill(int crypt_connection_id)
         return;
 
     if (conn->event_listener) {
-        conn->event_listener->on_status(conn, 0);
+        conn->event_listener->on_status(0);
     }
 
     this->crypto_kill(crypt_connection_id);
@@ -1270,7 +1270,7 @@ int Net_Crypto::handle_data_packet_helper(int crypt_connection_id, const uint8_t
         conn->status = CryptoConnectionStatus::CRYPTO_CONN_ESTABLISHED;
 
         if (conn->event_listener)
-            conn->event_listener->on_status(conn, 1);
+            conn->event_listener->on_status(1);
     }
 
     if (real_data[0] == PACKET_ID_REQUEST) {
@@ -1311,7 +1311,7 @@ int Net_Crypto::handle_data_packet_helper(int crypt_connection_id, const uint8_t
                 break;
 
             if (conn->event_listener)
-                conn->event_listener->on_data(conn, dt.data, dt.length);
+                conn->event_listener->on_data(dt.data, dt.length);
 
             /* conn might get killed in callback. */
             conn = get_crypto_connection(crypt_connection_id);
@@ -1328,7 +1328,7 @@ int Net_Crypto::handle_data_packet_helper(int crypt_connection_id, const uint8_t
         set_buffer_end(&conn->recv_array, num);
 
         if (conn->event_listener)
-            conn->event_listener->on_lossy_data(conn, real_data, real_length);
+            conn->event_listener->on_lossy_data(real_data, real_length);
 
     } else {
         return -1;
@@ -1403,7 +1403,7 @@ int Net_Crypto::handle_packet_connection(int crypt_connection_id, const uint8_t 
                     conn->status = CryptoConnectionStatus::CRYPTO_CONN_NOT_CONFIRMED;
                 } else {
                     if (conn->event_listener)
-                        conn->event_listener->on_dht_pk(conn, dht_public_key);
+                        conn->event_listener->on_dht_pk(dht_public_key);
                 }
 
             } else {

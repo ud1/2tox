@@ -116,7 +116,7 @@ enum class CryptoConnectionStatus
 
 struct Crypto_Connection;
 
-class CryptoConnectionEventListener
+class ConnectionEventListener
 {
 public:
     
@@ -130,7 +130,7 @@ public:
     * return -1 on failure.
     * return 0 on success.
     */
-    virtual int on_status(Crypto_Connection *connection, uint8_t status) = 0;
+    virtual int on_status(uint8_t status) = 0;
     
     /* Set function to be called when connection with crypt_connection_id receives a lossless data packet of length.
     *
@@ -140,7 +140,7 @@ public:
     * return -1 on failure.
     * return 0 on success.
     */
-    virtual int on_data(Crypto_Connection *connection, uint8_t *data, uint16_t length) = 0;
+    virtual int on_data(uint8_t *data, uint16_t length) = 0;
     
     /* Set function to be called when connection with crypt_connection_id receives a lossy data packet of length.
     *
@@ -150,8 +150,12 @@ public:
     * return -1 on failure.
     * return 0 on success.
     */
-    virtual int on_lossy_data(Crypto_Connection *connection, uint8_t *data, uint16_t length) = 0;
-    
+    virtual int on_lossy_data(uint8_t *data, uint16_t length) = 0;
+};
+
+class DHTPublicKeyEventListener
+{
+public:
     /* Set the function for this friend that will be callbacked with object and number if
     * the friend sends us a different dht public key than we have associated to him.
     *
@@ -162,7 +166,11 @@ public:
     * return -1 on failure.
     * return 0 on success.
     */
-    virtual void on_dht_pk(Crypto_Connection *connection, const bitox::PublicKey &dht_public_key) = 0;
+    virtual void on_dht_pk(const bitox::PublicKey &dht_public_key) = 0;
+};
+
+class CryptoConnectionEventListener : public ConnectionEventListener, public DHTPublicKeyEventListener
+{
 };
 
 struct Crypto_Connection

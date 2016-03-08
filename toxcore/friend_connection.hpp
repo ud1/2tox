@@ -103,37 +103,33 @@ struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public Cr
     uint64_t ping_lastrecv, ping_lastsent;
     uint64_t share_relays_lastsent;
 
-    struct {
-        int (*status_callback)(void *object, int id, uint8_t status);
-        void *status_callback_object;
-        int status_callback_id;
-
-        int (*data_callback)(void *object, int id, uint8_t *data, uint16_t length);
-        void *data_callback_object;
-        int data_callback_id;
-
-        int (*lossy_data_callback)(void *object, int id, const uint8_t *data, uint16_t length);
-        void *lossy_data_callback_object;
-        int lossy_data_callback_id;
-    } callbacks[MAX_FRIEND_CONNECTION_CALLBACKS];
+    ConnectionEventListener *event_listener = nullptr;
 
     bitox::dht::NodeFormat tcp_relays[FRIEND_MAX_STORED_TCP_RELAYS];
     uint16_t tcp_relay_counter;
 
     bool hosting_tcp_relay;
     
+    virtual int on_status(uint8_t status) override;
+    virtual int on_data(uint8_t *data, uint16_t length) override;
+    virtual int on_lossy_data(uint8_t *data, uint16_t length) override;
+    virtual void on_dht_pk(const bitox::PublicKey &dht_public_key) override;
+    
 // private:
     unsigned int send_relays();
     
-    virtual int on_status(Crypto_Connection *connection, uint8_t status) override;
-    virtual int on_data(Crypto_Connection *connection, uint8_t *data, uint16_t length) override;
-    virtual int on_lossy_data(Crypto_Connection *connection, uint8_t *data, uint16_t length) override;
-    virtual void on_dht_pk(Crypto_Connection *connection, const bitox::PublicKey &dht_public_key) override;
+    void connect_to_saved_tcp_relays(unsigned int number);
+    int friend_new_connection();
+    void change_dht_pk(const bitox::PublicKey &dht_public_key);
+    int send_ping();
 };
 
 
 struct Friend_Connections
 {
+    Friend_Connections(Onion_Client *onion_c);
+    ~Friend_Connections();
+    
     /* Create a new friend connection.
     * If one to that real public key already exists, increase lock count and return it.
     *
@@ -147,25 +143,17 @@ struct Friend_Connections
     Onion_Client *onion_c;
 
     std::map<bitox::PublicKey, Friend_Conn *> connections_map;
-    //Friend_Conn *conns;
-    //uint32_t num_cons;
 
     int (*fr_request_callback)(void *object, const bitox::PublicKey &source_pubkey, const uint8_t *data, uint16_t len);
     void *fr_request_object;
 
     uint64_t last_LANdiscovery;
+    
+    void do_friend_connections();
+    
+// private:
+    void LANdiscovery();
 };
-
-/* Set the callbacks for the friend connection.
- * index is the index (0 to (MAX_FRIEND_CONNECTION_CALLBACKS - 1)) we want the callback to set in the array.
- *
- * return 0 on success.
- * return -1 on failure
- */
-int friend_connection_callbacks(Friend_Conn *friend_connection, unsigned int index,
-                                int (*status_callback)(void *object, int id, uint8_t status), int (*data_callback)(void *object, int id, uint8_t *data,
-                                        uint16_t length), int (*lossy_data_callback)(void *object, int id, const uint8_t *data, uint16_t length), void *object,
-                                int number);
 
 /* Set friend request callback.
  *
@@ -173,14 +161,5 @@ int friend_connection_callbacks(Friend_Conn *friend_connection, unsigned int ind
  */
 void set_friend_request_callback(Friend_Connections *fr_c, int (*fr_request_callback)(void *, const bitox::PublicKey &,
                                  const uint8_t *, uint16_t), void *object);
-
-/* Create new friend_connections instance. */
-Friend_Connections *new_friend_connections(Onion_Client *onion_c);
-
-/* main friend_connections loop. */
-void do_friend_connections(Friend_Connections *fr_c);
-
-/* Free everything related with friend_connections. */
-void kill_friend_connections(Friend_Connections *fr_c);
 
 #endif

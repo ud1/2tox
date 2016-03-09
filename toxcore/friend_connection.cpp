@@ -308,7 +308,7 @@ static int handle_new_connections(void *object, New_Connection *n_c)
         set_event_listener(fr_c->net_crypto, friend_con->crypt_connection->id, friend_con);
 
         if (n_c->source.ip.family != Family::FAMILY_AF_INET && n_c->source.ip.family != Family::FAMILY_AF_INET6) {
-            fr_c->net_crypto->set_direct_ip_port(friend_con->crypt_connection->id, friend_con->dht_ip_port, 0);
+            friend_con->crypt_connection->set_direct_ip_port(friend_con->dht_ip_port, 0);
         } else {
             friend_con->dht_ip_port = n_c->source;
             friend_con->dht_ip_port_lastrecv = unix_time();
@@ -498,7 +498,7 @@ void Friend_Connections::do_friend_connections()
 
                 if (friend_con->dht_lock) {
                     if (friend_con->friend_new_connection() == 0 && friend_con->crypt_connection) {
-                        net_crypto->set_direct_ip_port(friend_con->crypt_connection->id, friend_con->dht_ip_port, 0);
+                        friend_con->crypt_connection->set_direct_ip_port(friend_con->dht_ip_port, 0);
                         friend_con->connect_to_saved_tcp_relays((MAX_FRIEND_TCP_CONNECTIONS / 2)); /* Only fill it half up. */
                     }
                 }

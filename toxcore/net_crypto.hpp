@@ -101,16 +101,16 @@ enum class CryptoConnectionStatus
 {
     // No connection
     CRYPTO_CONN_NO_CONNECTION = 0,
-    
+
     // We are sending cookie request packets
     CRYPTO_CONN_COOKIE_REQUESTING = 1,
-    
+
     // We are sending handshake packet
     CRYPTO_CONN_HANDSHAKE_SENT = 2,
-    
+
     // Connection is not confirmed yet (we have received a handshake but no data packets yet)
     CRYPTO_CONN_NOT_CONFIRMED = 3,
-    
+
     // The connection is established
     CRYPTO_CONN_ESTABLISHED = 4
 };
@@ -120,7 +120,7 @@ struct Crypto_Connection;
 class ConnectionEventListener
 {
 public:
-    
+
     /* Set function to be called when connection with crypt_connection_id goes connects/disconnects.
     *
     * The set function should return -1 on failure and 0 on success.
@@ -132,7 +132,7 @@ public:
     * return 0 on success.
     */
     virtual int on_status(uint8_t status) = 0;
-    
+
     /* Set function to be called when connection with crypt_connection_id receives a lossless data packet of length.
     *
     * The set function should return -1 on failure and 0 on success.
@@ -142,7 +142,7 @@ public:
     * return 0 on success.
     */
     virtual int on_data(uint8_t *data, uint16_t length) = 0;
-    
+
     /* Set function to be called when connection with crypt_connection_id receives a lossy data packet of length.
     *
     * The set function should return -1 on failure and 0 on success.
@@ -180,14 +180,14 @@ struct Crypto_Connection : public std::enable_shared_from_this<Crypto_Connection
 {
     Crypto_Connection(Net_Crypto *net_crypto);
     ~Crypto_Connection();
-    
+
     /* Add a tcp relay, associating it to a crypt_connection_id.
     *
     * return 0 if it was added.
     * return -1 if it wasn't.
     */
     int add_tcp_relay_peer(bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
-    
+
     /* Sends a lossless cryptopacket.
     *
     * return -1 if data could not be put in packet queue.
@@ -198,15 +198,15 @@ struct Crypto_Connection : public std::enable_shared_from_this<Crypto_Connection
     * congestion_control: should congestion control apply to this packet?
     */
     int64_t write_cryptpacket(const uint8_t *data, uint16_t length,
-                            uint8_t congestion_control);
-    
+                              uint8_t congestion_control);
+
     /* return -1 on failure.
     * return 0 on success.
     *
     * Sends a lossy cryptopacket. (first byte must in the PACKET_ID_LOSSY_RANGE_*)
     */
     int send_lossy_cryptpacket(const uint8_t *data, uint16_t length);
-    
+
     /* Check if packet_number was received by the other side.
     *
     * packet_number must be a valid packet number of a packet sent on this connection.
@@ -215,30 +215,166 @@ struct Crypto_Connection : public std::enable_shared_from_this<Crypto_Connection
     * return 0 on success.
     */
     int cryptpacket_received(uint32_t packet_number) const;
-    
+
     /* return one of CRYPTO_CONN_* values indicating the state of the connection.
     *
     * sets direct_connected to 1 if connection connects directly to other, 0 if it isn't.
     * sets online_tcp_relays to the number of connected tcp relays this connection has.
     */
     CryptoConnectionStatus crypto_connection_status(bool *direct_connected,
-                                        unsigned int *online_tcp_relays) const;
-    
+            unsigned int *online_tcp_relays) const;
+
     /* returns the number of packet slots left in the sendbuffer.
     * return 0 if failure.
     */
     uint32_t crypto_num_free_sendqueue_slots() const;
-    
+
     /* Return 1 if max speed was reached for this connection (no more data can be physically through the pipe).
     * Return 0 if it wasn't reached.
     */
     bool max_speed_reached();
-    
+
     int reset_max_speed_reached();
-    
+
+    /* Create a handshake packet and set it as a temp packet.
+    * cookie must be COOKIE_LENGTH.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int create_send_handshake(const uint8_t *cookie, const bitox::PublicKey &dht_public_key);
+
+    /* Add a new temp packet to send repeatedly.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int new_temp_packet(const uint8_t *packet, uint16_t length);
+
+    /* Send the temp packet.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int send_temp_packet();
+
+    /* Sends a packet to the peer using the fastest route.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int send_packet_to(const uint8_t *data, size_t length);
+
+    /* Set the direct ip of the crypto connection.
+    *
+    * Connected is 0 if we are not sure we are connected to that person, 1 if we are sure.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int set_direct_ip_port(bitox::network::IPPort ip_port, bool connected);
+
+    /* Handle a packet that was received for the connection.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int handle_packet_connection(const uint8_t *packet, uint16_t length,
+                                 bool udp);
+
+    /* Associate an ip_port to a connection.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int add_ip_port_connection(bitox::network::IPPort ip_port);
+
+    /* Return the IPPort that should be used to send packets to the other peer.
+    *
+    * return IPPort with family 0 on failure.
+    * return IPPort on success.
+    */
+    bitox::network::IPPort return_ip_port_connection();
+
+    /* Creates and sends a data packet to the peer using the fastest route.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int send_data_packet(const uint8_t *data, uint16_t length);
+
+    /* Creates and sends a data packet with buffer_start and num to the peer using the fastest route.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int send_data_packet_helper(uint32_t buffer_start, uint32_t num,
+                                const uint8_t *data, uint16_t length);
+
+    /*  return -1 if data could not be put in packet queue.
+    *  return positive packet number if data was put into the queue.
+    */
+    int64_t send_lossless_packet(const uint8_t *data, uint16_t length,
+                                 uint8_t congestion_control);
+
+    /* Handle a data packet.
+    * Decrypt packet of length and put it into data.
+    * data must be at least MAX_DATA_DATA_PACKET_SIZE big.
+    *
+    * return -1 on failure.
+    * return length of data on success.
+    */
+    int handle_data_packet(uint8_t *data, const uint8_t *packet,
+                           uint16_t length);
+
+    /* Send a request packet.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int send_request_packet();
+
+    /* Send up to max num previously requested data packets.
+    *
+    * return -1 on failure.
+    * return number of packets sent on success.
+    */
+    int send_requested_packets(uint32_t max_num);
+
+    /* Clear the temp packet.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int clear_temp_packet();
+
+    /* Send a kill packet.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int send_kill_packet();
+
+    /* Handle a received data packet.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int handle_data_packet_helper(const uint8_t *packet, uint16_t length,
+                                  bool udp);
+
+    /* Add a source to the crypto connection.
+    * This is to be used only when we have received a packet from that source.
+    *
+    *  return -1 on failure.
+    *  return positive number on success.
+    *  0 if source was a direct UDP connection.
+    */
+    int crypto_connection_add_source(bitox::network::IPPort source);
+
     const uint32_t id;
     Net_Crypto *const net_crypto;
-    
+
     bitox::PublicKey public_key; /* The real public key of the peer. */
     bitox::Nonce recv_nonce = bitox::Nonce::create_empty(); /* Nonce of received packets. */
     bitox::Nonce sent_nonce = bitox::Nonce::create_empty(); /* Nonce of sent packets. */
@@ -263,7 +399,7 @@ struct Crypto_Connection : public std::enable_shared_from_this<Crypto_Connection
 
     Packets_Array send_array;
     Packets_Array recv_array;
-    
+
     CryptoConnectionEventListener *event_listener = nullptr;
 
     uint64_t last_request_packet_sent = 0;
@@ -314,33 +450,18 @@ struct Net_Crypto
     *  Sets all the global connection variables to their default values.
     */
     Net_Crypto(DHT *dht, TCP_Proxy_Info *proxy_info);
-    
+
     ~Net_Crypto();
 
     /* Accept a crypto connection.
-    *
-    * return -1 on failure.
-    * return connection id on success.
     */
     std::shared_ptr<Crypto_Connection> accept_crypto_connection(New_Connection *n_c);
-    
+
     /* Create a crypto connection.
     * If one to that real public key already exists, return it.
-    *
-    * return -1 on failure.
-    * return connection id on success.
     */
     std::shared_ptr<Crypto_Connection> new_crypto_connection(const bitox::PublicKey &real_public_key, const bitox::PublicKey &dht_public_key);
-    
-    /* Set the direct ip of the crypto connection.
-    *
-    * Connected is 0 if we are not sure we are connected to that person, 1 if we are sure.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int set_direct_ip_port(int crypt_connection_id, bitox::network::IPPort ip_port, bool connected);
-    
+
     /* Add a tcp relay to the array.
     *
     * return 0 if it was added.
@@ -369,7 +490,7 @@ struct Net_Crypto
     * return 0 on failure.
     */
     unsigned int copy_connected_tcp_relays(bitox::dht::NodeFormat *tcp_relays, uint16_t num);
-    
+
     /* Generate our public and private keys.
     *  Only call this function the first time the program starts.
     */
@@ -384,7 +505,7 @@ struct Net_Crypto
     * Length must be crypto_box_SECRETKEYBYTES.
     */
     void load_secret_key(const uint8_t *sk);
-    
+
     /* Kill a crypto connection.
     *
     * return -1 on failure.
@@ -404,7 +525,7 @@ struct Net_Crypto
 
     std::map<uint32_t, Crypto_Connection *> crypto_connections;
     IDPool id_pool;
-    
+
     std::mutex tcp_mutex; // TODO recursive?
 
     pthread_mutex_t connections_mutex;
@@ -426,7 +547,7 @@ struct Net_Crypto
     uint32_t current_sleep_time;
 
     std::map<bitox::network::IPPort, int> ip_port_list;
-    
+
 // private:
     /* Handle the cookie request packet of length length.
     * Put what was in the request in request_plain (must be of size COOKIE_REQUEST_PLAIN_LENGTH)
@@ -436,8 +557,8 @@ struct Net_Crypto
     * return 0 on success.
     */
     int handle_cookie_request(uint8_t *request_plain, bitox::SharedKey &shared_key,
-                                    bitox::PublicKey &dht_public_key, const uint8_t *packet, uint16_t length) const;
-                                    
+                              bitox::PublicKey &dht_public_key, const uint8_t *packet, uint16_t length) const;
+
     /* Create a cookie response packet and put it in packet.
     * request_plain must be COOKIE_REQUEST_PLAIN_LENGTH bytes.
     * packet must be of size COOKIE_RESPONSE_LENGTH or bigger.
@@ -446,24 +567,12 @@ struct Net_Crypto
     * return COOKIE_RESPONSE_LENGTH on success.
     */
     int create_cookie_response(uint8_t *packet, const uint8_t *request_plain,
-                                    const bitox::SharedKey &shared_key, const bitox::PublicKey &dht_public_key) const;
-           
+                               const bitox::SharedKey &shared_key, const bitox::PublicKey &dht_public_key) const;
+
     Crypto_Connection *get_crypto_connection(int crypt_connection_id);
-    
-    /* Handle the cookie request packet (for TCP)
-    */
-    int tcp_handle_cookie_request(int connections_number, const uint8_t *packet, uint16_t length);
-    
-    /* Handle a packet that was received for the connection.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int handle_packet_connection(int crypt_connection_id, const uint8_t *packet, uint16_t length,
-                                        bool udp);
-    
+
     uint8_t crypt_connection_id_not_valid(int crypt_connection_id) const;
-    
+
     /* Create a cookie request packet and put it in packet.
     * dht_public_key is the dht public key of the other
     *
@@ -473,15 +582,15 @@ struct Net_Crypto
     * return COOKIE_REQUEST_LENGTH on success.
     */
     int create_cookie_request(uint8_t *packet, bitox::PublicKey &dht_public_key, uint64_t number,
-                                    bitox::SharedKey &shared_key) const;
+                              bitox::SharedKey &shared_key) const;
 
     /* Handle the cookie request packet (for TCP oob packets)
     */
     int tcp_oob_handle_cookie_request(unsigned int tcp_connections_number,
-            const bitox::PublicKey &dht_public_key, const uint8_t *packet, uint16_t length) const;
+                                      const bitox::PublicKey &dht_public_key, const uint8_t *packet, uint16_t length) const;
 
     int create_crypto_handshake(uint8_t *packet, const uint8_t *cookie, const bitox::Nonce &nonce,
-                                    const bitox::PublicKey &session_pk, const bitox::PublicKey &peer_real_pk, const bitox::PublicKey &peer_dht_pubkey) const;
+                                const bitox::PublicKey &session_pk, const bitox::PublicKey &peer_real_pk, const bitox::PublicKey &peer_dht_pubkey) const;
 
     /* Handle a crypto handshake packet of length.
     * put the nonce contained in the packet in nonce,
@@ -502,122 +611,9 @@ struct Net_Crypto
     * return 0 on success.
     */
     int handle_crypto_handshake(bitox::Nonce &nonce, bitox::PublicKey &session_pk, bitox::PublicKey &peer_real_pk,
-                                    bitox::PublicKey &dht_public_key, uint8_t *cookie, const uint8_t *packet, uint16_t length, const bitox::PublicKey *expected_real_pk) const;
-
-
-
-    /* Associate an ip_port to a connection.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int add_ip_port_connection(int crypt_connection_id, bitox::network::IPPort ip_port);
-
-    /* Return the IPPort that should be used to send packets to the other peer.
-    *
-    * return IPPort with family 0 on failure.
-    * return IPPort on success.
-    */
-    bitox::network::IPPort return_ip_port_connection(int crypt_connection_id);
-
-    /* Sends a packet to the peer using the fastest route.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int send_packet_to(int crypt_connection_id, const uint8_t *data, size_t length);
-
-    /* Creates and sends a data packet to the peer using the fastest route.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int send_data_packet(int crypt_connection_id, const uint8_t *data, uint16_t length);
-
-    /* Creates and sends a data packet with buffer_start and num to the peer using the fastest route.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int send_data_packet_helper(int crypt_connection_id, uint32_t buffer_start, uint32_t num,
-                                    const uint8_t *data, uint16_t length);
-
-    /*  return -1 if data could not be put in packet queue.
-    *  return positive packet number if data was put into the queue.
-    */
-    int64_t send_lossless_packet(int crypt_connection_id, const uint8_t *data, uint16_t length,
-                                        uint8_t congestion_control);
-
-    /* Handle a data packet.
-    * Decrypt packet of length and put it into data.
-    * data must be at least MAX_DATA_DATA_PACKET_SIZE big.
-    *
-    * return -1 on failure.
-    * return length of data on success.
-    */
-    int handle_data_packet(int crypt_connection_id, uint8_t *data, const uint8_t *packet,
-                                uint16_t length);
-
-    /* Send a request packet.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int send_request_packet(int crypt_connection_id);
-
-    /* Send up to max num previously requested data packets.
-    *
-    * return -1 on failure.
-    * return number of packets sent on success.
-    */
-    int send_requested_packets(int crypt_connection_id, uint32_t max_num);
-
-    /* Add a new temp packet to send repeatedly.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int new_temp_packet(int crypt_connection_id, const uint8_t *packet, uint16_t length);
-
-    /* Clear the temp packet.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int clear_temp_packet(int crypt_connection_id);
-
-    /* Send the temp packet.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int send_temp_packet(int crypt_connection_id);
-
-    /* Create a handshake packet and set it as a temp packet.
-    * cookie must be COOKIE_LENGTH.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int create_send_handshake(int crypt_connection_id, const uint8_t *cookie,
-                                    const bitox::PublicKey &dht_public_key);
-
-    /* Send a kill packet.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int send_kill_packet(int crypt_connection_id);
+                                bitox::PublicKey &dht_public_key, uint8_t *cookie, const uint8_t *packet, uint16_t length, const bitox::PublicKey *expected_real_pk) const;
 
     void connection_kill(int crypt_connection_id);
-
-    /* Handle a received data packet.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int handle_data_packet_helper(int crypt_connection_id, const uint8_t *packet, uint16_t length,
-                                        bool udp);
 
     /* Create a new empty crypto connection.
     *
@@ -639,17 +635,8 @@ struct Net_Crypto
     *  return id if it found it.
     */
     int getcryptconnection_id(const bitox::PublicKey &public_key) const;
-    
-    Crypto_Connection *find(const bitox::PublicKey &public_key);
 
-    /* Add a source to the crypto connection.
-    * This is to be used only when we have received a packet from that source.
-    *
-    *  return -1 on failure.
-    *  return positive number on success.
-    *  0 if source was a direct UDP connection.
-    */
-    int crypto_connection_add_source(int crypt_connection_id, bitox::network::IPPort source);
+    Crypto_Connection *find(const bitox::PublicKey &public_key);
 
     /* Handle a handshake packet by someone who wants to initiate a new connection with us.
     * This calls the callback set by new_connection_handler() if the handshake is ok.
@@ -669,9 +656,12 @@ struct Net_Crypto
     int crypto_id_ip_port(bitox::network::IPPort ip_port) const;
 
     void send_crypto_packets();
-    
+
     void kill_timedout();
 
+    /* Handle the cookie request packet (for TCP)
+    */
+    int tcp_handle_cookie_request(int connections_number, const uint8_t *packet, uint16_t length);
 };
 
 

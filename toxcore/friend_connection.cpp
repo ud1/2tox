@@ -211,6 +211,11 @@ int Friend_Conn::on_status(uint8_t status)
     return 0;
 }
 
+void Friend_Conn::on_connection_killed()
+{
+    crypt_connection.reset();
+}
+
 /* Callback for dht public key changes. */
 void Friend_Conn::on_dht_pk(const bitox::PublicKey &dht_public_key) 
 {
@@ -221,7 +226,6 @@ void Friend_Conn::on_dht_pk(const bitox::PublicKey &dht_public_key)
 
     /* if pk changed, create a new connection.*/
     if (crypt_connection) {
-        connections->net_crypto->crypto_kill(crypt_connection->id); // TODO
         crypt_connection.reset();
         on_status(0); /* Going offline. */
     }

@@ -943,7 +943,7 @@ int64_t Crypto_Connection::send_lossless_packet(const uint8_t *data, uint16_t le
 static uint16_t get_nonce_uint16(const Nonce &nonce)
 {
     uint16_t num;
-    memcpy(&num, nonce.data.data() + (crypto_box_NONCEBYTES - sizeof(uint16_t)), sizeof(uint16_t));
+    memcpy(&num, nonce.data.data() + (nonce.data.size() - sizeof(uint16_t)), sizeof(uint16_t));
     return ntohs(num);
 }
 
@@ -1121,18 +1121,12 @@ int Crypto_Connection::send_kill_packet()
     return send_data_packet_helper(recv_array.buffer_start, send_array.buffer_end, &kill_packet, sizeof(kill_packet));
 }
 
-void Net_Crypto::connection_kill(int crypt_connection_id)
+void Crypto_Connection::connection_kill()
 {
-    Crypto_Connection *conn = get_crypto_connection(crypt_connection_id);
-
-    if (conn == 0)
-        return;
-
-    if (conn->event_listener) {
-        conn->event_listener->on_status(0);
+    if (event_listener) {
+        event_listener->on_status(0);
+        event_listener->on_connection_killed();
     }
-
-    this->crypto_kill(crypt_connection_id);
 }
 
 /* Handle a received data packet.
@@ -1184,7 +1178,7 @@ int Crypto_Connection::handle_data_packet_helper(const uint8_t *packet, uint16_t
     }
 
     if (real_data[0] == PACKET_ID_KILL) {
-        net_crypto->connection_kill(id);
+        connection_kill();
         return 0;
     }
 
@@ -1235,12 +1229,6 @@ int Crypto_Connection::handle_data_packet_helper(const uint8_t *packet, uint16_t
 
             if (event_listener)
                 event_listener->on_data(dt.data, dt.length);
-
-            /* conn might get killed in callback. */
-            /*conn = get_crypto_connection(crypt_connection_id); // TODO
-
-            if (conn == 0)
-                return -1;*/
         }
 
         /* Packet counter. */
@@ -1379,22 +1367,6 @@ std::shared_ptr<Crypto_Connection> Net_Crypto::create_crypto_connection()
     return result;
 }
 
-Crypto_Connection::~Crypto_Connection()
-{
-    net_crypto->crypto_connections.erase(id);
-    net_crypto->id_pool.release(id);
-}
-
-/* Wipe a crypto connection.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int Net_Crypto::wipe_crypto_connection(int crypt_connection_id)
-{
-    return 0;
-}
-
 /* Get crypto connection id from public key of peer.
  *
  *  return -1 if there are no connections like we are looking for.
@@ -1484,13 +1456,12 @@ int Net_Crypto::handle_new_connection_handshake(IPPort source, const uint8_t *da
         return -1;
     }
 
-    int crypt_connection_id = getcryptconnection_id(n_c.public_key);
-
-    if (crypt_connection_id != -1) {
-        Crypto_Connection *conn = get_crypto_connection(crypt_connection_id);
+    if (Crypto_Connection *conn = find(n_c.public_key))
+    {
+        std::shared_ptr<Crypto_Connection> keep_alive_ptr = conn->shared_from_this();
 
         if (n_c.dht_public_key != conn->dht_public_key) {
-            connection_kill(crypt_connection_id);
+            conn->connection_kill();
         } else {
             int ret = -1;
 
@@ -1654,6 +1625,8 @@ static int tcp_data_callback(void *object, int id, const uint8_t *data, uint16_t
 
     if (conn == 0)
         return -1;
+    
+    std::shared_ptr<Crypto_Connection> keep_alive_ptr = conn->shared_from_this();
 
     if (data[0] == NET_PACKET_COOKIE_REQUEST) {
         return c->tcp_handle_cookie_request(conn->connection_number_tcp, data, length);
@@ -1849,6 +1822,8 @@ static int udp_handle_packet(void *object, const IPPort &source, const uint8_t *
     if (conn == 0)
         return -1;
 
+    std::shared_ptr<Crypto_Connection> keep_alive_ptr = conn->shared_from_this();
+    
     if (conn->handle_packet_connection(packet, length, 1) != 0)
         return 1;
 
@@ -2223,47 +2198,35 @@ int Crypto_Connection::send_lossy_cryptpacket(const uint8_t *data, uint16_t leng
     return ret;
 }
 
-/* Kill a crypto connection.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int Net_Crypto::crypto_kill(int crypt_connection_id)
+Crypto_Connection::~Crypto_Connection()
 {
+    net_crypto->crypto_connections.erase(id);
+    net_crypto->id_pool.release(id);
+    
     while (1) { /* TODO: is this really the best way to do this? */
-        pthread_mutex_lock(&this->connections_mutex);
+        pthread_mutex_lock(&net_crypto->connections_mutex);
 
-        if (!this->connection_use_counter) {
+        if (!net_crypto->connection_use_counter) {
             break;
         }
 
-        pthread_mutex_unlock(&this->connections_mutex);
+        pthread_mutex_unlock(&net_crypto->connections_mutex);
     }
 
-    Crypto_Connection *conn = get_crypto_connection(crypt_connection_id);
+    if (status == CryptoConnectionStatus::CRYPTO_CONN_ESTABLISHED)
+        send_kill_packet();
 
-    int ret = -1;
-
-    if (conn) {
-        if (conn->status == CryptoConnectionStatus::CRYPTO_CONN_ESTABLISHED)
-            conn->send_kill_packet();
-
-        {
-            std::lock_guard<std::mutex> lock(this->tcp_mutex);
-            this->tcp_c->kill_tcp_connection_to(conn->connection_number_tcp);
-        }
-
-        this->ip_port_list.erase(conn->ip_portv4);
-        this->ip_port_list.erase(conn->ip_portv6);
-        conn->clear_temp_packet();
-        clear_buffer(&conn->send_array);
-        clear_buffer(&conn->recv_array);
-        ret = wipe_crypto_connection(crypt_connection_id);
+    {
+        std::lock_guard<std::mutex> lock(net_crypto->tcp_mutex);
+        net_crypto->tcp_c->kill_tcp_connection_to(connection_number_tcp);
     }
 
-    pthread_mutex_unlock(&this->connections_mutex);
+    net_crypto->ip_port_list.erase(ip_portv4);
+    net_crypto->ip_port_list.erase(ip_portv6);
+    clear_buffer(&send_array);
+    clear_buffer(&recv_array);
 
-    return ret;
+    pthread_mutex_unlock(&net_crypto->connections_mutex);
 }
 
 /* return one of CRYPTO_CONN_* values indicating the state of the connection.
@@ -2355,6 +2318,7 @@ void Net_Crypto::kill_timedout()
     uint32_t i;
     //uint64_t temp_time = current_time_monotonic();
 
+    std::vector<Crypto_Connection *> connections_to_kill;
     for (auto &kv : crypto_connections) {
         Crypto_Connection *conn = kv.second;
 
@@ -2362,14 +2326,17 @@ void Net_Crypto::kill_timedout()
                 || conn->status == CryptoConnectionStatus::CRYPTO_CONN_NOT_CONFIRMED) {
             if (conn->temp_packet_num_sent < MAX_NUM_SENDPACKET_TRIES)
                 continue;
-
-            connection_kill(i);
+            
+            connections_to_kill.push_back(conn);
         }
 
         if (conn->status == CryptoConnectionStatus::CRYPTO_CONN_ESTABLISHED) {
             //TODO: add a timeout here?
         }
     }
+    
+    for (Crypto_Connection *conn : connections_to_kill)
+        conn->connection_kill();
 }
 
 /* return the optimal interval in ms for running do_net_crypto.
@@ -2392,9 +2359,13 @@ Net_Crypto::~Net_Crypto()
 {
     uint32_t i;
 
+    std::vector<Crypto_Connection *> connections_to_kill;
     for (auto &kv : crypto_connections) {
-        crypto_kill(kv.first);
+        connections_to_kill.push_back(kv.second);
     }
+    
+    for (Crypto_Connection *conn : connections_to_kill)
+        conn->connection_kill();
 
     pthread_mutex_destroy(&connections_mutex);
 

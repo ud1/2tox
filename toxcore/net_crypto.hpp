@@ -117,7 +117,7 @@ enum class CryptoConnectionStatus
 
 struct Crypto_Connection;
 
-class ConnectionEventListener
+class CryptoConnectionEventListener
 {
 public:
 
@@ -132,6 +132,8 @@ public:
     * return 0 on success.
     */
     virtual int on_status(uint8_t status) = 0;
+    
+    virtual void on_connection_killed() = 0;
 
     /* Set function to be called when connection with crypt_connection_id receives a lossless data packet of length.
     *
@@ -152,11 +154,7 @@ public:
     * return 0 on success.
     */
     virtual int on_lossy_data(uint8_t *data, uint16_t length) = 0;
-};
-
-class DHTPublicKeyEventListener
-{
-public:
+    
     /* Set the function for this friend that will be callbacked with object and number if
     * the friend sends us a different dht public key than we have associated to him.
     *
@@ -168,10 +166,6 @@ public:
     * return 0 on success.
     */
     virtual void on_dht_pk(const bitox::PublicKey &dht_public_key) = 0;
-};
-
-class CryptoConnectionEventListener : public ConnectionEventListener, public DHTPublicKeyEventListener
-{
 };
 
 struct Net_Crypto;
@@ -371,6 +365,8 @@ struct Crypto_Connection : public std::enable_shared_from_this<Crypto_Connection
     *  0 if source was a direct UDP connection.
     */
     int crypto_connection_add_source(bitox::network::IPPort source);
+    
+    void connection_kill();
 
     const uint32_t id;
     Net_Crypto *const net_crypto;
@@ -506,13 +502,6 @@ struct Net_Crypto
     */
     void load_secret_key(const uint8_t *sk);
 
-    /* Kill a crypto connection.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int crypto_kill(int crypt_connection_id);
-
     /* return the optimal interval in ms for running do_net_crypto.
     */
     uint32_t crypto_run_interval() const;
@@ -613,21 +602,12 @@ struct Net_Crypto
     int handle_crypto_handshake(bitox::Nonce &nonce, bitox::PublicKey &session_pk, bitox::PublicKey &peer_real_pk,
                                 bitox::PublicKey &dht_public_key, uint8_t *cookie, const uint8_t *packet, uint16_t length, const bitox::PublicKey *expected_real_pk) const;
 
-    void connection_kill(int crypt_connection_id);
-
     /* Create a new empty crypto connection.
     *
     * return -1 on failure.
     * return connection id on success.
     */
     std::shared_ptr<Crypto_Connection> create_crypto_connection();
-
-    /* Wipe a crypto connection.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int wipe_crypto_connection(int crypt_connection_id);
 
     /* Get crypto connection id from public key of peer.
     *

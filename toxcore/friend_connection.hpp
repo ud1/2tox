@@ -67,6 +67,43 @@ enum class FriendConnectionStatus
 
 struct Friend_Connections;
 
+class FriendConnectionEventListener
+{
+public:
+
+    /* Set function to be called when connection with crypt_connection_id goes connects/disconnects.
+    *
+    * The set function should return -1 on failure and 0 on success.
+    * Note that if this function is set, the connection will clear itself on disconnect.
+    * Object and id will be passed to this function untouched.
+    * status is 1 if the connection is going online, 0 if it is going offline.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    virtual int on_status(uint8_t status) = 0;
+    
+    /* Set function to be called when connection with crypt_connection_id receives a lossless data packet of length.
+    *
+    * The set function should return -1 on failure and 0 on success.
+    * Object and id will be passed to this function untouched.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    virtual int on_data(uint8_t *data, uint16_t length) = 0;
+
+    /* Set function to be called when connection with crypt_connection_id receives a lossy data packet of length.
+    *
+    * The set function should return -1 on failure and 0 on success.
+    * Object and id will be passed to this function untouched.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    virtual int on_lossy_data(uint8_t *data, uint16_t length) = 0;
+};
+
 struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public CryptoConnectionEventListener
 {
     Friend_Conn(Friend_Connections *connections, const bitox::PublicKey &real_public_key);
@@ -148,7 +185,7 @@ struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public Cr
     uint64_t ping_lastrecv, ping_lastsent;
     uint64_t share_relays_lastsent;
 
-    ConnectionEventListener *event_listener = nullptr;
+    FriendConnectionEventListener *event_listener = nullptr;
 
     bitox::dht::NodeFormat tcp_relays[FRIEND_MAX_STORED_TCP_RELAYS];
     uint16_t tcp_relay_counter;
@@ -156,6 +193,7 @@ struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public Cr
     bool hosting_tcp_relay;
     
     virtual int on_status(uint8_t status) override;
+    virtual void on_connection_killed() override;
     virtual int on_data(uint8_t *data, uint16_t length) override;
     virtual int on_lossy_data(uint8_t *data, uint16_t length) override;
     virtual void on_dht_pk(const bitox::PublicKey &dht_public_key) override;

@@ -190,7 +190,7 @@ enum {
 
 struct Messenger;
 
-struct Friend : public ConnectionEventListener
+struct Friend : public FriendConnectionEventListener
 {
     Friend(Messenger *messenger, uint32_t id);
     ~Friend();

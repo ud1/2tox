@@ -217,7 +217,7 @@ static int udp_handle_cookie_request(void *object, const IPPort &source, const u
 
 /* Handle the cookie request packet (for TCP)
  */
-int Net_Crypto::tcp_handle_cookie_request(int connections_number, const uint8_t *packet, uint16_t length)
+int Net_Crypto::tcp_handle_cookie_request(TCP_Connection_to *connection, const uint8_t *packet, uint16_t length)
 {
     uint8_t request_plain[COOKIE_REQUEST_PLAIN_LENGTH];
     SharedKey shared_key;
@@ -231,7 +231,7 @@ int Net_Crypto::tcp_handle_cookie_request(int connections_number, const uint8_t 
     if (create_cookie_response(data, request_plain, shared_key, dht_public_key) != sizeof(data))
         return -1;
 
-    int ret = this->tcp_c->send_packet_tcp_connection(connections_number, data, sizeof(data));
+    int ret = connection->send_packet_tcp_connection(data, sizeof(data));
     return ret;
 }
 
@@ -495,7 +495,7 @@ int Crypto_Connection::send_packet_to(const uint8_t *data, size_t length)
     int ret = 0;
     {
         std::lock_guard<std::mutex> lock(net_crypto->tcp_mutex);
-        ret = net_crypto->tcp_c->send_packet_tcp_connection(connection_number_tcp, data, length);
+        ret = tcp_connection->send_packet_tcp_connection(data, length);
     }
 
     if (ret == 0) {
@@ -1417,7 +1417,7 @@ int Crypto_Connection::crypto_connection_add_source(IPPort source)
 
         return 0;
     } else if (source.ip.family == Family::FAMILY_TCP_FAMILY) {
-        if (net_crypto->tcp_c->add_tcp_number_relay_connection(connection_number_tcp, source.onion_ip.con_id) == 0)
+        if (tcp_connection->add_tcp_number_relay_connection(source.onion_ip.con_id) == 0)
             return 1;
     }
 
@@ -1501,16 +1501,14 @@ std::shared_ptr<Crypto_Connection> Net_Crypto::accept_crypto_connection(New_Conn
 
     std::shared_ptr<Crypto_Connection> crypt_connection = create_crypto_connection();
 
-    int connection_number_tcp = -1;
     {
         std::lock_guard<std::mutex> lock(this->tcp_mutex);
-        connection_number_tcp = this->tcp_c->new_tcp_connection_to(n_c->dht_public_key, crypt_connection->id);
+        crypt_connection->tcp_connection = this->tcp_c->new_tcp_connection_to(n_c->dht_public_key, crypt_connection->id);
     }
 
-    if (connection_number_tcp == -1)
+    if (!crypt_connection->tcp_connection)
         return std::shared_ptr<Crypto_Connection>();
 
-    crypt_connection->connection_number_tcp = connection_number_tcp;
     crypt_connection->public_key = n_c->public_key;
     crypt_connection->recv_nonce = n_c->recv_nonce;
     crypt_connection->peersessionpublic_key = n_c->peersessionpublic_key;
@@ -1520,8 +1518,7 @@ std::shared_ptr<Crypto_Connection> Net_Crypto::accept_crypto_connection(New_Conn
     crypt_connection->status = CryptoConnectionStatus::CRYPTO_CONN_NOT_CONFIRMED;
 
     if (crypt_connection->create_send_handshake(n_c->cookie.data(), n_c->dht_public_key) != 0) {
-        std::lock_guard<std::mutex> lock(this->tcp_mutex);
-        this->tcp_c->kill_tcp_connection_to(crypt_connection->connection_number_tcp);
+        std::lock_guard<std::mutex> lock(this->tcp_mutex); // TODO ?
         return std::shared_ptr<Crypto_Connection>();
     }
 
@@ -1549,16 +1546,14 @@ std::shared_ptr<Crypto_Connection> Net_Crypto::new_crypto_connection(const Publi
 
     std::shared_ptr<Crypto_Connection> conn = create_crypto_connection();
 
-    int connection_number_tcp = -1;
     {
         std::lock_guard<std::mutex> lock(this->tcp_mutex);
-        connection_number_tcp = this->tcp_c->new_tcp_connection_to(dht_public_key, conn->id);
+        conn->tcp_connection = this->tcp_c->new_tcp_connection_to(dht_public_key, conn->id);
     }
 
-    if (connection_number_tcp == -1)
+    if (!conn->tcp_connection)
         return std::shared_ptr<Crypto_Connection>();
 
-    conn->connection_number_tcp = connection_number_tcp;
     conn->public_key = real_public_key;
     conn->sent_nonce = Nonce::create_random();
     crypto_box_keypair(conn->sessionpublic_key.data.data(), conn->sessionsecret_key.data.data());
@@ -1576,7 +1571,7 @@ std::shared_ptr<Crypto_Connection> Net_Crypto::new_crypto_connection(const Publi
                               conn->shared_key) != sizeof(cookie_request)
             || conn->new_temp_packet(cookie_request, sizeof(cookie_request)) != 0) {
         std::lock_guard<std::mutex> lock(this->tcp_mutex);
-        this->tcp_c->kill_tcp_connection_to(conn->connection_number_tcp);
+        conn->tcp_connection.reset();
         return std::shared_ptr<Crypto_Connection>();
     }
 
@@ -1628,8 +1623,8 @@ static int tcp_data_callback(void *object, int id, const uint8_t *data, uint16_t
     
     std::shared_ptr<Crypto_Connection> keep_alive_ptr = conn->shared_from_this();
 
-    if (data[0] == NET_PACKET_COOKIE_REQUEST) {
-        return c->tcp_handle_cookie_request(conn->connection_number_tcp, data, length);
+    if (data[0] == NET_PACKET_COOKIE_REQUEST && conn->tcp_connection) {
+        return c->tcp_handle_cookie_request(conn->tcp_connection.get(), data, length);
     }
 
     int ret = -1;
@@ -1678,7 +1673,10 @@ static int tcp_oob_callback(void *object, const PublicKey &public_key, unsigned 
 int Crypto_Connection::add_tcp_relay_peer(IPPort ip_port, const PublicKey &public_key)
 {
     std::lock_guard<std::mutex> lock(net_crypto->tcp_mutex);
-    return net_crypto->tcp_c->add_tcp_relay_connection(connection_number_tcp, ip_port, public_key);
+    if (!tcp_connection)
+        return -1;
+    
+    return tcp_connection->add_tcp_relay_connection(ip_port, public_key);
 }
 
 /* Add a tcp relay to the array.
@@ -1749,7 +1747,9 @@ void Net_Crypto::do_tcp()
             conn->crypto_connection_status(&direct_connected, nullptr);
 
             std::lock_guard<std::mutex> lock(this->tcp_mutex);
-            this->tcp_c->set_tcp_connection_to_status(conn->connection_number_tcp, !direct_connected);
+            
+            if (conn->tcp_connection)
+                conn->tcp_connection->set_tcp_connection_to_status(!direct_connected);
         }
     }
 }
@@ -2218,7 +2218,7 @@ Crypto_Connection::~Crypto_Connection()
 
     {
         std::lock_guard<std::mutex> lock(net_crypto->tcp_mutex);
-        net_crypto->tcp_c->kill_tcp_connection_to(connection_number_tcp);
+        tcp_connection.reset();
     }
 
     net_crypto->ip_port_list.erase(ip_portv4);
@@ -2249,8 +2249,8 @@ CryptoConnectionStatus Crypto_Connection::crypto_connection_status(bool *direct_
             *direct_connected = true;
     }
 
-    if (online_tcp_relays) {
-        *online_tcp_relays = net_crypto->tcp_c->tcp_connection_to_online_tcp_relays(connection_number_tcp);
+    if (online_tcp_relays && tcp_connection) {
+        tcp_connection->online_tcp_connection_from_conn();
     }
 
     return status;

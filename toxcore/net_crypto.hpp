@@ -423,7 +423,7 @@ struct Crypto_Connection : public std::enable_shared_from_this<Crypto_Connection
     uint64_t rtt_time = 0;
 
     /* TCP_connection connection_number */
-    unsigned int connection_number_tcp = 0;
+    std::unique_ptr<TCP_Connection_to> tcp_connection;
 
     uint8_t maximum_speed_reached = 0;
 
@@ -641,7 +641,7 @@ struct Net_Crypto
 
     /* Handle the cookie request packet (for TCP)
     */
-    int tcp_handle_cookie_request(int connections_number, const uint8_t *packet, uint16_t length);
+    int tcp_handle_cookie_request(TCP_Connection_to *connection, const uint8_t *packet, uint16_t length);
 };
 
 

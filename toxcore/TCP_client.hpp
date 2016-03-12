@@ -60,8 +60,8 @@ class TCPClientEventListener
 {
 public:
     virtual int on_response(TCP_Client_Connection *connection, uint8_t connection_id, const bitox::PublicKey &public_key) = 0;
-    virtual int on_status(TCP_Client_Connection *connection, uint32_t number, uint8_t connection_id, ClientToClientConnectionStatus status) = 0;
-    virtual int on_data (TCP_Client_Connection *connection, uint32_t number, uint8_t connection_id, const uint8_t *data, uint16_t length) = 0;
+    virtual int on_status(TCP_Client_Connection *connection, const bitox::PublicKey &tcp_connection_to_public_key, uint8_t connection_id, ClientToClientConnectionStatus status) = 0;
+    virtual int on_data (TCP_Client_Connection *connection, const bitox::PublicKey &tcp_connection_to_public_key, uint8_t connection_id, const uint8_t *data, uint16_t length) = 0;
     virtual int on_oob_data(TCP_Client_Connection *connection, const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length) = 0;
     virtual int on_onion(TCP_Client_Connection *connection, const uint8_t *data, uint16_t length) = 0;
 };
@@ -101,7 +101,7 @@ struct TCP_Client_Connection
     * return 0 on success.
     * return -1 on failure.
     */
-    int set_tcp_connection_number(uint8_t con_id, uint32_t number);
+    int set_tcp_connection_public_key(uint8_t con_id, const bitox::PublicKey &public_key);
     
     /* return 1 on success.
     * return 0 if could not send packet.
@@ -119,7 +119,7 @@ struct TCP_Client_Connection
     * return 0 if could not send packet.
     * return -1 on failure (connection must be killed).
     */
-    int send_routing_request(bitox::PublicKey &public_key);
+    int send_routing_request(const bitox::PublicKey &public_key);
     
     ClientToServerConnectionStatus status;
     bitox::network::sock_t  sock;
@@ -148,11 +148,12 @@ struct TCP_Client_Connection
     uint64_t ping_response_id;
     uint64_t ping_request_id;
 
-    struct {
+    struct
+    {
         ClientToClientConnectionStatus status;
-        bitox::PublicKey public_key;
-        uint32_t number;
-    } connections[NUM_CLIENT_CONNECTIONS];
+        bitox::PublicKey public_key, tcp_connection_to_public_key;
+    }
+    connections[NUM_CLIENT_CONNECTIONS];
     
     TCPClientEventListener *event_listener = nullptr;
     

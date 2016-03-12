@@ -399,7 +399,7 @@ int TCP_Client_Connection::write_packet_TCP_secure_connection(const uint8_t *dat
  * return 0 if could not send packet.
  * return -1 on failure (connection must be killed).
  */
-int TCP_Client_Connection::send_routing_request(bitox::PublicKey &public_key)
+int TCP_Client_Connection::send_routing_request(const bitox::PublicKey &public_key)
 {
     OutputBuffer packet;
     packet.write_byte(TCP_PACKET_ROUTING_REQUEST);
@@ -454,7 +454,7 @@ int TCP_Client_Connection::send_oob_packet(const bitox::PublicKey &public_key, c
  * return 0 on success.
  * return -1 on failure.
  */
-int TCP_Client_Connection::set_tcp_connection_number(uint8_t con_id, uint32_t number)
+int TCP_Client_Connection::set_tcp_connection_public_key(uint8_t con_id, const bitox::PublicKey &public_key)
 {
     if (con_id >= NUM_CLIENT_CONNECTIONS)
         return -1;
@@ -462,7 +462,7 @@ int TCP_Client_Connection::set_tcp_connection_number(uint8_t con_id, uint32_t nu
     if (connections[con_id].status == ClientToClientConnectionStatus::NOT_USED)
         return -1;
 
-    connections[con_id].number = number;
+    connections[con_id].tcp_connection_to_public_key = public_key;
     return 0;
 }
 
@@ -518,7 +518,7 @@ int TCP_Client_Connection::send_disconnect_request(uint8_t con_id)
         return -1;
 
     connections[con_id].status = ClientToClientConnectionStatus::NOT_USED;
-    connections[con_id].number = 0;
+    connections[con_id].tcp_connection_to_public_key = PublicKey();
     
     uint8_t packet[1 + 1];
     packet[0] = TCP_PACKET_DISCONNECT_NOTIFICATION;
@@ -635,7 +635,7 @@ int TCP_Client_Connection::handle_TCP_packet(const uint8_t *data, uint16_t lengt
                 return 0;
 
             connections[con_id].status = ClientToClientConnectionStatus::OFFLINE;
-            connections[con_id].number = ~0;
+            connections[con_id].tcp_connection_to_public_key = PublicKey();
             connections[con_id].public_key = PublicKey(data + 2);
 
             if (event_listener)
@@ -659,7 +659,7 @@ int TCP_Client_Connection::handle_TCP_packet(const uint8_t *data, uint16_t lengt
             connections[con_id].status = ClientToClientConnectionStatus::ONLINE;
 
             if (event_listener)
-                event_listener->on_status(this, connections[con_id].number, con_id,
+                event_listener->on_status(this, connections[con_id].tcp_connection_to_public_key, con_id,
                                       connections[con_id].status);
 
             return 0;
@@ -683,7 +683,7 @@ int TCP_Client_Connection::handle_TCP_packet(const uint8_t *data, uint16_t lengt
             connections[con_id].status = ClientToClientConnectionStatus::OFFLINE;
 
             if (event_listener)
-                event_listener->on_status(this, connections[con_id].number, con_id,
+                event_listener->on_status(this, connections[con_id].tcp_connection_to_public_key, con_id,
                                       connections[con_id].status);
                 
             return 0;
@@ -741,7 +741,7 @@ int TCP_Client_Connection::handle_TCP_packet(const uint8_t *data, uint16_t lengt
             uint8_t con_id = data[0] - NUM_RESERVED_PORTS;
 
             if (event_listener)
-                event_listener->on_data(this, connections[con_id].number, con_id, data + 1, length - 1);
+                event_listener->on_data(this, connections[con_id].tcp_connection_to_public_key, con_id, data + 1, length - 1);
         }
     }
 

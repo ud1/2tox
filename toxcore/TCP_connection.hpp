@@ -26,6 +26,7 @@
 
 #include "TCP_client.hpp"
 #include <vector>
+#include <map>
 
 enum class TCPConnectionStatus
 {
@@ -58,10 +59,58 @@ constexpr unsigned RECOMMENDED_FRIEND_TCP_CONNECTIONS = MAX_FRIEND_TCP_CONNECTIO
 /* Number of TCP connections used for onion purposes. */
 constexpr unsigned NUM_ONION_TCP_CONNECTIONS = RECOMMENDED_FRIEND_TCP_CONNECTIONS;
 
+struct TCP_Connections;
+
 struct TCP_Connection_to
 {
+    TCP_Connection_to(TCP_Connections *tcp_connections, const bitox::PublicKey &public_key);
+    ~TCP_Connection_to();
+    /* Send a packet to the TCP connection.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int send_packet_tcp_connection(const uint8_t *packet, uint16_t length);
+    
+    /* Set connection status.
+    *
+    * status of 1 means we are using the connection.
+    * status of 0 means we are not using it.
+    *
+    * Unused tcp connections will be disconnected from but kept in case they are needed.
+    *
+    * return 0 on success.
+    * return -1 on failure.
+    */
+    int set_tcp_connection_to_status(bool status);
+    
+    /* Add a TCP relay tied to a connection.
+    *
+    * This should be called with the same relay by two peers who want to create a TCP connection with each other.
+    *
+    * return 0 on success.
+    * return -1 on failure.
+    */
+    int add_tcp_relay_connection(bitox::network::IPPort ip_port, const bitox::PublicKey &relay_pk);
+    
+    /* Add a TCP relay tied to a connection.
+    *
+    * NOTE: This can only be used during the tcp_oob_callback.
+    *
+    * return 0 on success.
+    * return -1 on failure.
+    */
+    int add_tcp_number_relay_connection(unsigned int tcp_connections_number);
+    
+    /* return number of online connections on success.
+    * return -1 on failure.
+    */
+    unsigned int online_tcp_connection_from_conn() const;
+    
+    TCP_Connections *const tcp_connections;
+    
     TCPConnectionStatus status = TCPConnectionStatus::TCP_CONN_NONE;
-    bitox::PublicKey public_key; /* The dht public key of the peer */
+    const bitox::PublicKey public_key; /* The dht public key of the peer */
 
     struct {
         uint32_t tcp_connection = 0;
@@ -85,11 +134,6 @@ private:
     * return -1 on failure.
     */
     int rm_tcp_connection_from_conn(unsigned int tcp_connections_number);
-    
-    /* return number of online connections on success.
-    * return -1 on failure.
-    */
-    unsigned int online_tcp_connection_from_conn() const;
     
     /* return index on success.
     * return -1 on failure.
@@ -123,13 +167,6 @@ struct TCP_Connections : TCPClientEventListener
     TCP_Connections(const bitox::SecretKey &secret_key, TCP_Proxy_Info *proxy_info);
     
     ~TCP_Connections();
-
-    /* Send a packet to the TCP connection.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
-    int send_packet_tcp_connection(int connections_number, const uint8_t *packet, uint16_t length);
     
     /* Return a random TCP connection number for use in send_tcp_onion_request.
     *
@@ -175,48 +212,7 @@ struct TCP_Connections : TCPClientEventListener
     * return connections_number on success.
     * return -1 on failure.
     */
-    int new_tcp_connection_to(const bitox::PublicKey &public_key, int id);
-    
-    /* return 0 on success.
-    * return -1 on failure.
-    */
-    int kill_tcp_connection_to(int connections_number);
-    
-    /* Set connection status.
-    *
-    * status of 1 means we are using the connection.
-    * status of 0 means we are not using it.
-    *
-    * Unused tcp connections will be disconnected from but kept in case they are needed.
-    *
-    * return 0 on success.
-    * return -1 on failure.
-    */
-    int set_tcp_connection_to_status(int connections_number, bool status);
-    
-    /* return number of online tcp relays tied to the connection on success.
-    * return 0 on failure.
-    */
-    unsigned int tcp_connection_to_online_tcp_relays(int connections_number) const;
-    
-    /* Add a TCP relay tied to a connection.
-    *
-    * NOTE: This can only be used during the tcp_oob_callback.
-    *
-    * return 0 on success.
-    * return -1 on failure.
-    */
-    int add_tcp_number_relay_connection(int connections_number,
-                                        unsigned int tcp_connections_number);
-    
-    /* Add a TCP relay tied to a connection.
-    *
-    * This should be called with the same relay by two peers who want to create a TCP connection with each other.
-    *
-    * return 0 on success.
-    * return -1 on failure.
-    */
-    int add_tcp_relay_connection(int connections_number, bitox::network::IPPort ip_port, const bitox::PublicKey &relay_pk);
+    std::unique_ptr<TCP_Connection_to> new_tcp_connection_to(const bitox::PublicKey &public_key, int id);
     
     /* Add a TCP relay to the instance.
     *
@@ -240,7 +236,7 @@ struct TCP_Connections : TCPClientEventListener
     bitox::PublicKey self_public_key;
     bitox::SecretKey self_secret_key;
 
-    std::vector<TCP_Connection_to> connections;
+    std::map<bitox::PublicKey, TCP_Connection_to *> connections;
     std::vector<TCP_con> tcp_connections;
 
     int (*tcp_data_callback)(void *object, int id, const uint8_t *data, uint16_t length);
@@ -259,29 +255,18 @@ struct TCP_Connections : TCPClientEventListener
     uint16_t onion_num_conns;
     
     virtual int on_response(TCP_Client_Connection *connection, uint8_t connection_id, const bitox::PublicKey &public_key) override;
-    virtual int on_status(TCP_Client_Connection *connection, uint32_t number, uint8_t connection_id, ClientToClientConnectionStatus status) override;
-    virtual int on_data (TCP_Client_Connection *connection, uint32_t number, uint8_t connection_id, const uint8_t *data, uint16_t length) override;
+    virtual int on_status(TCP_Client_Connection *connection, const bitox::PublicKey &tcp_connection_to_public_key, uint8_t connection_id, ClientToClientConnectionStatus status) override;
+    virtual int on_data (TCP_Client_Connection *connection, const bitox::PublicKey &tcp_connection_to_public_key, uint8_t connection_id, const uint8_t *data, uint16_t length) override;
     virtual int on_oob_data(TCP_Client_Connection *connection, const bitox::PublicKey &public_key, const uint8_t *data, uint16_t length) override;
     virtual int on_onion(TCP_Client_Connection *connection, const uint8_t *data, uint16_t length) override;
     
 private:
     friend TCP_Connection_to;
-    /* return 1 if the connections_number is not valid.
-    * return 0 if the connections_number is valid.
-    */
-    bool connections_number_not_valid(int connections_number) const;
     
     /* return 1 if the tcp_connections_number is not valid.
     * return 0 if the tcp_connections_number is valid.
     */
     bool tcp_connections_number_not_valid(int tcp_connections_number);
-    
-    /* Create a new empty connection.
-    *
-    * return -1 on failure.
-    * return connections_number on success.
-    */
-    int create_connection();
     
     /* Create a new empty tcp connection.
     *
@@ -295,16 +280,7 @@ private:
     * return -1 on failure.
     * return 0 on success.
     */
-    int wipe_connection(int connections_number);
-    
-    /* Wipe a connection.
-    *
-    * return -1 on failure.
-    * return 0 on success.
-    */
     int wipe_tcp_connection(int tcp_connections_number);
-    
-    TCP_Connection_to *get_connection(int connections_number);
     
     TCP_con *get_tcp_connection(int tcp_connections_number);
     
@@ -313,7 +289,7 @@ private:
     * return connections_number on success.
     * return -1 on failure.
     */
-    int find_tcp_connection_to(const bitox::PublicKey &public_key);
+    TCP_Connection_to *find_tcp_connection_to(const bitox::PublicKey &public_key);
     
     /* Find the TCP connection to a relay with relay_pk.
     *
@@ -337,7 +313,7 @@ private:
     * return 0 on success.
     * return -1 on failure.
     */
-    int send_tcp_relay_routing_request(int tcp_connections_number, bitox::PublicKey &public_key);
+    int send_tcp_relay_routing_request(int tcp_connections_number, const bitox::PublicKey &public_key);
 
     /* Set callbacks for the TCP relay connection.
     *

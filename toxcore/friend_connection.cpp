@@ -138,42 +138,29 @@ unsigned int Friend_Conn::send_relays()
 }*/
 
 /* Callback for DHT ip_port changes. */
-/*static void dht_ip_callback(void *object, int32_t number, IPPort ip_port) // TODO
+void Friend_Conn::on_ip_port(const bitox::network::IPPort &ip_port)
 {
-    Friend_Connections *fr_c = (Friend_Connections *) object;
-    Friend_Conn *friend_con = get_conn(fr_c, number);
-
-    if (!friend_con)
-        return;
-
-    if (friend_con->crypt_connection_id == -1) {
-        friend_new_connection(friend_con);
+    if (!crypt_connection) {
+        friend_new_connection();
     }
 
-    fr_c->net_crypto->set_direct_ip_port(friend_con->crypt_connection_id, ip_port, 1);
-    friend_con->dht_ip_port = ip_port;
-    friend_con->dht_ip_port_lastrecv = unix_time();
-
-    if (friend_con->hosting_tcp_relay) {
-        friend_con->friend_add_tcp_relay(ip_port, friend_con->dht_temp_pk);
-        friend_con->hosting_tcp_relay = 0;
+    if (crypt_connection)
+    {
+        crypt_connection->set_direct_ip_port(ip_port, 1);
     }
-}*/
+    dht_ip_port = ip_port;
+    dht_ip_port_lastrecv = unix_time();
+
+    if (hosting_tcp_relay) {
+        friend_add_tcp_relay(ip_port, dht_temp_pk);
+        hosting_tcp_relay = 0;
+    }
+}
 
 void Friend_Conn::change_dht_pk(const PublicKey &dht_public_key)
 {
     dht_pk_lastrecv = unix_time();
-
-    if (dht_lock) {
-        if (connections->dht->delfriend(dht_temp_pk, dht_lock) != 0) {
-            printf("a. Could not delete dht peer. Please report this.\n");
-            return;
-        }
-
-        dht_lock = 0;
-    }
-
-    //connections->dht->addfriend(dht_public_key, dht_ip_callback, connections, friendcon_id, &dht_lock); // TODO
+    dht_friend_link = connections->dht->addfriend(dht_public_key, this);
     dht_temp_pk = dht_public_key;
 }
 
@@ -335,7 +322,7 @@ int Friend_Conn::friend_new_connection()
     }
 
     /* If dht_temp_pk does not contains a pk. */
-    if (!dht_lock) {
+    if (!dht_friend_link) {
         return -1;
     }
 
@@ -407,12 +394,6 @@ std::shared_ptr<Friend_Conn> Friend_Connections::new_friend_connection(const bit
 Friend_Conn::~Friend_Conn()
 {
     onion_delfriend(connections->onion_c, onion_friendnum);
-    // connections->net_crypto->crypto_kill(crypt_connection_id); // TODO
-
-    if (dht_lock) {
-        connections->dht->delfriend(dht_temp_pk, dht_lock);
-    }
-
     connections->connections_map.erase(real_public_key);
 }
 
@@ -490,17 +471,14 @@ void Friend_Connections::do_friend_connections()
         if (friend_con) {
             if (friend_con->status == FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING) {
                 if (friend_con->dht_pk_lastrecv + FRIEND_DHT_TIMEOUT < temp_time) {
-                    if (friend_con->dht_lock) {
-                        dht->delfriend(friend_con->dht_temp_pk, friend_con->dht_lock);
-                        friend_con->dht_lock = 0;
-                    }
+                    friend_con->dht_friend_link.reset();
                 }
 
                 if (friend_con->dht_ip_port_lastrecv + FRIEND_DHT_TIMEOUT < temp_time) {
                     friend_con->dht_ip_port.ip.family = Family::FAMILY_NULL;
                 }
 
-                if (friend_con->dht_lock) {
+                if (friend_con->dht_friend_link) {
                     if (friend_con->friend_new_connection() == 0 && friend_con->crypt_connection) {
                         friend_con->crypt_connection->set_direct_ip_port(friend_con->dht_ip_port, 0);
                         friend_con->connect_to_saved_tcp_relays((MAX_FRIEND_TCP_CONNECTIONS / 2)); /* Only fill it half up. */
@@ -518,7 +496,6 @@ void Friend_Connections::do_friend_connections()
 
                 if (friend_con->ping_lastrecv + FRIEND_CONNECTION_TIMEOUT < temp_time) {
                     /* If we stopped receiving ping packets, kill it. */
-                    //net_crypto->crypto_kill(friend_con->crypt_connection_id->id); TODO
                     friend_con->crypt_connection.reset();
                     friend_con->on_status(0); /* Going offline. */
                 }

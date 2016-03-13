@@ -104,7 +104,7 @@ public:
     virtual int on_lossy_data(uint8_t *data, uint16_t length) = 0;
 };
 
-struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public CryptoConnectionEventListener
+struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public CryptoConnectionEventListener, public DHTIPPortListener
 {
     Friend_Conn(Friend_Connections *connections, const bitox::PublicKey &real_public_key);
     ~Friend_Conn();
@@ -175,7 +175,7 @@ struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public Cr
 
     const bitox::PublicKey real_public_key;
     bitox::PublicKey dht_temp_pk;
-    uint16_t dht_lock;
+    std::unique_ptr<DHTFriendLink> dht_friend_link;
     bitox::network::IPPort dht_ip_port;
     uint64_t dht_pk_lastrecv, dht_ip_port_lastrecv;
 
@@ -197,6 +197,7 @@ struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public Cr
     virtual int on_data(uint8_t *data, uint16_t length) override;
     virtual int on_lossy_data(uint8_t *data, uint16_t length) override;
     virtual void on_dht_pk(const bitox::PublicKey &dht_public_key) override;
+    virtual void on_ip_port(const bitox::network::IPPort &ip_port) override;
     
 // private:
     unsigned int send_relays();

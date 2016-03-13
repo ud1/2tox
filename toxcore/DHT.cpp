@@ -525,24 +525,18 @@ static int client_in_nodelist (const NodeFormat *list, uint16_t length, const bi
 /*  return friend_ number from the public_key.
  *  return -1 if a failure occurs.
  */
-static int friend_number (const DHT *dht, const bitox::PublicKey &public_key)
+DHT_Friend *DHT::get_friend (const bitox::PublicKey &public_key) const
 {
-    uint32_t i;
-
-    for (i = 0; i < dht->friends_list.size(); ++i)
-    {
-        if (dht->friends_list[i].public_key == public_key)
-        {
-            return i;
-        }
-    }
-
-    return -1;
+    auto it = friends.find(public_key);
+    if (it == friends.end())
+        return nullptr;
+    
+    return it->second;
 }
 
 /* Add node to the node list making sure only the nodes closest to cmp_pk are in the list.
  */
-_Bool add_to_list (NodeFormat *nodes_list, unsigned int length, const bitox::PublicKey &pk, IPPort ip_port,
+bool add_to_list (NodeFormat *nodes_list, unsigned int length, const bitox::PublicKey &pk, IPPort ip_port,
                    const bitox::PublicKey &cmp_pk)
 {
     bitox::PublicKey pk_bak;
@@ -685,11 +679,13 @@ static int get_somewhat_close_nodes (const DHT *dht, const bitox::PublicKey &pub
                                   dht->friends_list[i].client_list, MAX_FRIEND_CLIENTS,
                                   &num_nodes, is_LAN, want_good);
     */
-    for (i = 0; i < dht->friends_list.size(); ++i)
+    for (auto &kv : dht->friends)
+    {
         get_close_nodes_inner (public_key, nodes_list, sa_family,
-                               dht->friends_list[i].client_list, MAX_FRIEND_CLIENTS,
+                               kv.second->client_list, MAX_FRIEND_CLIENTS,
                                &num_nodes, is_LAN, 0);
-
+    }
+    
     return num_nodes;
 }
 
@@ -971,7 +967,7 @@ bool DHT::node_addable_to_close_list (const bitox::PublicKey &public_key, IPPort
     return 0;
 }
 
-static _Bool is_pk_in_client_list (Client_data *list, unsigned int client_list_length, const bitox::PublicKey &public_key,
+static bool is_pk_in_client_list (Client_data *list, unsigned int client_list_length, const bitox::PublicKey &public_key,
                                    IPPort ip_port)
 {
     unsigned int i;
@@ -999,11 +995,11 @@ static _Bool is_pk_in_client_list (Client_data *list, unsigned int client_list_l
  */
 unsigned int DHT::ping_node_from_getnodes_ok (const bitox::PublicKey &public_key, IPPort ip_port)
 {
-    _Bool ret = 0;
+    bool ret = false;
 
     if (add_to_close (public_key, ip_port, 1) == 0)
     {
-        ret = 1;
+        ret = true;
     }
 
     if (ret && !client_in_nodelist (to_bootstrap, num_to_bootstrap, public_key))
@@ -1023,11 +1019,11 @@ unsigned int DHT::ping_node_from_getnodes_ok (const bitox::PublicKey &public_key
 
     unsigned int i;
 
-    for (i = 0; i < friends_list.size(); ++i)
+    for (auto &kv : friends)
     {
-        _Bool store_ok = 0;
+        bool store_ok = 0;
 
-        DHT_Friend *friend_ = &friends_list[i];
+        DHT_Friend *friend_ = kv.second;
 
         if (store_node_ok (&friend_->client_list[1], public_key, friend_->public_key))
         {
@@ -1053,7 +1049,7 @@ unsigned int DHT::ping_node_from_getnodes_ok (const bitox::PublicKey &public_key
                 add_to_list (friend_->to_bootstrap, MAX_SENT_NODES, public_key, ip_port, friend_->public_key);
             }
 
-            ret = 1;
+            ret = true;
         }
     }
 
@@ -1093,16 +1089,15 @@ int DHT::addto_lists (IPPort ip_port, const bitox::PublicKey &public_key)
 
     DHT_Friend *friend_foundip = 0;
 
-    for (i = 0; i < friends_list.size(); ++i)
+    for (auto &kv : friends)
     {
-        if (!client_or_ip_port_in_list (friends_list[i].client_list,
+        DHT_Friend *friend_ = kv.second;
+        if (!client_or_ip_port_in_list (friend_->client_list,
                                         MAX_FRIEND_CLIENTS, public_key, ip_port))
         {
-            if (replace_all (friends_list[i].client_list, MAX_FRIEND_CLIENTS,
-                             public_key, ip_port, friends_list[i].public_key))
+            if (replace_all (friend_->client_list, MAX_FRIEND_CLIENTS,
+                             public_key, ip_port, friend_->public_key))
             {
-
-                DHT_Friend *friend_ = &friends_list[i];
 
                 if (public_key == friend_->public_key)
                 {
@@ -1114,8 +1109,6 @@ int DHT::addto_lists (IPPort ip_port, const bitox::PublicKey &public_key)
         }
         else
         {
-            DHT_Friend *friend_ = &friends_list[i];
-
             if (public_key == friend_->public_key)
             {
                 friend_foundip = friend_;
@@ -1129,11 +1122,9 @@ int DHT::addto_lists (IPPort ip_port, const bitox::PublicKey &public_key)
     {
         uint32_t j;
 
-        for (j = 0; j < friend_foundip->lock_count; ++j)
+        for (DHTIPPortListener *listener : friend_foundip->ip_port_listeners)
         {
-            if (friend_foundip->callbacks[j].ip_callback)
-                friend_foundip->callbacks[j].ip_callback (friend_foundip->callbacks[j].data, friend_foundip->callbacks[j].number,
-                                                          ip_port);
+            listener->on_ip_port(ip_port);
         }
     }
 
@@ -1194,34 +1185,30 @@ int DHT::returnedip_ports (IPPort ip_port, const bitox::PublicKey &public_key, c
     }
     else
     {
-        for (i = 0; i < friends_list.size(); ++i)
+        if (DHT_Friend *friend_ = get_friend(public_key))
         {
-            if (public_key == friends_list[i].public_key)
+            for (j = 0; j < MAX_FRIEND_CLIENTS; ++j)
             {
-                for (j = 0; j < MAX_FRIEND_CLIENTS; ++j)
+                if (nodepublic_key == friend_->client_list[j].public_key)
                 {
-                    if (nodepublic_key == friends_list[i].client_list[j].public_key)
+                    if (ip_port.ip.family == Family::FAMILY_AF_INET)
                     {
-                        if (ip_port.ip.family == Family::FAMILY_AF_INET)
-                        {
-                            friends_list[i].client_list[j].assoc4.ret_ip_port = ip_port;
-                            friends_list[i].client_list[j].assoc4.ret_timestamp = temp_time;
-                        }
-                        else if (ip_port.ip.family == Family::FAMILY_AF_INET6)
-                        {
-                            friends_list[i].client_list[j].assoc6.ret_ip_port = ip_port;
-                            friends_list[i].client_list[j].assoc6.ret_timestamp = temp_time;
-                        }
-
-                        ++used;
-                        goto end;
+                        friend_->client_list[j].assoc4.ret_ip_port = ip_port;
+                        friend_->client_list[j].assoc4.ret_timestamp = temp_time;
                     }
+                    else if (ip_port.ip.family == Family::FAMILY_AF_INET6)
+                    {
+                        friend_->client_list[j].assoc6.ret_ip_port = ip_port;
+                        friend_->client_list[j].assoc6.ret_timestamp = temp_time;
+                    }
+
+                    ++used;
+                    break;
                 }
             }
         }
     }
 
-end:
 #ifdef ENABLE_ASSOC_DHT
 
     if (assoc)
@@ -1357,93 +1344,47 @@ void DHT::onSendNodes (const IPPort &source, const PublicKey &sender_public_key,
 
 /*----------------------------------------------------------------------------------*/
 /*------------------------END of packet handling functions--------------------------*/
-
-bool DHT::addfriend (const bitox::PublicKey &public_key, void (*ip_callback) (void *data, int32_t number, IPPort),
-                     void *data, int32_t number, uint16_t *lock_count)
+DHT_Friend::DHT_Friend(DHT *dht, const PublicKey &public_key) : dht(dht), public_key(public_key)
 {
-    int friend_num = friend_number (this, public_key);
-
-    uint16_t lock_num;
-
-    if (friend_num != -1)   /* Is friend_ already in DHT? */
-    {
-        DHT_Friend *friend_ = &friends_list[friend_num];
-
-        if (friend_->lock_count == DHT_FRIEND_MAX_LOCKS)
-        {
-            return false;
-        }
-
-        lock_num = friend_->lock_count;
-        ++friend_->lock_count;
-        friend_->callbacks[lock_num].ip_callback = ip_callback;
-        friend_->callbacks[lock_num].data = data;
-        friend_->callbacks[lock_num].number = number;
-
-        if (lock_count)
-        {
-            *lock_count = lock_num + 1;
-        }
-
-        return true;
-    }
-
-    friends_list.emplace_back();
-
-    DHT_Friend *friend_ = & (friends_list.back());
-    memset (friend_, 0, sizeof (DHT_Friend));
-    friend_->public_key = public_key;
-
-    friend_->nat.NATping_id = random_64b();
-
-    lock_num = friend_->lock_count;
-    ++friend_->lock_count;
-    friend_->callbacks[lock_num].ip_callback = ip_callback;
-    friend_->callbacks[lock_num].data = data;
-    friend_->callbacks[lock_num].number = number;
-
-    if (lock_count)
-    {
-        *lock_count = lock_num + 1;
-    }
-
-    friend_->num_to_bootstrap = get_close_nodes (friend_->public_key, friend_->to_bootstrap, 0, 1, 0);
-
-    return true;
+    dht->friends[public_key] = this;
 }
 
-bool DHT::delfriend (const bitox::PublicKey &public_key, uint16_t lock_count)
+DHT_Friend::~DHT_Friend()
 {
-    int friend_num = friend_number (this, public_key);
+    dht->friends.erase(public_key);
+}
 
-    if (friend_num == -1)
+DHTFriendLink::DHTFriendLink(const std::shared_ptr<DHT_Friend> &dht_friend, DHTIPPortListener *listener) :
+    dht_friend(dht_friend), listener(listener)
+{
+    if (listener)
+        dht_friend->ip_port_listeners.insert(listener);
+}
+
+DHTFriendLink::~DHTFriendLink()
+{
+    if (listener)
+        dht_friend->ip_port_listeners.erase(listener);
+}
+    
+std::unique_ptr<DHTFriendLink> DHT::addfriend (const bitox::PublicKey &public_key, DHTIPPortListener *listener)
+{
+    if (DHT_Friend *friend_ = get_friend (public_key))   /* Is friend_ already in DHT? */
     {
-        return false;
+        if (friend_->ip_port_listeners.size() >= DHT_FRIEND_MAX_LOCKS)
+        {
+            return std::unique_ptr<DHTFriendLink>();
+        }
+
+        return std::unique_ptr<DHTFriendLink>(new DHTFriendLink(friend_->shared_from_this(), listener));
     }
 
-    DHT_Friend *friend_ = &friends_list[friend_num];
-    --friend_->lock_count;
+    std::shared_ptr<DHT_Friend> friend_ = std::shared_ptr<DHT_Friend>(new DHT_Friend(this, public_key));
 
-    if (friend_->lock_count && lock_count)   /* DHT friend_ is still in use.*/
-    {
-        --lock_count;
-        friend_->callbacks[lock_count].ip_callback = NULL;
-        friend_->callbacks[lock_count].data = NULL;
-        friend_->callbacks[lock_count].number = 0;
-        return true;
-    }
+    friend_->nat.NATping_id = random_64b();
+    friend_->num_to_bootstrap = get_close_nodes (friend_->public_key, friend_->to_bootstrap, 0, 1, 0);
 
-    DHT_Friend *temp;
-
-    if (friends_list.size() - 1 != friend_num)
-    {
-        memcpy (&friends_list[friend_num],
-                &friends_list[friends_list.size() - 1],
-                sizeof (DHT_Friend));
-    }
-
-    friends_list.pop_back();
-    return true;
+    return std::unique_ptr<DHTFriendLink>(new DHTFriendLink(friend_, listener));
 }
 
 /* TODO: Optimize this. */
@@ -1454,31 +1395,27 @@ int DHT::getfriendip (const bitox::PublicKey &public_key, IPPort *ip_port) const
     ip_reset (&ip_port->ip);
     ip_port->port = 0;
 
-    for (i = 0; i < friends_list.size(); ++i)
+    if (DHT_Friend *friend_ = get_friend (public_key)) 
     {
-        /* Equal */
-        if (friends_list[i].public_key == public_key)
+        for (j = 0; j < MAX_FRIEND_CLIENTS; ++j)
         {
-            for (j = 0; j < MAX_FRIEND_CLIENTS; ++j)
+            const Client_data *client = &friend_->client_list[j];
+
+            if (client->public_key == public_key)
             {
-                const Client_data *client = &friends_list[i].client_list[j];
+                const IPPTsPng *assoc = NULL;
+                uint32_t a;
 
-                if (client->public_key == public_key)
-                {
-                    const IPPTsPng *assoc = NULL;
-                    uint32_t a;
-
-                    for (a = 0, assoc = &client->assoc6; a < 2; a++, assoc = &client->assoc4)
-                        if (!is_timeout (assoc->timestamp, BAD_NODE_TIMEOUT))
-                        {
-                            *ip_port = assoc->ip_port;
-                            return 1;
-                        }
-                }
+                for (a = 0, assoc = &client->assoc6; a < 2; a++, assoc = &client->assoc4)
+                    if (!is_timeout (assoc->timestamp, BAD_NODE_TIMEOUT))
+                    {
+                        *ip_port = assoc->ip_port;
+                        return 1;
+                    }
             }
-
-            return 0;
         }
+
+        return 0;
     }
 
     return -1;
@@ -1496,7 +1433,7 @@ uint8_t DHT::do_ping_and_sendnode_requests (uint64_t *lastgetnode, const bitox::
     Client_data *client_list[list_count * 2];
     IPPTsPng    *assoc_list[list_count * 2];
     unsigned int sort = 0;
-    _Bool sort_ok = 0;
+    bool sort_ok = false;
 
     for (i = 0; i < list_count; i++)
     {
@@ -1532,7 +1469,7 @@ uint8_t DHT::do_ping_and_sendnode_requests (uint64_t *lastgetnode, const bitox::
                 /* Timed out should be at beginning, if they are not, sort the list. */
                 if (sort > 1 && sort < ( ( (i + 1) * 2) - 1))
                 {
-                    sort_ok = 1;
+                    sort_ok = true;
                 }
             }
     }
@@ -1567,9 +1504,9 @@ void DHT::do_DHT_friends ()
 {
     unsigned int i, j;
 
-    for (i = 0; i < friends_list.size(); ++i)
+    for (auto &kv : friends)
     {
-        DHT_Friend *friend_ = &friends_list[i];
+        DHT_Friend *friend_ = kv.second;
 
         for (j = 0; j < friend_->num_to_bootstrap; ++j)
         {
@@ -1715,14 +1652,8 @@ int DHT::route_packet (const bitox::PublicKey &public_key, const uint8_t *packet
  *  return 0 if we are connected to friend_ or if no ips were found.
  *  return -1 if no such friend_.
  */
-int DHT::friend_iplist (IPPort *ip_portlist, uint16_t friend_num) const
+int DHT::friend_iplist (IPPort *ip_portlist, const DHT_Friend *friend_) const
 {
-    if (friend_num >= friends_list.size())
-    {
-        return -1;
-    }
-
-    const DHT_Friend *friend_ = &friends_list[friend_num];
     const Client_data *client;
     IPPort ipv4s[MAX_FRIEND_CLIENTS];
     int num_ipv4s = 0;
@@ -1799,25 +1730,21 @@ int DHT::friend_iplist (IPPort *ip_portlist, uint16_t friend_num) const
  */
 int DHT::route_tofriend (const bitox::PublicKey &friend_id, const uint8_t *packet, uint16_t length) const
 {
-    int num = friend_number (this, friend_id);
-
-    if (num == -1)
-    {
+    DHT_Friend *friend_ = get_friend(friend_id);
+    if (!friend_)
         return 0;
-    }
 
     uint32_t i, sent = 0;
     uint8_t friend_sent[MAX_FRIEND_CLIENTS] = {0};
 
     IPPort ip_list[MAX_FRIEND_CLIENTS];
-    int ip_num = friend_iplist (ip_list, num);
+    int ip_num = friend_iplist (ip_list, friend_);
 
     if (ip_num < (MAX_FRIEND_CLIENTS / 4))
     {
         return 0;    /* Reason for that? */
     }
 
-    const DHT_Friend *friend_ = &friends_list[num];
     const Client_data *client;
 
     /* extra legwork, because having the outside allocating the space for us
@@ -1867,14 +1794,10 @@ int DHT::route_tofriend (const bitox::PublicKey &friend_id, const uint8_t *packe
  */
 int DHT::routeone_tofriend (const bitox::PublicKey &friend_id, const uint8_t *packet, uint16_t length)
 {
-    int num = friend_number (this, friend_id);
-
-    if (num == -1)
-    {
+    DHT_Friend *friend_ = get_friend(friend_id);
+    if (!friend_)
         return 0;
-    }
-
-    DHT_Friend *friend_ = &friends_list[num];
+    
     Client_data *client;
 
     IPPort ip_list[MAX_FRIEND_CLIENTS * 2];
@@ -1956,12 +1879,10 @@ int DHT::send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, NAT
 
 void DHT::onNATPing (const IPPort &source, const PublicKey &sender_public_key, const NATPingCryptoData &data)
 {
-    int friendnumber = friend_number (this, sender_public_key);
+    DHT_Friend *friend_ = get_friend (sender_public_key);
 
-    if (friendnumber == -1)
+    if (!friend_)
         return;
-
-    DHT_Friend *friend_ = &friends_list[friendnumber];
 
     if (data.type == NATPingCryptoData::Type::NAT_PING_REQUEST)
     {
@@ -2039,7 +1960,7 @@ static uint16_t NAT_getports (uint16_t *portlist, IPPort *ip_portlist, uint16_t 
     return num;
 }
 
-void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t friend_num)
+void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, DHT_Friend *friend_)
 {
     if (numports > MAX_FRIEND_CLIENTS || numports == 0)
     {
@@ -2047,7 +1968,7 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
     }
 
     uint32_t i;
-    uint32_t top = friends_list[friend_num].nat.punching_index + MAX_PUNCHING_PORTS;
+    uint32_t top = friend_->nat.punching_index + MAX_PUNCHING_PORTS;
     uint16_t firstport = port_list[0];
 
     for (i = 0; i < numports; ++i)
@@ -2063,51 +1984,52 @@ void DHT::punch_holes (IP ip, uint16_t *port_list, uint16_t numports, uint16_t f
         IPPort pinging;
         ip_copy (&pinging.ip, &ip);
         pinging.port = htons (firstport);
-        ping->send_ping_request (pinging, friends_list[friend_num].public_key);
+        ping->send_ping_request (pinging, friend_->public_key);
     }
     else
     {
-        for (i = friends_list[friend_num].nat.punching_index; i != top; ++i)
+        for (i = friend_->nat.punching_index; i != top; ++i)
         {
             /* TODO: Improve port guessing algorithm. */
             uint16_t port = port_list[ (i / 2) % numports] + (i / (2 * numports)) * ( (i % 2) ? -1 : 1);
             IPPort pinging;
             ip_copy (&pinging.ip, &ip);
             pinging.port = htons (port);
-            ping->send_ping_request (pinging, friends_list[friend_num].public_key);
+            ping->send_ping_request (pinging, friend_->public_key);
         }
 
-        friends_list[friend_num].nat.punching_index = i;
+        friend_->nat.punching_index = i;
     }
 
-    if (friends_list[friend_num].nat.tries > MAX_NORMAL_PUNCHING_TRIES)
+    if (friend_->nat.tries > MAX_NORMAL_PUNCHING_TRIES)
     {
-        top = friends_list[friend_num].nat.punching_index2 + MAX_PUNCHING_PORTS;
+        top = friend_->nat.punching_index2 + MAX_PUNCHING_PORTS;
         uint16_t port = 1024;
         IPPort pinging;
         ip_copy (&pinging.ip, &ip);
 
-        for (i = friends_list[friend_num].nat.punching_index2; i != top; ++i)
+        for (i = friend_->nat.punching_index2; i != top; ++i)
         {
             pinging.port = htons (port + i);
-            ping->send_ping_request (pinging, friends_list[friend_num].public_key);
+            ping->send_ping_request (pinging, friend_->public_key);
         }
 
-        friends_list[friend_num].nat.punching_index2 = i - (MAX_PUNCHING_PORTS / 2);
+        friend_->nat.punching_index2 = i - (MAX_PUNCHING_PORTS / 2);
     }
 
-    ++friends_list[friend_num].nat.tries;
+    ++friend_->nat.tries;
 }
 
 void DHT::do_NAT ()
 {
-    uint32_t i;
     uint64_t temp_time = unix_time();
 
-    for (i = 0; i < friends_list.size(); ++i)
+    for (auto &kv : friends)
     {
+        DHT_Friend *friend_ = kv.second;
+        
         IPPort ip_list[MAX_FRIEND_CLIENTS];
-        int num = friend_iplist (ip_list, i);
+        int num = friend_iplist (ip_list, friend_);
 
         /* If already connected or friend_ is not online don't try to hole punch. */
         if (num < MAX_FRIEND_CLIENTS / 2)
@@ -2115,15 +2037,15 @@ void DHT::do_NAT ()
             continue;
         }
 
-        if (friends_list[i].nat.NATping_timestamp + PUNCH_INTERVAL < temp_time)
+        if (friend_->nat.NATping_timestamp + PUNCH_INTERVAL < temp_time)
         {
-            send_NATping (friends_list[i].public_key, friends_list[i].nat.NATping_id, NATPingCryptoData::Type::NAT_PING_REQUEST);
-            friends_list[i].nat.NATping_timestamp = temp_time;
+            send_NATping (friend_->public_key, friend_->nat.NATping_id, NATPingCryptoData::Type::NAT_PING_REQUEST);
+            friend_->nat.NATping_timestamp = temp_time;
         }
 
-        if (friends_list[i].nat.hole_punching == 1 &&
-                friends_list[i].nat.punching_timestamp + PUNCH_INTERVAL < temp_time &&
-                friends_list[i].nat.recvNATping_timestamp + PUNCH_INTERVAL * 2 >= temp_time)
+        if (friend_->nat.hole_punching == 1 &&
+                friend_->nat.punching_timestamp + PUNCH_INTERVAL < temp_time &&
+                friend_->nat.recvNATping_timestamp + PUNCH_INTERVAL * 2 >= temp_time)
         {
 
             IP ip = NAT_commonip (ip_list, num, MAX_FRIEND_CLIENTS / 2);
@@ -2135,10 +2057,10 @@ void DHT::do_NAT ()
 
             uint16_t port_list[MAX_FRIEND_CLIENTS];
             uint16_t numports = NAT_getports (port_list, ip_list, num, ip);
-            punch_holes (ip, port_list, numports, i);
+            punch_holes (ip, port_list, numports, friend_);
 
-            friends_list[i].nat.punching_timestamp = temp_time;
-            friends_list[i].nat.hole_punching = 0;
+            friend_->nat.punching_timestamp = temp_time;
+            friend_->nat.hole_punching = 0;
         }
     }
 }
@@ -2432,13 +2354,18 @@ uint16_t DHT::randfriends_nodes (NodeFormat *nodes, uint16_t max_num)
     }
 
     uint16_t count = 0;
-    unsigned int i, r = rand();
+    unsigned r = rand();
 
-    for (i = 0; i < DHT_FAKE_FRIEND_NUMBER; ++i)
+    for (size_t i = 0; i < DHT_FAKE_FRIEND_NUMBER && i < friends.size(); ++i)
     {
-        count += list_nodes (friends_list[ (i + r) % DHT_FAKE_FRIEND_NUMBER].client_list, MAX_FRIEND_CLIENTS, nodes + count,
-                             max_num - count);
+        size_t ind = (i + r) % DHT_FAKE_FRIEND_NUMBER;
 
+        if (fake_friend_links[ind])
+        {
+            count += list_nodes (fake_friend_links[ind]->get_friend()->client_list, MAX_FRIEND_CLIENTS, nodes + count,
+                             max_num - count);
+        }
+        
         if (count >= max_num)
         {
             break;
@@ -2566,9 +2493,9 @@ DHT::DHT (Networking_Core *net) :
         bitox::PublicKey random_key_bytes;
         randombytes (random_key_bytes.data.data(), random_key_bytes.data.size());
 
-        if (!this->addfriend (random_key_bytes, 0, 0, 0, 0))
+        if (fake_friend_links[i] = this->addfriend (random_key_bytes, nullptr))
         {
-            throw std::runtime_error ("Add friend error");
+            throw std::runtime_error ("Add fake friend error");
         }
     }
     
@@ -2635,14 +2562,17 @@ uint32_t DHT::size () const
         numv6 += (close_clientlist[i].assoc6.timestamp != 0);
     }
 
-    for (i = 0; i < DHT_FAKE_FRIEND_NUMBER && i < friends_list.size(); ++i)
+    for (i = 0; i < DHT_FAKE_FRIEND_NUMBER; ++i)
     {
-        const DHT_Friend *fr = &friends_list[i];
+        const DHT_Friend *fr = fake_friend_links[i] ? fake_friend_links[i]->get_friend() : nullptr;
 
-        for (j = 0; j < MAX_FRIEND_CLIENTS; ++j)
+        if (fr)
         {
-            numv4 += (fr->client_list[j].assoc4.timestamp != 0);
-            numv6 += (fr->client_list[j].assoc6.timestamp != 0);
+            for (j = 0; j < MAX_FRIEND_CLIENTS; ++j)
+            {
+                numv4 += (fr->client_list[j].assoc4.timestamp != 0);
+                numv6 += (fr->client_list[j].assoc6.timestamp != 0);
+            }
         }
     }
 
@@ -2693,24 +2623,27 @@ void DHT::save (uint8_t *data)
         }
     }
 
-    for (i = 0; i < DHT_FAKE_FRIEND_NUMBER && i < friends_list.size(); ++i)
+    for (i = 0; i < DHT_FAKE_FRIEND_NUMBER; ++i)
     {
-        DHT_Friend *fr = &friends_list[i];
+        DHT_Friend *fr = fake_friend_links[i] ? fake_friend_links[i]->get_friend() : nullptr;
 
-        for (j = 0; j < MAX_FRIEND_CLIENTS; ++j)
+        if (fr)
         {
-            if (fr->client_list[j].assoc4.timestamp != 0)
+            for (j = 0; j < MAX_FRIEND_CLIENTS; ++j)
             {
-                clients[num].public_key = fr->client_list[j].public_key;
-                clients[num].ip_port = fr->client_list[j].assoc4.ip_port;
-                ++num;
-            }
+                if (fr->client_list[j].assoc4.timestamp != 0)
+                {
+                    clients[num].public_key = fr->client_list[j].public_key;
+                    clients[num].ip_port = fr->client_list[j].assoc4.ip_port;
+                    ++num;
+                }
 
-            if (fr->client_list[j].assoc6.timestamp != 0)
-            {
-                clients[num].public_key = fr->client_list[j].public_key;
-                clients[num].ip_port = fr->client_list[j].assoc6.ip_port;
-                ++num;
+                if (fr->client_list[j].assoc6.timestamp != 0)
+                {
+                    clients[num].public_key = fr->client_list[j].public_key;
+                    clients[num].ip_port = fr->client_list[j].assoc6.ip_port;
+                    ++num;
+                }
             }
         }
     }

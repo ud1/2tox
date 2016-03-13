@@ -34,6 +34,8 @@
 #include <sodium.h>
 #include <sodium/utils.h>
 #include <memory>
+#include <map>
+#include <set>
 
 /* Maximum number of clients stored per friend_. */
 #define MAX_FRIEND_CLIENTS 8
@@ -132,9 +134,37 @@ struct NAT
 
 #define DHT_FRIEND_MAX_LOCKS 32
 
-struct DHT_Friend
+class DHTIPPortListener
 {
-    bitox::PublicKey public_key;
+public:
+    virtual void on_ip_port(const bitox::network::IPPort &ip_port) = 0;
+};
+
+struct DHT_Friend;
+
+class DHTFriendLink
+{
+public:
+    DHTFriendLink(const std::shared_ptr<DHT_Friend> &dht_friend, DHTIPPortListener *listener);
+    DHTFriendLink(const DHTFriendLink &o) = delete;
+    DHTFriendLink(DHTFriendLink &&o) = delete;
+    ~DHTFriendLink();
+    DHT_Friend *get_friend()
+    {
+        return dht_friend.get();
+    }
+private:
+    std::shared_ptr<DHT_Friend> dht_friend;
+    DHTIPPortListener *listener;
+};
+
+struct DHT_Friend : public std::enable_shared_from_this<DHT_Friend>
+{
+    DHT_Friend(DHT *dht, const bitox::PublicKey &public_key);
+    ~DHT_Friend();
+    
+    DHT *const dht;
+    const bitox::PublicKey public_key;
     Client_data client_list[MAX_FRIEND_CLIENTS];
 
     /* Time at which the last get_nodes request was sent. */
@@ -145,13 +175,7 @@ struct DHT_Friend
     /* Symetric NAT hole punching stuff. */
     NAT         nat;
 
-    uint16_t lock_count;
-    struct
-    {
-        void (*ip_callback) (void *, int32_t, bitox::network::IPPort);
-        void *data;
-        int32_t number;
-    } callbacks[DHT_FRIEND_MAX_LOCKS];
+    std::set<DHTIPPortListener *> ip_port_listeners;
 
     bitox::dht::NodeFormat to_bootstrap[bitox::MAX_SENT_NODES];
     unsigned int num_to_bootstrap;
@@ -226,7 +250,8 @@ struct DHT : public bitox::network::IncomingPacketListener
     bitox::PublicKey self_public_key;
     bitox::SecretKey self_secret_key;
 
-    std::vector<DHT_Friend> friends_list;
+    std::map<bitox::PublicKey, DHT_Friend *> friends;
+    
     std::vector<bitox::dht::NodeFormat> loaded_nodes_list;
     uint32_t       loaded_num_nodes = 0;
     unsigned int   loaded_nodes_index = 0;
@@ -254,6 +279,8 @@ struct DHT : public bitox::network::IncomingPacketListener
 
     bitox::dht::NodeFormat to_bootstrap[MAX_CLOSE_TO_BOOTSTRAP_NODES] = {};
     unsigned int num_to_bootstrap = 0;
+    uint32_t friends_list;
+    std::unique_ptr<DHTFriendLink> fake_friend_links[DHT_FAKE_FRIEND_NUMBER];
     
     void subscribe (bitox::network::IncomingPacketListener *listener)
     {
@@ -287,17 +314,7 @@ struct DHT : public bitox::network::IncomingPacketListener
      *  return true if success.
      *  return false if failure (friends list is full).
      */
-    bool addfriend (const bitox::PublicKey &public_key, void (*ip_callback) (void *data, int32_t number, bitox::network::IPPort),
-                    void *data, int32_t number, uint16_t *lock_count);
-
-    /*
-     * Delete a friend_ from the friends list.
-     * public_key must be crypto_box_PUBLICKEYBYTES bytes long.
-     *
-     *  return true if success.
-     *  return false if failure (public_key not in friends list).
-     */
-    bool delfriend (const bitox::PublicKey &public_key, uint16_t lock_count);
+    std::unique_ptr<DHTFriendLink> addfriend (const bitox::PublicKey &public_key, DHTIPPortListener *listener);
 
     /*
      * Get ip of friend_.
@@ -444,11 +461,11 @@ struct DHT : public bitox::network::IncomingPacketListener
     void do_NAT ();
     int add_to_close (const bitox::PublicKey &public_key, bitox::network::IPPort ip_port, bool simulate);
     unsigned int ping_node_from_getnodes_ok (const bitox::PublicKey &public_key, bitox::network::IPPort ip_port);
-    int friend_iplist (bitox::network::IPPort *ip_portlist, uint16_t friend_num) const;
+    int friend_iplist (bitox::network::IPPort *ip_portlist, const DHT_Friend *friend_) const;
     int send_hardening_getnode_req (bitox::dht::NodeFormat *dest, bitox::dht::NodeFormat *node_totest, const bitox::PublicKey &search_id);
     int returnedip_ports (bitox::network::IPPort ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &nodepublic_key);
     int routeone_tofriend (const bitox::PublicKey &friend_id, const uint8_t *packet, uint16_t length);
-    void punch_holes (bitox::network::IP ip, uint16_t *port_list, uint16_t numports, uint16_t friend_num);
+    void punch_holes (bitox::network::IP ip, uint16_t *port_list, uint16_t numports, DHT_Friend *friend_);
     IPPTsPng *get_closelist_IPPTsPng (const bitox::PublicKey &public_key, bitox::network::Family sa_family);
     bitox::dht::NodeFormat random_node (sa_family_t sa_family);
     bool sent_getnode_to_node (const bitox::PublicKey &public_key, bitox::network::IPPort node_ip_port, uint64_t ping_id,
@@ -456,6 +473,7 @@ struct DHT : public bitox::network::IncomingPacketListener
     int send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, bitox::NATPingCryptoData::Type type);
     uint32_t have_nodes_closelist (bitox::dht::NodeFormat *nodes, uint16_t num);
     bool sendnodes_ipv6 (bitox::network::IPPort ip_port, const bitox::PublicKey &public_key, const bitox::PublicKey &client_id, uint64_t ping_id);
+    DHT_Friend *get_friend (const bitox::PublicKey &public_key) const;
 };
 /*----------------------------------------------------------------------------------*/
 

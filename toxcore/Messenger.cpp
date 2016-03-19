@@ -2002,7 +2002,7 @@ void Messenger::do_friends()
 
 void Messenger::connection_status_cb()
 {
-    unsigned int conn_status = onion_connection_status(onion_c.get());
+    unsigned int conn_status = onion_c->onion_connection_status();
 
     if (conn_status != last_connection_status) {
         if (core_connection_change)
@@ -2084,7 +2084,7 @@ void Messenger::do_messenger()
     }
 
     net_crypto->do_net_crypto();
-    do_onion_client(onion_c.get());
+    onion_c->do_onion_client();
     fr_c->do_friend_connections();
     do_friends();
     connection_status_cb();
@@ -2408,7 +2408,7 @@ void Messenger::messenger_save(uint8_t *data) const
     temp_data = data;
     data = z_state_save_subheader(data, 0, type);
     memset(nodes, 0, sizeof(nodes));
-    num = onion_backup_nodes(onion_c.get(), nodes, NUM_SAVED_PATH_NODES);
+    num = onion_c->onion_backup_nodes(nodes, NUM_SAVED_PATH_NODES);
     l = pack_nodes(data, NUM_SAVED_PATH_NODES * packed_node_size(TCP_INET6), nodes, num);
 
     if (l > 0) {
@@ -2488,7 +2488,7 @@ static int messenger_load_state_callback(void *outer, const uint8_t *data, uint3
             int i, num = unpack_nodes(nodes, NUM_SAVED_PATH_NODES, 0, data, length, 0);
 
             for (i = 0; i < num; ++i) {
-                onion_add_bs_path_node(m->onion_c.get(), nodes[i].ip_port, nodes[i].public_key);
+                m->onion_c->onion_add_bs_path_node(nodes[i].ip_port, nodes[i].public_key);
             }
 
             break;

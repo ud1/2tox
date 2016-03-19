@@ -179,7 +179,7 @@ struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public Cr
     bitox::network::IPPort dht_ip_port;
     uint64_t dht_pk_lastrecv, dht_ip_port_lastrecv;
 
-    int onion_friendnum = -1;
+    std::shared_ptr<Onion_Friend> onion_friend;
     std::shared_ptr<Crypto_Connection> crypt_connection;
 
     uint64_t ping_lastrecv, ping_lastsent;

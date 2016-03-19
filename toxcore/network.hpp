@@ -50,7 +50,7 @@ namespace bitox
 {
 
 namespace network
-{    
+{
     
 struct Socket {
     int fd;

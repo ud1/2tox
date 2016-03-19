@@ -28,6 +28,8 @@
 #include "net_crypto.hpp"
 #include "ping_array.hpp"
 #include <vector>
+#include <map>
+#include <memory>
 
 #define MAX_ONION_CLIENTS 8
 #define MAX_ONION_CLIENTS_ANNOUNCE 12 /* Number of nodes to announce ourselves to. */
@@ -76,14 +78,15 @@ struct Onion_Node
     uint32_t    path_used;
 };
 
-typedef struct {
+struct Onion_Client_Paths
+{
     Onion_Path paths[NUMBER_ONION_PATHS];
     uint64_t last_path_success[NUMBER_ONION_PATHS];
     uint64_t last_path_used[NUMBER_ONION_PATHS];
     uint64_t path_creation_time[NUMBER_ONION_PATHS];
     /* number of times used without success. */
     unsigned int last_path_used_times[NUMBER_ONION_PATHS];
-} Onion_Client_Paths;
+};
 
 struct Last_Pinged
 {
@@ -91,14 +94,96 @@ struct Last_Pinged
     uint64_t    timestamp;
 };
 
-struct Onion_Friend
+struct Onion_Client;
+struct Onion_Friend : public std::enable_shared_from_this<Onion_Friend>
 {
-    uint8_t status; /* 0 if friend is not valid, 1 if friend is valid.*/
+    Onion_Friend(Onion_Client *client, const bitox::PublicKey &real_public_key);
+    ~Onion_Friend();
+    
+    /* Set a friends DHT public key.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int onion_set_friend_DHT_pubkey(const bitox::PublicKey &dht_key);
+    
+    /* Copy friends DHT public key into dht_key */
+    bitox::PublicKey onion_getfriend_DHT_pubkey() const
+    {
+        return dht_public_key;
+    }
+    
+    /* Get the ip of friend friendnum and put it in ip_port
+    *
+    *  return -1, -- if public_key does NOT refer to a friend
+    *  return  0, -- if public_key refers to a friend and we failed to find the friend (yet)
+    *  return  1, ip if public_key refers to a friend and we found him
+    *
+    */
+    int onion_getfriendip(bitox::network::IPPort *ip_port);
+    
+    /* Set if friend is online or not.
+    * NOTE: This function is there and should be used so that we don't send useless packets to the friend if he is online.
+    *
+    * is_online 1 means friend is online.
+    * is_online 0 means friend is offline
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int onion_set_friend_online(uint8_t is_online);
+    
+    void do_friend();
+    
+    /* Send data of length length to friendnum.
+    * This data will be received by the friend using the Onion_Data_Handlers callbacks.
+    *
+    * Even if this function succeeds, the friend might not receive any data.
+    *
+    * return the number of packets sent on success
+    * return -1 on failure.
+    */
+    int send_onion_data(const uint8_t *data, uint16_t length);
+    
+    /* Try to send the dht public key via the DHT instead of onion
+    *
+    * Even if this function succeeds, the friend might not receive any data.
+    *
+    * return the number of packets sent on success
+    * return -1 on failure.
+    */
+    int send_dht_dhtpk(const uint8_t *data, uint16_t length);
+    
+    /* Set the function for this friend that will be callbacked with object and number
+    * when that friends gives us one of the TCP relays he is connected to.
+    *
+    * object and number will be passed as argument to this function.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int recv_tcp_relay_handler(int (*tcp_relay_node_callback)(void *object,
+                            uint32_t number, bitox::network::IPPort ip_port, const bitox::PublicKey &public_key), void *object, uint32_t number);
+
+
+    /* Set the function for this friend that will be callbacked with object and number
+    * when that friend gives us his DHT temporary public key.
+    *
+    * object and number will be passed as argument to this function.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int onion_dht_pk_callback(void (*function)(void *data, int32_t number,
+                            const bitox::PublicKey &dht_public_key), void *object, uint32_t number);
+    
+    Onion_Client *const client;
+    
     uint8_t is_online; /* Set by the onion_set_friend_status function. */
 
     uint8_t know_dht_public_key; /* 0 if we don't know the dht public key of the other, 1 if we do. */
     bitox::PublicKey dht_public_key;
-    bitox::PublicKey real_public_key;
+    const bitox::PublicKey real_public_key;
 
     Onion_Node clients_list[MAX_ONION_CLIENTS];
     bitox::PublicKey temp_public_key;
@@ -123,6 +208,17 @@ struct Onion_Friend
     uint32_t dht_pk_callback_number;
 
     uint32_t run_count;
+    
+    /* Send the packets to tell our friends what our DHT public key is.
+    *
+    * if onion_dht_both is 0, use only the onion to send the packet.
+    * if it is 1, use only the dht.
+    * if it is something else, use both.
+    *
+    * return the number of packets sent on success
+    * return -1 on failure.
+    */
+    int send_dhtpk_announce(uint8_t onion_dht_both);
 };
 
 typedef int (*oniondata_handler_callback)(void *object, const bitox::PublicKey &source_pubkey, const uint8_t *data,
@@ -133,11 +229,43 @@ struct Onion_Client
     explicit Onion_Client(Net_Crypto *c);
     ~Onion_Client();
     
+    /* Add a friend who we want to connect to.
+    *
+    * return -1 on failure.
+    * return the friend number on success or if the friend was already added.
+    */
+    std::shared_ptr<Onion_Friend> onion_addfriend(const bitox::PublicKey &public_key);
+    
+    /* Add a node to the path_nodes bootstrap array.
+    *
+    * return -1 on failure
+    * return 0 on success
+    */
+    int onion_add_bs_path_node(const bitox::network::IPPort &ip_port, const bitox::PublicKey &public_key);
+    
+    /* Put up to max_num nodes in nodes.
+    *
+    * return the number of nodes.
+    */
+    uint16_t onion_backup_nodes(bitox::dht::NodeFormat *nodes, uint16_t max_num) const;
+    
+    /* Function to call when onion data packet with contents beginning with byte is received. */
+    void oniondata_registerhandler(uint8_t byte, oniondata_handler_callback cb, void *object);
+    
+    void do_onion_client();
+    
+    /*  return 0 if we are not connected to the network.
+    *  return 1 if we are connected with TCP only.
+    *  return 2 if we are also connected with UDP.
+    */
+    unsigned int onion_connection_status() const;
+
     DHT     *dht;
     Net_Crypto *c;
     bitox::network::Networking_Core *net;
     
-    std::vector<Onion_Friend> friends_list;
+    //std::vector<Onion_Friend> friends_list;
+    std::map<bitox::PublicKey, Onion_Friend *> friends;
 
     Onion_Node clients_announce_list[MAX_ONION_CLIENTS_ANNOUNCE];
 
@@ -160,7 +288,7 @@ struct Onion_Client
 
     struct AnnounceRecord
     {
-        uint32_t num;
+        bitox::PublicKey real_public_key;
         bitox::PublicKey public_key;
         bitox::network::IPPort ip_port;
         uint32_t path_num;
@@ -179,128 +307,67 @@ struct Onion_Client
     bool UDP_connected;
     
 //private:
-    int new_sendback(uint32_t num, const bitox::PublicKey &public_key, const bitox::network::IPPort &ip_port, uint32_t path_num, uint64_t *sendback);
-    uint32_t check_sendback(const uint8_t *sendback, bitox::PublicKey &ret_pubkey, bitox::network::IPPort &ret_ip_port, uint32_t &path_num);
+    int new_sendback(Onion_Friend *onion_friend, const bitox::PublicKey &public_key, const bitox::network::IPPort &ip_port, uint32_t path_num, uint64_t *sendback);
+    bool check_sendback(const uint8_t *sendback, bitox::PublicKey &ret_pubkey, bitox::network::IPPort &ret_ip_port, uint32_t &path_num, bitox::PublicKey &real_public_key_out);
+    
+    /* Add a node to the path_nodes array.
+    *
+    * return -1 on failure
+    * return 0 on success
+    */
+    int onion_add_path_node(bitox::network::IPPort &ip_port, const bitox::PublicKey &public_key);
+    
+    /* Put up to max_num random nodes in nodes.
+    *
+    * return the number of nodes.
+    */
+    uint16_t random_nodes_path_onion(bitox::dht::NodeFormat *nodes, uint16_t max_num) const;
+    
+    /* Create a new path or use an old suitable one (if pathnum is valid)
+    * or a random one from onion_paths.
+    *
+    * return -1 on failure
+    * return 0 on success
+    *
+    * TODO: Make this function better, it currently probably is vulnerable to some attacks that
+    * could de anonimize us.
+    */
+    int random_path(Onion_Client_Paths *onion_paths, uint32_t pathnum, Onion_Path *path) const;
+    
+    /*  return 0 if we are not connected to the network.
+    *  return 1 if we are.
+    */
+    int onion_isconnected() const;
+    
+    void do_announce();
+    
+    void populate_path_nodes_tcp();
+    
+    void populate_path_nodes();
+    
+    int client_ping_nodes(Onion_Friend *onion_friend, const bitox::dht::NodeFormat *nodes, uint16_t num_nodes, bitox::network::IPPort source);
+    
+    int client_add_to_list(Onion_Friend *onion_friend, const bitox::PublicKey &public_key, bitox::network::IPPort &ip_port,
+                              uint8_t is_stored, const bitox::PublicKey &pingid_or_key, uint32_t path_num);
+    
+    int client_send_announce_request(Onion_Friend *onion_friend, const bitox::network::IPPort &dest, const bitox::PublicKey &dest_pubkey,
+                                        const bitox::PublicKey &ping_id, uint32_t pathnum);
+    
+    /* Function to send onion packet via TCP and UDP.
+    *
+    * return -1 on failure.
+    * return 0 on success.
+    */
+    int send_onion_packet_tcp_udp(const Onion_Path *path, const bitox::network::IPPort &dest,
+                                        const uint8_t *data, uint16_t length) const;
+                                        
+    /* Set path timeouts, return the path number.
+    *
+    */
+    uint32_t set_path_timeouts(Onion_Friend *onion_friend, uint32_t path_num);
 };
-
-
-/* Add a node to the path_nodes bootstrap array.
- *
- * return -1 on failure
- * return 0 on success
- */
-int onion_add_bs_path_node(Onion_Client *onion_c, const bitox::network::IPPort &ip_port, const bitox::PublicKey &public_key);
-
-/* Put up to max_num nodes in nodes.
- *
- * return the number of nodes.
- */
-uint16_t onion_backup_nodes(const Onion_Client *onion_c, bitox::dht::NodeFormat *nodes, uint16_t max_num);
-
-/* Add a friend who we want to connect to.
- *
- * return -1 on failure.
- * return the friend number on success or if the friend was already added.
- */
-int onion_friend_num(const Onion_Client *onion_c, const bitox::PublicKey &public_key);
-
-/* Add a friend who we want to connect to.
- *
- * return -1 on failure.
- * return the friend number on success.
- */
-int onion_addfriend(Onion_Client *onion_c, const bitox::PublicKey &public_key);
-
-/* Delete a friend.
- *
- * return -1 on failure.
- * return the deleted friend number on success.
- */
-int onion_delfriend(Onion_Client *onion_c, int friend_num);
-
-/* Set if friend is online or not.
- * NOTE: This function is there and should be used so that we don't send useless packets to the friend if he is online.
- *
- * is_online 1 means friend is online.
- * is_online 0 means friend is offline
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int onion_set_friend_online(Onion_Client *onion_c, int friend_num, uint8_t is_online);
-
-/* Get the ip of friend friendnum and put it in ip_port
- *
- *  return -1, -- if public_key does NOT refer to a friend
- *  return  0, -- if public_key refers to a friend and we failed to find the friend (yet)
- *  return  1, ip if public_key refers to a friend and we found him
- *
- */
-int onion_getfriendip(const Onion_Client *onion_c, int friend_num, bitox::network::IPPort *ip_port);
-
-/* Set the function for this friend that will be callbacked with object and number
- * when that friends gives us one of the TCP relays he is connected to.
- *
- * object and number will be passed as argument to this function.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int recv_tcp_relay_handler(Onion_Client *onion_c, int friend_num, int (*tcp_relay_node_callback)(void *object,
-                           uint32_t number, bitox::network::IPPort ip_port, const bitox::PublicKey &public_key), void *object, uint32_t number);
-
-
-/* Set the function for this friend that will be callbacked with object and number
- * when that friend gives us his DHT temporary public key.
- *
- * object and number will be passed as argument to this function.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int onion_dht_pk_callback(Onion_Client *onion_c, int friend_num, void (*function)(void *data, int32_t number,
-                          const bitox::PublicKey &dht_public_key), void *object, uint32_t number);
-
-/* Set a friends DHT public key.
- * timestamp is the time (current_time_monotonic()) at which the key was last confirmed belonging to
- * the other peer.
- *
- * return -1 on failure.
- * return 0 on success.
- */
-int onion_set_friend_DHT_pubkey(Onion_Client *onion_c, int friend_num, const bitox::PublicKey &dht_key);
-
-/* Copy friends DHT public key into dht_key.
- *
- * return 0 on failure (no key copied).
- * return 1 on success (key copied).
- */
-unsigned int onion_getfriend_DHT_pubkey(const Onion_Client *onion_c, int friend_num, bitox::PublicKey &dht_key);
 
 #define ONION_DATA_IN_RESPONSE_MIN_SIZE (crypto_box_PUBLICKEYBYTES + crypto_box_MACBYTES)
 #define ONION_CLIENT_MAX_DATA_SIZE (MAX_DATA_REQUEST_SIZE - ONION_DATA_IN_RESPONSE_MIN_SIZE)
-
-/* Send data of length length to friendnum.
- * Maximum length of data is ONION_CLIENT_MAX_DATA_SIZE.
- * This data will be received by the friend using the Onion_Data_Handlers callbacks.
- *
- * Even if this function succeeds, the friend might not receive any data.
- *
- * return the number of packets sent on success
- * return -1 on failure.
- */
-int send_onion_data(Onion_Client *onion_c, int friend_num, const uint8_t *data, uint16_t length);
-
-/* Function to call when onion data packet with contents beginning with byte is received. */
-void oniondata_registerhandler(Onion_Client *onion_c, uint8_t byte, oniondata_handler_callback cb, void *object);
-
-void do_onion_client(Onion_Client *onion_c);
-
-
-/*  return 0 if we are not connected to the network.
- *  return 1 if we are connected with TCP only.
- *  return 2 if we are also connected with UDP.
- */
-unsigned int onion_connection_status(const Onion_Client *onion_c);
 
 #endif

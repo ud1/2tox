@@ -305,7 +305,7 @@ bool tox_bootstrap(Tox *tox, const char *address, uint16_t port, const PublicKey
         }
 
         Messenger *m = tox;
-        onion_add_bs_path_node(m->onion_c.get(), ip_port, public_key);
+        m->onion_c->onion_add_bs_path_node(ip_port, public_key);
         m->dht->bootstrap(ip_port, public_key);
         ++count;
     } while ((info = info->ai_next));
@@ -382,7 +382,7 @@ TOX_CONNECTION tox_self_get_connection_status(const Tox *tox)
 {
     const Messenger *m = tox;
 
-    unsigned int ret = onion_connection_status(m->onion_c.get());
+    unsigned int ret = m->onion_c->onion_connection_status();
 
     if (ret == 2) {
         return TOX_CONNECTION_UDP;

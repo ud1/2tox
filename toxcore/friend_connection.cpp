@@ -173,12 +173,12 @@ int Friend_Conn::on_status(uint8_t status)
         this->status = FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTED;
         this->ping_lastrecv = unix_time();
         this->share_relays_lastsent = 0;
-        onion_set_friend_online(connections->onion_c, this->onion_friendnum, status);
+        this->onion_friend->onion_set_friend_online(status);
     } else {  /* Went offline. */
         if (this->status != FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING) {
             call_cb = 1;
             this->dht_pk_lastrecv = unix_time();
-            onion_set_friend_online(connections->onion_c, this->onion_friendnum, status);
+            this->onion_friend->onion_set_friend_online(status);
         }
 
         this->status = FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING;
@@ -218,7 +218,7 @@ void Friend_Conn::on_dht_pk(const bitox::PublicKey &dht_public_key)
     }
 
     friend_new_connection();
-    onion_set_friend_DHT_pubkey(connections->onion_c, onion_friendnum, dht_public_key);
+    onion_friend->onion_set_friend_DHT_pubkey(dht_public_key);
 }
 
 int Friend_Conn::on_data(uint8_t *data, uint16_t length)
@@ -375,15 +375,13 @@ std::shared_ptr<Friend_Conn> Friend_Connections::new_friend_connection(const bit
     
     std::shared_ptr<Friend_Conn> result = std::make_shared<Friend_Conn>(this, real_public_key);
     
-    int32_t onion_friendnum = onion_addfriend(onion_c, real_public_key);
+    result->onion_friend = onion_c->onion_addfriend(real_public_key);
 
-    if (onion_friendnum == -1)
+    if (!result->onion_friend)
         return std::shared_ptr<Friend_Conn>();
 
-    Friend_Conn *friend_con = result.get();
-    friend_con->crypt_connection.reset();
-    friend_con->status = FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING;
-    friend_con->onion_friendnum = onion_friendnum;
+    result->crypt_connection.reset();
+    result->status = FriendConnectionStatus::FRIENDCONN_STATUS_CONNECTING;
 
     // recv_tcp_relay_handler(onion_c, onion_friendnum, &tcp_relay_node_callback, this, friendcon_id); // TODO
     // onion_dht_pk_callback(onion_c, onion_friendnum, &dht_pk_callback, this, friendcon_id); // TODO
@@ -393,7 +391,6 @@ std::shared_ptr<Friend_Conn> Friend_Connections::new_friend_connection(const bit
 
 Friend_Conn::~Friend_Conn()
 {
-    onion_delfriend(connections->onion_c, onion_friendnum);
     connections->connections_map.erase(real_public_key);
 }
 
@@ -406,7 +403,7 @@ void set_friend_request_callback(Friend_Connections *fr_c, int (*fr_request_call
 {
     fr_c->fr_request_callback = fr_request_callback;
     fr_c->fr_request_object = object;
-    oniondata_registerhandler(fr_c->onion_c, CRYPTO_PACKET_FRIEND_REQ, fr_request_callback, object);
+    fr_c->onion_c->oniondata_registerhandler(CRYPTO_PACKET_FRIEND_REQ, fr_request_callback, object);
 }
 
 /* Send a Friend request packet.
@@ -429,7 +426,7 @@ int Friend_Conn::send_friend_request_packet(uint32_t nospam_num, const uint8_t *
         return crypt_connection->write_cryptpacket(packet, sizeof(packet), 0) != -1;
     } else {
         packet[0] = CRYPTO_PACKET_FRIEND_REQ;
-        int num = send_onion_data(connections->onion_c, onion_friendnum, packet, sizeof(packet));
+        int num = onion_friend->send_onion_data(packet, sizeof(packet));
 
         if (num <= 0)
             return -1;

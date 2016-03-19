@@ -255,6 +255,9 @@ namespace dht
 {
     struct NodeFormat
     {
+        NodeFormat() {}
+        NodeFormat(const PublicKey &public_key, const network::IPPort &ip_port) : public_key(public_key), ip_port(ip_port) {}
+        
         PublicKey public_key;
         network::IPPort ip_port;
     };

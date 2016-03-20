@@ -32,35 +32,40 @@
 #include <memory>
 #include <deque>
 
-#define MAX_ONION_CLIENTS 8
-#define MAX_ONION_CLIENTS_ANNOUNCE 12 /* Number of nodes to announce ourselves to. */
-#define ONION_NODE_PING_INTERVAL 15
-#define ONION_NODE_TIMEOUT (ONION_NODE_PING_INTERVAL * 3)
+constexpr size_t MAX_ONION_CLIENTS = 8;
+constexpr size_t MAX_ONION_CLIENTS_ANNOUNCE = 12; /* Number of nodes to announce ourselves to. */
+constexpr unsigned ONION_NODE_PING_INTERVAL = 15;
+constexpr unsigned ONION_NODE_TIMEOUT = ONION_NODE_PING_INTERVAL * 3;
 
 /* The interval in seconds at which to tell our friends where we are */
-#define ONION_DHTPK_SEND_INTERVAL 30
-#define DHT_DHTPK_SEND_INTERVAL 20
+constexpr unsigned ONION_DHTPK_SEND_INTERVAL = 30;
+constexpr unsigned DHT_DHTPK_SEND_INTERVAL = 20;
 
-#define NUMBER_ONION_PATHS 6
+constexpr size_t NUMBER_ONION_PATHS = 6;
 
 /* The timeout the first time the path is added and
    then for all the next consecutive times */
-#define ONION_PATH_FIRST_TIMEOUT 4
-#define ONION_PATH_TIMEOUT 10
-#define ONION_PATH_MAX_LIFETIME 1200
-#define ONION_PATH_MAX_NO_RESPONSE_USES 4
+constexpr unsigned ONION_PATH_FIRST_TIMEOUT = 4;
+constexpr unsigned ONION_PATH_TIMEOUT = 10;
+constexpr unsigned ONION_PATH_MAX_LIFETIME = 1200;
+constexpr size_t ONION_PATH_MAX_NO_RESPONSE_USES = 4;
 
-#define MAX_STORED_PINGED_NODES 9
-#define MIN_NODE_PING_TIME 10
+constexpr size_t MAX_STORED_PINGED_NODES = 9;
+constexpr unsigned MIN_NODE_PING_TIME = 10;
 
 /* If no packets are received within that interval tox will
  * be considered offline.
  */
-#define ONION_OFFLINE_TIMEOUT (ONION_NODE_PING_INTERVAL * 1.25)
+constexpr unsigned ONION_OFFLINE_TIMEOUT = ONION_NODE_PING_INTERVAL * 1.25;
 
 /* Onion data packet ids. */
 #define ONION_DATA_FRIEND_REQ CRYPTO_PACKET_FRIEND_REQ
 #define ONION_DATA_DHTPK CRYPTO_PACKET_DHTPK
+
+namespace bitox
+{
+    class EventDispatcher;
+}
 
 struct Onion_Node
 {
@@ -210,9 +215,11 @@ struct Onion_Friend : public std::enable_shared_from_this<Onion_Friend>
 typedef int (*oniondata_handler_callback)(void *object, const bitox::PublicKey &source_pubkey, const uint8_t *data,
         uint16_t len);
 
-struct Onion_Client
+class Onion_Client
 {
-    explicit Onion_Client(Net_Crypto *c);
+public:
+    
+    explicit Onion_Client(Net_Crypto *c, bitox::EventDispatcher *event_dispatcher);
     ~Onion_Client();
 
     /* Add a friend who we want to connect to.
@@ -241,8 +248,12 @@ struct Onion_Client
     *  return 2 if we are also connected with UDP.
     */
     unsigned int onion_connection_status() const;
+    
+    int on_packet_announce_response(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    int on_packet_data_response(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
 
     DHT     *dht;
+    bitox::EventDispatcher *const event_dispatcher;
     Net_Crypto *c;
     bitox::network::Networking_Core *net;
 
@@ -308,10 +319,8 @@ struct Onion_Client
     */
     int random_path(Onion_Client_Paths *onion_paths, uint32_t pathnum, Onion_Path *path) const;
 
-    /*  return 0 if we are not connected to the network.
-    *  return 1 if we are.
-    */
-    int onion_isconnected() const;
+    /* return true if we are connected to the network */
+    bool onion_isconnected() const;
 
     void do_announce();
 
@@ -341,7 +350,7 @@ struct Onion_Client
     uint32_t set_path_timeouts(Onion_Friend *onion_friend, uint32_t path_num);
 };
 
-#define ONION_DATA_IN_RESPONSE_MIN_SIZE (crypto_box_PUBLICKEYBYTES + crypto_box_MACBYTES)
-#define ONION_CLIENT_MAX_DATA_SIZE (MAX_DATA_REQUEST_SIZE - ONION_DATA_IN_RESPONSE_MIN_SIZE)
+constexpr size_t ONION_DATA_IN_RESPONSE_MIN_SIZE = bitox::PUBLIC_KEY_LEN + bitox::MAC_BYTES_LEN;
+constexpr size_t ONION_CLIENT_MAX_DATA_SIZE = MAX_DATA_REQUEST_SIZE - ONION_DATA_IN_RESPONSE_MIN_SIZE;
 
 #endif

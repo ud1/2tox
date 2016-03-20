@@ -19,6 +19,7 @@
 
 #include "protocol_impl.hpp"
 #include "DHT.hpp"
+#include "event_dispatcher.hpp"
 
 //static void unix_time_update() { /* FIXME */ }
 
@@ -304,8 +305,8 @@ bool Socket::set_dualstack() const
 }
 
 
-Networking_Core::Networking_Core() :
-    packethandlers(), family(), port(), sock()
+Networking_Core::Networking_Core(EventDispatcher *event_dispatcher) :
+    family(), port(), sock(), event_dispatcher(event_dispatcher)
 {
 
 }
@@ -331,20 +332,11 @@ void Networking_Core::poll() const
     socket.fd = sock;
     while (socket.recvfrom(&ip_port, data, &length, MAX_UDP_PACKET_SIZE, /*flags*/ 0) != -1)
     {
-        if (length < 1) continue;
-
-        uint8_t handler_id = data[0];
-        const Packet_Handler& handler = packethandlers[handler_id];
-
-        if (!handler.function) {
-            //LOGGER_WARNING("[%02u] -- Packet has no handler", data[0]);
+        if (length < 1)
             continue;
-        } else {
-            handler.function(handler.object, ip_port, data, length);
-        }
         
-        if (dht)
-            dht->on_data_received(ip_port, data, length);
+        if (event_dispatcher)
+            event_dispatcher->on_network_packet(ip_port, data, length);
     }
 }
 
@@ -397,19 +389,12 @@ int sendpacket(Networking_Core* net, IPPort ip_port, const uint8_t* data, uint16
     return socket.sendto(net->family, ip_port, data, length, /*flags*/ 0);
 }
 
-void networking_registerhandler(Networking_Core* net, uint8_t byte, packet_handler_callback cb, void* object)
+Networking_Core* new_networking(IP ip, uint16_t port, EventDispatcher *event_dispatcher)
 {
-    Packet_Handler& handler = net->packethandlers[byte];
-    handler.function = cb;
-    handler.object = object;
+    return new_networking_ex(ip, port, port + (TOX_PORTRANGE_TO - TOX_PORTRANGE_FROM), 0, event_dispatcher);
 }
 
-Networking_Core* new_networking(IP ip, uint16_t port)
-{
-    return new_networking_ex(ip, port, port + (TOX_PORTRANGE_TO - TOX_PORTRANGE_FROM), 0);
-}
-
-Networking_Core* new_networking_ex(IP ip, uint16_t port_from, uint16_t port_to, unsigned int* error)
+Networking_Core* new_networking_ex(IP ip, uint16_t port_from, uint16_t port_to, unsigned int* error, EventDispatcher *event_dispatcher)
 {
     /* If both from and to are 0, use default port range
      * If one is 0 and the other is non-0, use the non-0 value as only port
@@ -440,7 +425,7 @@ Networking_Core* new_networking_ex(IP ip, uint16_t port_from, uint16_t port_to, 
     if (networking_at_startup() != 0)
         return NULL;
 
-    Networking_Core* net = new Networking_Core();
+    Networking_Core* net = new Networking_Core(event_dispatcher);
 
     net->family = (sa_family_t) ip.family;
     net->port = 0;

@@ -6,8 +6,11 @@ using namespace bitox;
 using namespace bitox::impl;
 using namespace bitox::network;
 
-struct PacketListener : public IncomingPacketListener
+struct PacketListener : public PacketDecoder
 {
+public:
+    PacketListener(CryptoManager &crypto_manager) : PacketDecoder(crypto_manager) {}
+    
     PublicKey sender_public_key;
     PingRequestData ping_request_data;
     PingResponseData ping_response_data;
@@ -15,33 +18,42 @@ struct PacketListener : public IncomingPacketListener
     SendNodesData send_nodes_data;
     bool called = false;
     
-    virtual void onPingRequest (const IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data) override
+    bool on_network_packet(const IPPort &ip_port, const uint8_t *data, uint16_t len)
+    {
+        return process_incoming_packet(ip_port, InputBuffer(data, len));
+    }
+    
+    virtual void on_ping_request (const IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data) override
     {
         this->sender_public_key = sender_public_key;
         this->ping_request_data = data;
         this->called = true;
     }
     
-    virtual void onPingResponse (const IPPort &source, const PublicKey &sender_public_key, const PingResponseData &data) override
+    virtual void on_ping_response (const IPPort &source, const PublicKey &sender_public_key, const PingResponseData &data) override
     {
         this->sender_public_key = sender_public_key;
         this->ping_response_data = data;
         this->called = true;
     }
     
-    virtual void onGetNodesRequest (const IPPort &source, const PublicKey &sender_public_key, const GetNodesRequestData &data) override
+    virtual void on_get_nodes_request (const IPPort &source, const PublicKey &sender_public_key, const GetNodesRequestData &data) override
     {
         this->sender_public_key = sender_public_key;
         this->get_nodes_request_data = data;
         this->called = true;
     }
     
-    virtual void onSendNodes (const IPPort &source, const PublicKey &sender_public_key, const SendNodesData &data) override
+    virtual void on_send_nodes (const IPPort &source, const PublicKey &sender_public_key, const SendNodesData &data) override
     {
         this->sender_public_key = sender_public_key;
         this->send_nodes_data = data;
         this->called = true;
     }
+    
+    virtual void on_announce_request (const IPPort &source, const PublicKey &sender_public_key, const AnnounceRequestData &data) override {}
+    virtual void on_NAT_ping (const IPPort &source, const PublicKey &sender_public_key, const NATPingCryptoData &data) override {}
+    virtual void reroute_incoming_packet(const PublicKey &public_key, InputBuffer &packet) override {}
 };
 
 TEST (protocol, test_packet_serialization_deserialization)
@@ -70,8 +82,8 @@ TEST (protocol, test_packet_serialization_deserialization)
         bool res = generateOutgoingPacket(manager1, manager2.get_self_public_key(), packet_data, packet);
         ASSERT_TRUE(res);
         
-        PacketListener listener;
-        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), ip_port, listener);
+        PacketListener listener(manager2);
+        res = listener.on_network_packet(ip_port, packet.begin(), packet.size());
         ASSERT_TRUE(res);
         ASSERT_TRUE(listener.called);
         ASSERT_EQ(12345, listener.ping_request_data.ping_id);
@@ -89,8 +101,8 @@ TEST (protocol, test_packet_serialization_deserialization)
         bool res = generateOutgoingPacket(manager1, manager2.get_self_public_key(), packet_data, packet);
         ASSERT_TRUE(res);
         
-        PacketListener listener;
-        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), ip_port, listener);
+        PacketListener listener(manager2);
+        res = listener.on_network_packet(ip_port, packet.begin(), packet.size());
         ASSERT_TRUE(res);
         ASSERT_TRUE(listener.called);
         ASSERT_EQ(54321, listener.ping_response_data.ping_id);
@@ -113,8 +125,8 @@ TEST (protocol, test_packet_serialization_deserialization)
         bool res = generateOutgoingPacket(manager1, manager2.get_self_public_key(), packet_data, packet);
         ASSERT_TRUE(res);
         
-        PacketListener listener;
-        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), ip_port, listener);
+        PacketListener listener(manager2);
+        res = listener.on_network_packet(ip_port, packet.begin(), packet.size());
         ASSERT_TRUE(res);
         ASSERT_TRUE(listener.called);
         ASSERT_EQ(222333, listener.get_nodes_request_data.ping_id);
@@ -143,8 +155,8 @@ TEST (protocol, test_packet_serialization_deserialization)
         bool res = generateOutgoingPacket(manager1, manager2.get_self_public_key(), packet_data, packet);
         ASSERT_TRUE(res);
         
-        PacketListener listener;
-        res = processIncomingPacket(manager2, InputBuffer(packet.begin(), packet.size()), ip_port, listener);
+        PacketListener listener(manager2);
+        res = listener.on_network_packet(ip_port, packet.begin(), packet.size());
         ASSERT_TRUE(res);
         ASSERT_TRUE(listener.called);
         ASSERT_EQ(666555, listener.send_nodes_data.ping_id);

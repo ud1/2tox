@@ -28,6 +28,11 @@
 #include <vector>
 #include <map>
 
+namespace bitox
+{
+    class EventDispatcher;
+}
+
 enum class TCPConnectionStatus
 {
     TCP_CONN_NONE = 0,
@@ -157,14 +162,15 @@ struct TCP_con
     bool unsleep = false; /* set to true to unsleep connection. */
 };
 
-struct TCP_Connections : TCPClientEventListener
+class TCP_Connections : TCPClientEventListener
 {
+public:
     /* Returns a new TCP_Connections object associated with the secret_key.
     *
     * In order for others to connect to this instance new_tcp_connection_to() must be called with the
     * public_key associated with secret_key.
     */
-    TCP_Connections(const bitox::SecretKey &secret_key, TCP_Proxy_Info *proxy_info);
+    TCP_Connections(const bitox::SecretKey &secret_key, TCP_Proxy_Info *proxy_info, bitox::EventDispatcher *event_dispatcher);
     
     ~TCP_Connections();
     
@@ -232,6 +238,7 @@ struct TCP_Connections : TCPClientEventListener
     void do_tcp_connections();
     
     DHT *dht;
+    bitox::EventDispatcher *const event_dispatcher;
 
     bitox::PublicKey self_public_key;
     bitox::SecretKey self_secret_key;
@@ -245,9 +252,6 @@ struct TCP_Connections : TCPClientEventListener
     int (*tcp_oob_callback)(void *object, const bitox::PublicKey &public_key, unsigned int tcp_connections_number,
                             const uint8_t *data, uint16_t length);
     void *tcp_oob_callback_object;
-
-    int (*tcp_onion_callback)(void *object, const uint8_t *data, uint16_t length);
-    void *tcp_onion_callback_object;
 
     TCP_Proxy_Info proxy_info;
 
@@ -332,11 +336,6 @@ private:
  */
 void set_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_data_callback)(void *object, int id,
                                         const uint8_t *data, uint16_t length), void *object);
-
-/* Set the callback for TCP onion packets.
- */
-void set_onion_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_onion_callback)(void *object,
-        const uint8_t *data, uint16_t length), void *object);
 
 /* Set the callback for TCP oob data packets.
  */

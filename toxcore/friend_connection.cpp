@@ -241,18 +241,14 @@ int Friend_Conn::on_data(uint8_t *data, uint16_t length)
         if ((n = unpack_nodes(nodes, MAX_SHARED_RELAYS, NULL, data + 1, length - 1, 1)) == -1)
             return -1;
 
-        int j;
-
-        for (j = 0; j < n; j++) {
+        for (size_t j = 0; j < n; j++) {
             friend_add_tcp_relay(nodes[j].ip_port, nodes[j].public_key);
         }
 
         return 0;
     }
 
-    unsigned int i;
-
-    for (i = 0; i < MAX_FRIEND_CONNECTION_CALLBACKS; ++i)
+    for (size_t i = 0; i < MAX_FRIEND_CONNECTION_CALLBACKS; ++i)
     {
         if (event_listener)
             event_listener->on_data(data, length);
@@ -445,7 +441,6 @@ Friend_Connections::Friend_Connections(Onion_Client *onion_c)
     this->onion_c = onion_c;
 
     new_connection_handler(net_crypto, &handle_new_connections, this);
-    LANdiscovery_init(dht);
 }
 
 /* Send a LAN discovery packet every LAN_DISCOVERY_INTERVAL seconds. */
@@ -511,6 +506,4 @@ Friend_Connections::~Friend_Connections()
     /*for (i = 0; i < fr_c->num_cons; ++i) { // TODO
         kill_friend_connection(fr_c, i);
     }*/
-
-    LANdiscovery_kill(dht);
 }

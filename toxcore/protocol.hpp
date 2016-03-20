@@ -76,6 +76,7 @@ constexpr size_t SECRET_KEY_LEN = 32;
 constexpr size_t ONION_PING_ID_LEN = 32;
 constexpr size_t NONCE_LEN = 24;
 constexpr size_t SHARED_KEY_LEN = 32;
+constexpr size_t MAC_BYTES_LEN = 16;
 
 /* The max number of nodes to send with send nodes. */
 constexpr size_t MAX_SENT_NODES = 4;
@@ -315,18 +316,32 @@ struct GetNodeHardeningCryptoData
 
 namespace network
 {
-class IncomingPacketListener
+    
+class PacketDecoder
 {
 public:
-    virtual void onPingRequest (const IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data) {}
-    virtual void onPingResponse (const IPPort &source, const PublicKey &sender_public_key, const PingResponseData &data) {}
-    virtual void onGetNodesRequest (const IPPort &source, const PublicKey &sender_public_key, const GetNodesRequestData &data) {}
-    virtual void onSendNodes (const IPPort &source, const PublicKey &sender_public_key, const SendNodesData &data) {}
-    virtual void onAnnounceRequest (const IPPort &source, const PublicKey &sender_public_key, const AnnounceRequestData &data) {}
+    PacketDecoder(CryptoManager &crypto_manager);
     
-    virtual void onNATPing (const IPPort &source, const PublicKey &sender_public_key, const NATPingCryptoData &data) {}
+protected:
+    bool process_incoming_packet(const IPPort &source, InputBuffer &&packet);
     
-    virtual void rerouteIncomingPacket(const PublicKey &public_key, InputBuffer &packet) {}
+    virtual void on_ping_request (const IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data) = 0;
+    virtual void on_ping_response (const IPPort &source, const PublicKey &sender_public_key, const PingResponseData &data) = 0;
+    virtual void on_get_nodes_request (const IPPort &source, const PublicKey &sender_public_key, const GetNodesRequestData &data) = 0;
+    virtual void on_send_nodes (const IPPort &source, const PublicKey &sender_public_key, const SendNodesData &data) = 0;
+    virtual void on_announce_request (const IPPort &source, const PublicKey &sender_public_key, const AnnounceRequestData &data) = 0;
+    virtual void on_NAT_ping (const IPPort &source, const PublicKey &sender_public_key, const NATPingCryptoData &data) = 0;
+    virtual void reroute_incoming_packet(const PublicKey &public_key, InputBuffer &packet) = 0;
+    
+private:
+    CryptoManager &crypto_manager;
+    
+    bool process_incoming_ping_request_data_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source);
+    bool process_incoming_ping_response_data_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source);
+    bool process_get_nodes_request_data_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source);
+    bool process_set_nodes_data_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source);
+    bool process_announce_request_data_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source);
+    bool process_NAT_ping_crypto_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source);
 };
 
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const PingRequestData &data, OutputBuffer &out_packet);
@@ -336,7 +351,6 @@ bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKe
 bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const AnnounceRequestData &data, OutputBuffer &out_packet);
 bool generateOutgoingCryptoPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const NATPingCryptoData &data, OutputBuffer &out_packet);
 bool generateOutgoingCryptoPacket (const CryptoManager &crypto_manager, const PublicKey &recipient_public_key, const GetNodeHardeningCryptoData &data, OutputBuffer &out_packet);
-bool processIncomingPacket (const CryptoManager &crypto_manager, InputBuffer &&packet, const IPPort &source, IncomingPacketListener &listener);
 }
 
 }

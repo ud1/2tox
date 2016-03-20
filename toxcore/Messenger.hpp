@@ -29,6 +29,7 @@
 #include "friend_requests.hpp"
 #include "friend_connection.hpp"
 #include "id_pool.hpp"
+#include "event_dispatcher.hpp"
 #include <string>
 #include <memory>
 
@@ -585,12 +586,14 @@ struct Messenger
     * of out_list will be truncated to list_size. */
     uint32_t copy_friendlist(uint32_t *out_list, uint32_t list_size) const;
     
+    std::unique_ptr<bitox::CryptoManager> crypto_manager;
+    std::unique_ptr<bitox::EventDispatcher> event_dispatcher;
     bitox::network::Networking_Core *net;
     std::unique_ptr<Net_Crypto> net_crypto;
     std::unique_ptr<DHT> dht;
 
     std::unique_ptr<Onion> onion;
-    Onion_Announce *onion_a;
+    std::unique_ptr<Onion_Announce> onion_a;
     std::unique_ptr<Onion_Client> onion_c;
 
     std::unique_ptr<Friend_Connections> fr_c;
@@ -608,8 +611,9 @@ struct Messenger
     std::map<uint32_t, Friend> friends;
     IDPool id_pool;
 
-#define NUM_SAVED_TCP_RELAYS 8
-    uint8_t has_added_relays; // If the first connection has occurred in do_messenger
+    enum {NUM_SAVED_TCP_RELAYS = 8};
+    
+    bool has_added_relays = false; // If the first connection has occurred in do_messenger
     bitox::dht::NodeFormat loaded_relays[NUM_SAVED_TCP_RELAYS]; // Relays loaded from config
 
     void (*friend_message)(Friend *f, unsigned int, const uint8_t *, size_t, void *);

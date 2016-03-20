@@ -38,6 +38,7 @@
 #include <cstring>
 
 #include "protocol.hpp"
+#include "event_dispatcher.hpp"
 
 #define PING_NUM_MAX 512
 
@@ -46,17 +47,19 @@
 /* Ping newly announced nodes to ping per TIME_TO_PING seconds*/
 #define TIME_TO_PING 2
 
-using namespace bitox;
-using namespace bitox::network;
+namespace bitox
+{
 
-int PING::send_ping_request(IPPort ipp, const bitox::PublicKey &recepient_public_key)
+using namespace network;
+
+int Ping::send_ping_request(IPPort ipp, const bitox::PublicKey &recepient_public_key)
 {
     if (recepient_public_key == dht->self_public_key)
         return 1;
 
     PingRequestData ping_request;
     
-    PING::PingData ping_data;
+    Ping::PingData ping_data;
     ping_data.public_key = recepient_public_key;
     ping_data.ip_port = ipp;
     // Generate random ping_id.
@@ -72,7 +75,7 @@ int PING::send_ping_request(IPPort ipp, const bitox::PublicKey &recepient_public
     return sendpacket(dht->net, ipp, packet.begin(), packet.size());
 }
 
-void PING::onPingRequest (const IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data)
+void Ping::on_ping_request (const IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data)
 {
     if (sender_public_key == dht->self_public_key)
         return;
@@ -88,12 +91,12 @@ void PING::onPingRequest (const IPPort &source, const PublicKey &sender_public_k
     add_to_ping(sender_public_key, source);
 }
 
-void PING::onPingResponse (const IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::PingResponseData &data)
+void Ping::on_ping_response (const IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::PingResponseData &data)
 {
     if (sender_public_key == dht->self_public_key)
         return;
     
-    PING::PingData ping_data;
+    Ping::PingData ping_data;
     if (!ping_array.check(ping_data, data.ping_id))
         return;
     
@@ -143,7 +146,7 @@ static int in_list(const Client_data *list, uint16_t length, const bitox::Public
  *  return 0 if node was added.
  *  return -1 if node was not added.
  */
-int PING::add_to_ping(const bitox::PublicKey &public_key, IPPort ip_port)
+int Ping::add_to_ping(const bitox::PublicKey &public_key, IPPort ip_port)
 {
     if (!ip_isset(&ip_port.ip))
         return -1;
@@ -185,7 +188,7 @@ int PING::add_to_ping(const bitox::PublicKey &public_key, IPPort ip_port)
 /* Ping all the valid nodes in the to_ping list every TIME_TO_PING seconds.
  * This function must be run at least once every TIME_TO_PING seconds.
  */
-void PING::do_to_ping()
+void Ping::do_to_ping()
 {
     if (!is_timeout(last_to_ping, TIME_TO_PING))
         return;
@@ -211,13 +214,17 @@ void PING::do_to_ping()
 }
 
 
-PING::PING(DHT *dht) :
-    ping_array(PING_NUM_MAX, PING_TIMEOUT)
+Ping::Ping(DHT *dht, EventDispatcher *event_dispatcher) :
+    ping_array(PING_NUM_MAX, PING_TIMEOUT),
+    event_dispatcher(event_dispatcher)
 {
     this->dht = dht;
-    dht->subscribe(this);
+    event_dispatcher->set_ping(this);
 }
 
-PING::~PING()
+Ping::~Ping()
 {
+    event_dispatcher->set_ping(nullptr);
+}
+
 }

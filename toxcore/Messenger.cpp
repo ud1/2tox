@@ -1603,24 +1603,26 @@ Messenger::Messenger(Messenger_Options *options)
 {
     unsigned int net_err = 0;
 
+    //crypto_manager = TODO
+    event_dispatcher = std::unique_ptr<EventDispatcher>(new EventDispatcher(*crypto_manager.get()));
     if (options->udp_disabled) {
         /* this is the easiest way to completely disable UDP without changing too much code. */
-        net = new Networking_Core;
+        net = new Networking_Core(event_dispatcher.get());
     } else {
         IP ip;
         ip_init(&ip, options->ipv6enabled);
-        net = new_networking_ex(ip, options->port_range[0], options->port_range[1], &net_err);
+        net = new_networking_ex(ip, options->port_range[0], options->port_range[1], &net_err, event_dispatcher.get());
     }
 
-    dht = std::unique_ptr<DHT>(new DHT(net));
+    dht = std::unique_ptr<DHT>(new DHT(net, event_dispatcher.get()));
 
     // TODO kill_networking ?
 
-    net_crypto = std::unique_ptr<Net_Crypto>(new Net_Crypto(dht.get(), &options->proxy_info));
+    net_crypto = std::unique_ptr<Net_Crypto>(new Net_Crypto(dht.get(), &options->proxy_info, event_dispatcher.get()));
 
-    onion = std::unique_ptr<Onion>(new Onion(*dht));
-    onion_a = new_onion_announce(dht.get());
-    onion_c = std::unique_ptr<Onion_Client>(new Onion_Client(net_crypto.get()));
+    onion = std::unique_ptr<Onion>(new Onion(*dht, event_dispatcher.get()));
+    onion_a = std::unique_ptr<Onion_Announce>(new Onion_Announce(dht.get(), event_dispatcher.get()));
+    onion_c = std::unique_ptr<Onion_Client>(new Onion_Client(net_crypto.get(), event_dispatcher.get()));
     fr_c = std::unique_ptr<Friend_Connections>(new Friend_Connections(onion_c.get()));
 
     if (options->tcp_server_port) {
@@ -1638,7 +1640,6 @@ Messenger::~Messenger()
 {
     uint32_t i;
 
-    kill_onion_announce(onion_a);
     kill_networking(net);
 
     for (auto &kv : friends)
@@ -2053,12 +2054,10 @@ uint32_t Messenger::messenger_run_interval() const
 void Messenger::do_messenger()
 {
     // Add the TCP relays, but only if this is the first time calling do_messenger
-    if (has_added_relays == 0) {
-        has_added_relays = 1;
+    if (!has_added_relays) {
+        has_added_relays = true;
 
-        int i;
-
-        for (i = 0; i < NUM_SAVED_TCP_RELAYS; ++i) {
+        for (size_t i = 0; i < NUM_SAVED_TCP_RELAYS; ++i) {
             net_crypto->add_tcp_relay(loaded_relays[i].ip_port, loaded_relays[i].public_key);
         }
 
@@ -2067,7 +2066,7 @@ void Messenger::do_messenger()
             IPPort local_ip_port;
             local_ip_port.port = options.tcp_server_port;
             local_ip_port.ip.family = Family::FAMILY_AF_INET;
-            local_ip_port.ip.from_uint32(INADDR_LOOPBACK); // TODO endianess?
+            local_ip_port.ip.address.from_string("127.0.0.1");
             net_crypto->add_tcp_relay(local_ip_port, tcp_server->public_key);
         }
     }
@@ -2229,7 +2228,6 @@ uint32_t Messenger::saved_friendslist_size() const
 
 uint32_t Messenger::friends_list_save(uint8_t *data) const
 {
-    uint32_t i;
     uint32_t num = 0;
 
     for (auto &kv : friends) {
@@ -2472,8 +2470,8 @@ static int messenger_load_state_callback(void *outer, const uint8_t *data, uint3
                 break;
             }
 
-            unpack_nodes(m->loaded_relays, NUM_SAVED_TCP_RELAYS, 0, data, length, 1);
-            m->has_added_relays = 0;
+            unpack_nodes(m->loaded_relays, Messenger::NUM_SAVED_TCP_RELAYS, 0, data, length, 1);
+            m->has_added_relays = false;
 
             break;
         }

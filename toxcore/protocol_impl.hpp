@@ -8,8 +8,6 @@ namespace bitox
 namespace impl
 {
 
-constexpr size_t MAC_BYTES_LEN = 16;
-
 struct const_uint64_adapter
 {
     const_uint64_adapter(const uint64_t &value) : value(value) {}

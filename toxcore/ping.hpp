@@ -28,27 +28,35 @@
 constexpr size_t MAX_TO_PING = 32;
 
 #include "protocol.hpp"
+#include "ping_array.hpp"
 
 struct DHT;
 
-struct PING : public bitox::network::IncomingPacketListener
+namespace bitox
 {
-    explicit PING (DHT *dht);
-    ~PING();
+    
+class EventDispatcher;
+
+class Ping
+{
+public:
+    explicit Ping (DHT *dht, EventDispatcher *event_dispatcher);
+    ~Ping();
 
     DHT *dht;
+    EventDispatcher * const event_dispatcher;
 
     struct PingData
     {
-        bitox::PublicKey public_key;
-        bitox::network::IPPort ip_port;
+        PublicKey public_key;
+        network::IPPort ip_port;
     };
 
-    bitox::PingArray<PingData> ping_array;
-    bitox::dht::NodeFormat to_ping[MAX_TO_PING];
+    PingArray<PingData> ping_array;
+    dht::NodeFormat to_ping[MAX_TO_PING];
     uint64_t    last_to_ping;
 
-    int send_ping_request (bitox::network::IPPort ipp, const bitox::PublicKey &public_key);
+    int send_ping_request (network::IPPort ipp, const PublicKey &public_key);
 
     /* Add nodes to the to_ping list.
     * All nodes in this list are pinged every TIME_TOPING seconds
@@ -60,13 +68,15 @@ struct PING : public bitox::network::IncomingPacketListener
     *  return 0 if node was added.
     *  return -1 if node was not added.
     */
-    int add_to_ping (const bitox::PublicKey &public_key, bitox::network::IPPort ip_port);
+    int add_to_ping (const PublicKey &public_key, network::IPPort ip_port);
     
     void do_to_ping ();
 
-    virtual void onPingRequest (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::PingRequestData &data) override;
-    virtual void onPingResponse (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::PingResponseData &data) override;
+    void on_ping_request (const network::IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data);
+    void on_ping_response (const network::IPPort &source, const PublicKey &sender_public_key, const PingResponseData &data);
 };
+
+}
 
 
 #endif /* __PING_H__ */

@@ -27,6 +27,7 @@
 
 #include "TCP_connection.hpp"
 #include "util.hpp"
+#include "event_dispatcher.hpp"
 
 /* Set the size of the array to num.
  *
@@ -257,16 +258,6 @@ void set_oob_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_oo
     tcp_c->tcp_oob_callback = tcp_oob_callback;
     tcp_c->tcp_oob_callback_object = object;
 }
-
-/* Set the callback for TCP oob data packets.
- */
-void set_onion_packet_tcp_connection_callback(TCP_Connections *tcp_c, int (*tcp_onion_callback)(void *object,
-        const uint8_t *data, uint16_t length), void *object)
-{
-    tcp_c->tcp_onion_callback = tcp_onion_callback;
-    tcp_c->tcp_onion_callback_object = object;
-}
-
 
 /* Find the TCP connection with public_key.
  *
@@ -777,9 +768,9 @@ int TCP_Connections::on_oob_data(TCP_Client_Connection *connection, const bitox:
 
 int TCP_Connections::on_onion(TCP_Client_Connection *connection, const uint8_t *data, uint16_t length)
 {
-    if (tcp_onion_callback)
-        tcp_onion_callback(tcp_onion_callback_object, data, length);
-
+    if (event_dispatcher)
+        event_dispatcher->on_tcp_onion(data, length);
+        
     return 0;
 }
 
@@ -1051,7 +1042,7 @@ int TCP_Connections::set_tcp_onion_status(bool status)
  * In order for others to connect to this instance new_tcp_connection_to() must be called with the
  * public_key associated with secret_key.
  */
-TCP_Connections::TCP_Connections(const SecretKey &secret_key, TCP_Proxy_Info *proxy_info)
+TCP_Connections::TCP_Connections(const SecretKey &secret_key, TCP_Proxy_Info *proxy_info, EventDispatcher *event_dispatcher) : event_dispatcher(event_dispatcher)
 {
     this->self_secret_key = secret_key;
     crypto_scalarmult_curve25519_base(this->self_public_key.data.data(), this->self_secret_key.data.data());

@@ -186,7 +186,7 @@ bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey
     return generateOutgoingPacket(crypto_manager, NET_PACKET_PING_REQUEST, data_to_encrypt, recipient_public_key, out_packet);
 }
 
-static bool processIncomingPingRequestDataPacket(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source, IncomingPacketListener &listener)
+bool PacketDecoder::process_incoming_ping_request_data_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source)
 {
     PacketType packet_type;
     PingRequestData ping_request;
@@ -197,7 +197,7 @@ static bool processIncomingPingRequestDataPacket(const PublicKey &sender_public_
     if (packet_type != NET_PACKET_PING_REQUEST)
         return false;
     
-    listener.onPingRequest(source, sender_public_key, ping_request);
+    on_ping_request(source, sender_public_key, ping_request);
     return true;
 }
 
@@ -209,7 +209,7 @@ bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey
     return generateOutgoingPacket(crypto_manager, NET_PACKET_PING_RESPONSE, data_to_encrypt, recipient_public_key, out_packet);
 }
 
-static bool processIncomingPingResponseDataPacket(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source, IncomingPacketListener &listener)
+bool PacketDecoder::process_incoming_ping_response_data_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source)
 {
     PacketType packet_type;
     PingResponseData ping_response;
@@ -220,7 +220,7 @@ static bool processIncomingPingResponseDataPacket(const PublicKey &sender_public
     if (packet_type != NET_PACKET_PING_RESPONSE)
         return false;
     
-    listener.onPingResponse(source, sender_public_key, ping_response);
+    on_ping_response(source, sender_public_key, ping_response);
     return true;
 }
 
@@ -232,14 +232,14 @@ bool generateOutgoingPacket(const CryptoManager &crypto_manager, const PublicKey
     return generateOutgoingPacket(crypto_manager, NET_PACKET_GET_NODES, data_to_encrypt, recipient_public_key, out_packet);
 }
 
-static bool processGetNodesRequestDataPacket(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source, IncomingPacketListener &listener)
+bool PacketDecoder::process_get_nodes_request_data_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source)
 {
     GetNodesRequestData get_nodes_request;
     
     if ((decrypted_buffer >> get_nodes_request.client_id >> uint64_adapter(get_nodes_request.ping_id)).fail())
         return false;
        
-    listener.onGetNodesRequest(source, sender_public_key, get_nodes_request);
+    on_get_nodes_request(source, sender_public_key, get_nodes_request);
     return true;
 }
 
@@ -265,7 +265,7 @@ bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKe
     return generateOutgoingPacket(crypto_manager, NET_PACKET_SEND_NODES_IPV6, data_to_encrypt, recipient_public_key, out_packet);
 }
 
-static bool processSetNodesDataPacket(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source, IncomingPacketListener &listener)
+bool PacketDecoder::process_set_nodes_data_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source)
 {
     SendNodesData send_nodes;
     uint8_t nodes_size;
@@ -288,7 +288,7 @@ static bool processSetNodesDataPacket(const PublicKey &sender_public_key, InputB
     if ((decrypted_buffer >> uint64_adapter(send_nodes.ping_id)).fail())
         return false;
        
-    listener.onSendNodes(source, sender_public_key, send_nodes);
+    on_send_nodes(source, sender_public_key, send_nodes);
     return true;
 }
 
@@ -299,7 +299,7 @@ bool generateOutgoingPacket (const CryptoManager &crypto_manager, const PublicKe
     return generateOutgoingPacket(crypto_manager, NET_PACKET_ANNOUNCE_REQUEST, data_to_encrypt, recipient_public_key, out_packet);
 }
 
-static bool processAnnounceRequestDataPacket(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source, IncomingPacketListener &listener)
+bool PacketDecoder::process_announce_request_data_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source)
 {
     AnnounceRequestData announce;
     if ((decrypted_buffer >> announce.ping_id >> announce.client_id >> announce.data_public_key >> uint64_adapter(announce.sendback_data)).fail())
@@ -307,7 +307,7 @@ static bool processAnnounceRequestDataPacket(const PublicKey &sender_public_key,
         return false;
     }
     
-    listener.onAnnounceRequest(source, sender_public_key, announce);
+    on_announce_request(source, sender_public_key, announce);
     return true;
 }
 
@@ -320,7 +320,7 @@ bool generateOutgoingCryptoPacket (const CryptoManager &crypto_manager, const Pu
     return generateOutgoingCryptoPacket(crypto_manager, data_to_encrypt, recipient_public_key, out_packet);
 }
 
-static bool processNatPingCryptoPacket(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source, IncomingPacketListener &listener)
+bool PacketDecoder::process_NAT_ping_crypto_packet(const PublicKey &sender_public_key, InputBuffer &decrypted_buffer, const IPPort &source)
 {
     NATPingCryptoData nat_ping;
     
@@ -336,7 +336,7 @@ static bool processNatPingCryptoPacket(const PublicKey &sender_public_key, Input
     if ((decrypted_buffer >> uint64_adapter(nat_ping.ping_id)).fail())
         return false;
     
-    listener.onNATPing(source, sender_public_key, nat_ping);
+    on_NAT_ping(source, sender_public_key, nat_ping);
     return true;
 }
 
@@ -390,7 +390,7 @@ bool generateOutgoingCryptoPacket (const CryptoManager &crypto_manager, const Pu
     return generateOutgoingCryptoPacket(crypto_manager, data_to_encrypt, recipient_public_key, out_packet);
 }
 
-bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &&packet, const IPPort &source, IncomingPacketListener &listener)
+bool PacketDecoder::process_incoming_packet(const IPPort &source, InputBuffer &&packet)
 {
     PacketType packet_type;
     if (!(packet >> packet_type).fail())
@@ -405,7 +405,7 @@ bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &&pa
             if (crypto_manager.get_self_public_key() != header.receiver_dht_key) // Check if request is not for us.
             {
                 packet.rewind(1 + PUBLIC_KEY_LEN);
-                listener.rerouteIncomingPacket(header.receiver_dht_key, packet);
+                reroute_incoming_packet(header.receiver_dht_key, packet);
                 return true;
             }
             
@@ -425,7 +425,7 @@ bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &&pa
             switch (net_crypto_packet_type)
             {
                 case CRYPTO_PACKET_NAT_PING:
-                    return processNatPingCryptoPacket(header.sender_dht_key, decrypted_buffer, source, listener);
+                    return process_NAT_ping_crypto_packet(header.sender_dht_key, decrypted_buffer, source);
             }
         }
         else
@@ -445,21 +445,25 @@ bool processIncomingPacket(const CryptoManager &crypto_manager, InputBuffer &&pa
             switch(header.packet_type)
             {
                 case NET_PACKET_PING_REQUEST:
-                    return processIncomingPingRequestDataPacket(header.public_key, decrypted_buffer, source, listener);
+                    return process_incoming_ping_request_data_packet(header.public_key, decrypted_buffer, source);
                     
                 case NET_PACKET_PING_RESPONSE:
-                    return processIncomingPingResponseDataPacket(header.public_key, decrypted_buffer, source, listener);
+                    return process_incoming_ping_response_data_packet(header.public_key, decrypted_buffer, source);
                     
                 case NET_PACKET_GET_NODES:
-                    return processGetNodesRequestDataPacket(header.public_key, decrypted_buffer, source, listener);
+                    return process_get_nodes_request_data_packet(header.public_key, decrypted_buffer, source);
                     
                 case NET_PACKET_SEND_NODES_IPV6:
-                    return processSetNodesDataPacket(header.public_key, decrypted_buffer, source, listener);
+                    return process_set_nodes_data_packet(header.public_key, decrypted_buffer, source);
             }
         }
     }
     
     return false;
+}
+
+PacketDecoder::PacketDecoder(CryptoManager &crypto_manager) : crypto_manager(crypto_manager)
+{
 }
 
 }

@@ -34,12 +34,6 @@
 /* Send a LAN discovery pcaket to the broadcast address with port port. */
 int send_LANdiscovery(uint16_t port, DHT *dht);
 
-/* Sets up packet handlers. */
-void LANdiscovery_init(DHT *dht);
-
-/* Clear packet handlers. */
-void LANdiscovery_kill(DHT *dht);
-
 /* Is IP a local ip or not. */
 bool Local_ip(bitox::network::IP ip);
 

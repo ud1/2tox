@@ -25,12 +25,27 @@
 
 #include "DHT.hpp"
 
-struct Onion
+namespace bitox
 {
-    Onion(DHT &dht);
+class EventDispatcher;
+}
+
+class Onion
+{
+public:
+    
+    Onion(DHT &dht, bitox::EventDispatcher *event_dispatcher);
     ~Onion();
     
+    int on_packet_send_initial(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    int on_packet_send_1(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    int on_packet_send_2(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    int on_packet_recv_3(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    int on_packet_recv_2(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    int on_packet_recv_1(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    
     DHT &dht;
+    bitox::EventDispatcher *const event_dispatcher;
     bitox::network::Networking_Core *net;
     uint8_t secret_symmetric_key[crypto_box_BEFORENMBYTES];
     uint64_t timestamp;
@@ -39,7 +54,7 @@ struct Onion
     Shared_Keys shared_keys_2;
     Shared_Keys shared_keys_3;
 
-    int (*recv_1_function)(void *, bitox::network::IPPort, const uint8_t *, uint16_t);
+    int (*recv_1_function)(void *, const bitox::network::IPPort &, const uint8_t *, uint16_t);
     void *callback_object;
 
     void change_symmetric_key();

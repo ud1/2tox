@@ -27,6 +27,7 @@
 #include "LAN_discovery.hpp"
 #include "util.hpp"
 #include "protocol.hpp"
+#include "event_dispatcher.hpp"
 
 #include <cstring>
 
@@ -293,16 +294,14 @@ static int add_to_entries(Onion_Announce *onion_a, IPPort ret_ip_port, const Pub
     return in_entries(onion_a, public_key);
 }
 
-static int handle_announce_request(void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
+int Onion_Announce::on_packet_announce_request(const IPPort &source, const uint8_t *packet, uint16_t length)
 {
-    Onion_Announce *onion_a = (Onion_Announce *) object;
-
     if (length != ANNOUNCE_REQUEST_SIZE_RECV)
         return 1;
 
     PublicKey packet_public_key = PublicKey(packet + 1 + crypto_box_NONCEBYTES);
     SharedKey shared_key;
-    get_shared_key(&onion_a->shared_keys_recv, shared_key, onion_a->dht->self_secret_key, packet_public_key);
+    get_shared_key(&shared_keys_recv, shared_key, dht->self_secret_key, packet_public_key);
 
     uint8_t plain[ONION_PING_ID_SIZE + crypto_box_PUBLICKEYBYTES + crypto_box_PUBLICKEYBYTES +
                   ONION_ANNOUNCE_SENDBACK_DATA_LENGTH];
@@ -314,10 +313,10 @@ static int handle_announce_request(void *object, const IPPort &source, const uin
         return 1;
 
     uint8_t ping_id1[ONION_PING_ID_SIZE];
-    generate_ping_id(onion_a, unix_time(), packet_public_key, source, ping_id1);
+    generate_ping_id(this, unix_time(), packet_public_key, source, ping_id1);
 
     uint8_t ping_id2[ONION_PING_ID_SIZE];
-    generate_ping_id(onion_a, unix_time() + PING_ID_TIMEOUT, packet_public_key, source, ping_id2);
+    generate_ping_id(this, unix_time() + PING_ID_TIMEOUT, packet_public_key, source, ping_id2);
 
     int index = -1;
 
@@ -325,15 +324,15 @@ static int handle_announce_request(void *object, const IPPort &source, const uin
 
     if (sodium_memcmp(ping_id1, plain, ONION_PING_ID_SIZE) == 0
             || sodium_memcmp(ping_id2, plain, ONION_PING_ID_SIZE) == 0) {
-        index = add_to_entries(onion_a, source, packet_public_key, data_public_key,
+        index = add_to_entries(this, source, packet_public_key, data_public_key,
                                packet + (ANNOUNCE_REQUEST_SIZE_RECV - ONION_RETURN_3));
     } else {
-        index = in_entries(onion_a, PublicKey(plain + ONION_PING_ID_SIZE));
+        index = in_entries(this, PublicKey(plain + ONION_PING_ID_SIZE));
     }
 
     /*Respond with a announce response packet*/
     NodeFormat nodes_list[MAX_SENT_NODES];
-    unsigned int num_nodes = onion_a->dht->get_close_nodes(PublicKey(plain + ONION_PING_ID_SIZE), nodes_list, 0,
+    unsigned int num_nodes = dht->get_close_nodes(PublicKey(plain + ONION_PING_ID_SIZE), nodes_list, 0,
                              LAN_ip(source.ip) == 0, 1);
     Nonce nonce = Nonce::create_random();
 
@@ -343,8 +342,8 @@ static int handle_announce_request(void *object, const IPPort &source, const uin
         pl[0] = 0;
         memcpy(pl + 1, ping_id2, ONION_PING_ID_SIZE);
     } else {
-        if (onion_a->entries[index].public_key == packet_public_key) {
-            if (onion_a->entries[index].data_public_key != data_public_key) {
+        if (entries[index].public_key == packet_public_key) {
+            if (entries[index].data_public_key != data_public_key) {
                 pl[0] = 0;
                 memcpy(pl + 1, ping_id2, ONION_PING_ID_SIZE);
             } else {
@@ -353,7 +352,7 @@ static int handle_announce_request(void *object, const IPPort &source, const uin
             }
         } else {
             pl[0] = 1;
-            memcpy(pl + 1, onion_a->entries[index].data_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
+            memcpy(pl + 1, entries[index].data_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
         }
     }
 
@@ -378,7 +377,7 @@ static int handle_announce_request(void *object, const IPPort &source, const uin
            ONION_ANNOUNCE_SENDBACK_DATA_LENGTH);
     memcpy(data + 1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH, nonce.data.data(), crypto_box_NONCEBYTES);
 
-    if (send_onion_response(onion_a->net, source, data,
+    if (send_onion_response(net, source, data,
                             1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH + crypto_box_NONCEBYTES + len,
                             packet + (ANNOUNCE_REQUEST_SIZE_RECV - ONION_RETURN_3)) == -1)
         return 1;
@@ -386,17 +385,15 @@ static int handle_announce_request(void *object, const IPPort &source, const uin
     return 0;
 }
 
-static int handle_data_request(void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
+int Onion_Announce::on_packet_data_request(const IPPort &source, const uint8_t *packet, uint16_t length)
 {
-    Onion_Announce *onion_a = (Onion_Announce *) object;
-
     if (length <= DATA_REQUEST_MIN_SIZE_RECV)
         return 1;
 
     if (length > ONION_MAX_PACKET_SIZE)
         return 1;
 
-    int index = in_entries(onion_a, PublicKey(packet + 1));
+    int index = in_entries(this, PublicKey(packet + 1));
 
     if (index == -1)
         return 1;
@@ -405,39 +402,24 @@ static int handle_data_request(void *object, const IPPort &source, const uint8_t
     data[0] = NET_PACKET_ONION_DATA_RESPONSE;
     memcpy(data + 1, packet + 1 + crypto_box_PUBLICKEYBYTES, length - (1 + crypto_box_PUBLICKEYBYTES + ONION_RETURN_3));
 
-    if (send_onion_response(onion_a->net, onion_a->entries[index].ret_ip_port, data, sizeof(data),
-                            onion_a->entries[index].ret) == -1)
+    if (send_onion_response(net, entries[index].ret_ip_port, data, sizeof(data),
+                            entries[index].ret) == -1)
         return 1;
 
     return 0;
 }
 
-Onion_Announce *new_onion_announce(DHT *dht)
+Onion_Announce::Onion_Announce(DHT *dht, bitox::EventDispatcher *event_dispatcher) : dht(dht), event_dispatcher(event_dispatcher)
 {
-    if (dht == NULL)
-        return NULL;
+    assert(dht && "DHT must not be null");
 
-    Onion_Announce *onion_a = (Onion_Announce *) calloc(1, sizeof(Onion_Announce));
+    net = dht->net;
+    new_symmetric_key(secret_bytes);
 
-    if (onion_a == NULL)
-        return NULL;
-
-    onion_a->dht = dht;
-    onion_a->net = dht->net;
-    new_symmetric_key(onion_a->secret_bytes);
-
-    networking_registerhandler(onion_a->net, NET_PACKET_ANNOUNCE_REQUEST, &handle_announce_request, onion_a);
-    networking_registerhandler(onion_a->net, NET_PACKET_ONION_DATA_REQUEST, &handle_data_request, onion_a);
-
-    return onion_a;
+    event_dispatcher->set_onion_announce(this);
 }
 
-void kill_onion_announce(Onion_Announce *onion_a)
+Onion_Announce::~Onion_Announce()
 {
-    if (onion_a == NULL)
-        return;
-
-    networking_registerhandler(onion_a->net, NET_PACKET_ANNOUNCE_REQUEST, NULL, NULL);
-    networking_registerhandler(onion_a->net, NET_PACKET_ONION_DATA_REQUEST, NULL, NULL);
-    free(onion_a);
+    event_dispatcher->set_onion_announce(nullptr);
 }

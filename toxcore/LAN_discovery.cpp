@@ -311,21 +311,6 @@ int LAN_ip(IP ip)
     return -1;
 }
 
-static int handle_LANdiscovery(void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
-{
-    DHT *dht = reinterpret_cast<DHT *>(object);
-
-    if (LAN_ip(source.ip) == -1)
-        return 1;
-
-    if (length != crypto_box_PUBLICKEYBYTES + 1)
-        return 1;
-
-    dht->bootstrap(source, PublicKey(packet + 1));
-    return 0;
-}
-
-
 int send_LANdiscovery(uint16_t port, DHT *dht)
 {
     uint8_t data[crypto_box_PUBLICKEYBYTES + 1];
@@ -355,15 +340,4 @@ int send_LANdiscovery(uint16_t port, DHT *dht)
             res = 1;
 
     return res;
-}
-
-
-void LANdiscovery_init(DHT *dht)
-{
-    networking_registerhandler(dht->net, NET_PACKET_LAN_DISCOVERY, &handle_LANdiscovery, dht);
-}
-
-void LANdiscovery_kill(DHT *dht)
-{
-    networking_registerhandler(dht->net, NET_PACKET_LAN_DISCOVERY, NULL, NULL);
 }

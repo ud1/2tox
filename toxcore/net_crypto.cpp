@@ -33,6 +33,7 @@
 #include "logger.hpp"
 
 #include "protocol_impl.hpp"
+#include "event_dispatcher.hpp"
 
 using namespace bitox;
 using namespace bitox::network;
@@ -194,22 +195,21 @@ int Net_Crypto::handle_cookie_request(uint8_t *request_plain, SharedKey &shared_
 
 /* Handle the cookie request packet (for raw UDP)
  */
-static int udp_handle_cookie_request(void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
+int Net_Crypto::on_packet_cookie_request(const IPPort &source, const uint8_t *packet, uint16_t length)
 {
-    Net_Crypto *c = (Net_Crypto *) object;
     uint8_t request_plain[COOKIE_REQUEST_PLAIN_LENGTH];
     SharedKey shared_key;
     PublicKey dht_public_key;
 
-    if (c->handle_cookie_request(request_plain, shared_key, dht_public_key, packet, length) != 0)
+    if (handle_cookie_request(request_plain, shared_key, dht_public_key, packet, length) != 0)
         return 1;
 
     uint8_t data[COOKIE_RESPONSE_LENGTH];
 
-    if (c->create_cookie_response(data, request_plain, shared_key, dht_public_key) != sizeof(data))
+    if (create_cookie_response(data, request_plain, shared_key, dht_public_key) != sizeof(data))
         return 1;
 
-    if ((uint32_t)sendpacket(c->dht->net, source, data, sizeof(data)) != sizeof(data))
+    if ((uint32_t)sendpacket(dht->net, source, data, sizeof(data)) != sizeof(data))
         return 1;
 
     return 0;
@@ -1799,25 +1799,24 @@ int Net_Crypto::crypto_id_ip_port(IPPort ip_port) const
  * Crypto data packets.
  *
  */
-static int udp_handle_packet(void *object, const IPPort &source, const uint8_t *packet, uint16_t length)
+int Net_Crypto::on_udp_packet(const IPPort &source, const uint8_t *packet, uint16_t length)
 {
     if (length <= CRYPTO_MIN_PACKET_SIZE || length > MAX_CRYPTO_PACKET_SIZE)
         return 1;
 
-    Net_Crypto *c = (Net_Crypto *) object;
-    int crypt_connection_id = c->crypto_id_ip_port(source);
+    int crypt_connection_id = crypto_id_ip_port(source);
 
     if (crypt_connection_id == -1) {
         if (packet[0] != NET_PACKET_CRYPTO_HS)
             return 1;
 
-        if (c->handle_new_connection_handshake(source, packet, length) != 0)
+        if (handle_new_connection_handshake(source, packet, length) != 0)
             return 1;
 
         return 0;
     }
 
-    Crypto_Connection *conn = c->get_crypto_connection(crypt_connection_id);
+    Crypto_Connection *conn = get_crypto_connection(crypt_connection_id);
 
     if (conn == 0)
         return -1;
@@ -2284,13 +2283,13 @@ void Net_Crypto::load_secret_key(const uint8_t *sk)
 /* Run this to (re)initialize net_crypto.
  * Sets all the global connection variables to their default values.
  */
-Net_Crypto::Net_Crypto(DHT *dht, TCP_Proxy_Info *proxy_info)
+Net_Crypto::Net_Crypto(DHT *dht, TCP_Proxy_Info *proxy_info, bitox::EventDispatcher *event_dispatcher) : event_dispatcher(event_dispatcher)
 {
     unix_time_update();
 
     assert(dht && "DHT must not be null");
 
-    tcp_c = new TCP_Connections(dht->self_secret_key, proxy_info);
+    tcp_c = new TCP_Connections(dht->self_secret_key, proxy_info, event_dispatcher);
 
     set_packet_tcp_connection_callback(tcp_c, &tcp_data_callback, this);
     set_oob_packet_tcp_connection_callback(tcp_c, &tcp_oob_callback, this);
@@ -2306,11 +2305,7 @@ Net_Crypto::Net_Crypto(DHT *dht, TCP_Proxy_Info *proxy_info)
     new_symmetric_key(secret_symmetric_key.data.data());
 
     current_sleep_time = CRYPTO_SEND_PACKET_INTERVAL;
-
-    networking_registerhandler(dht->net, NET_PACKET_COOKIE_REQUEST, &udp_handle_cookie_request, this);
-    networking_registerhandler(dht->net, NET_PACKET_COOKIE_RESPONSE, &udp_handle_packet, this);
-    networking_registerhandler(dht->net, NET_PACKET_CRYPTO_HS, &udp_handle_packet, this);
-    networking_registerhandler(dht->net, NET_PACKET_CRYPTO_DATA, &udp_handle_packet, this);
+    event_dispatcher->set_net_crypto(this);
 }
 
 void Net_Crypto::kill_timedout()
@@ -2370,8 +2365,5 @@ Net_Crypto::~Net_Crypto()
     pthread_mutex_destroy(&connections_mutex);
 
     delete tcp_c;
-    networking_registerhandler(dht->net, NET_PACKET_COOKIE_REQUEST, nullptr, nullptr);
-    networking_registerhandler(dht->net, NET_PACKET_COOKIE_RESPONSE, nullptr, nullptr);
-    networking_registerhandler(dht->net, NET_PACKET_CRYPTO_HS, nullptr, nullptr);
-    networking_registerhandler(dht->net, NET_PACKET_CRYPTO_DATA, nullptr, nullptr);
+    event_dispatcher->set_net_crypto(nullptr);
 }

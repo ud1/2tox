@@ -46,8 +46,14 @@
 
 struct DHT;
 
+/* return current monotonic time in milliseconds (ms). */
+uint64_t current_time_monotonic(void);
+
+
 namespace bitox
 {
+
+class EventDispatcher;
 
 namespace network
 {
@@ -71,27 +77,16 @@ struct Socket {
 
 typedef unsigned int sock_t;
 
-
-/* Function to receive data, ip and port of sender is put into ip_port.
- * Packet data is put into data.
- * Packet length is put into length.
- */
-typedef int (*packet_handler_callback)(void* object, const IPPort &ip_port, const uint8_t* data, uint16_t len);
-
-struct Packet_Handler {
-    packet_handler_callback function;
-    void* object;
-};
-
-struct Networking_Core {
-    Packet_Handler packethandlers[256];
+struct Networking_Core
+{
     sa_family_t family;
     uint16_t port;
     /* Our UDP socket. */
     int sock;
     DHT *dht = nullptr;
+    EventDispatcher *const event_dispatcher;
 
-    Networking_Core();
+    Networking_Core(EventDispatcher *event_dispatcher);
     ~Networking_Core();
     
     void set_dht(DHT *dht)
@@ -257,16 +252,10 @@ int set_socket_reuseaddr(sock_t sock);
  */
 int set_socket_dualstack(sock_t sock);
 
-/* return current monotonic time in milliseconds (ms). */
-uint64_t current_time_monotonic(void);
-
 /* Basic network functions: */
 
 /* Function to send packet(data) of length to ip_port. */
 int sendpacket(Networking_Core* net, IPPort ip_port, const uint8_t* data, uint16_t length);
-
-/* Function to call when packet beginning with byte=id is received. */
-void networking_registerhandler(Networking_Core* net, uint8_t id, packet_handler_callback cb, void* object);
 
 /* Initialize networking.
  * bind to ip and port.
@@ -278,8 +267,8 @@ void networking_registerhandler(Networking_Core* net, uint8_t id, packet_handler
  *
  * If error is non NULL it is set to 0 if no issues, 1 if socket related error, 2 if other.
  */
-Networking_Core* new_networking(IP ip, uint16_t port);
-Networking_Core* new_networking_ex(IP ip, uint16_t port_from, uint16_t port_to, unsigned int* error);
+Networking_Core* new_networking(IP ip, uint16_t port, EventDispatcher *event_dispatcher);
+Networking_Core* new_networking_ex(IP ip, uint16_t port_from, uint16_t port_to, unsigned int* error, EventDispatcher *event_dispatcher);
 
 /* Function to cleanup networking stuff (doesn't do much right now). */
 void kill_networking(Networking_Core *net);

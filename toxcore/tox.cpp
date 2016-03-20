@@ -42,37 +42,21 @@ typedef Messenger Tox;
 
 #define SET_ERROR_PARAMETER(param, x) {if(param) {*param = x;}}
 
-#if TOX_HASH_LENGTH != crypto_hash_sha256_BYTES
-#error TOX_HASH_LENGTH is assumed to be equal to crypto_hash_sha256_BYTES
-#endif
+static_assert(TOX_HASH_LENGTH == crypto_hash_sha256_BYTES, "TOX_HASH_LENGTH is assumed to be equal to crypto_hash_sha256_BYTES");
 
-#if FILE_ID_LENGTH != crypto_box_BEFORENMBYTES
-#error FILE_ID_LENGTH is assumed to be equal to crypto_box_BEFORENMBYTES
-#endif
+static_assert(FILE_ID_LENGTH == crypto_box_BEFORENMBYTES, "FILE_ID_LENGTH is assumed to be equal to crypto_box_BEFORENMBYTES");
 
-#if TOX_FILE_ID_LENGTH != crypto_box_BEFORENMBYTES
-#error TOX_FILE_ID_LENGTH is assumed to be equal to crypto_box_BEFORENMBYTES
-#endif
+static_assert(TOX_FILE_ID_LENGTH == crypto_box_BEFORENMBYTES, "TOX_FILE_ID_LENGTH is assumed to be equal to crypto_box_BEFORENMBYTES");
 
-#if TOX_FILE_ID_LENGTH != TOX_HASH_LENGTH
-#error TOX_FILE_ID_LENGTH is assumed to be equal to TOX_HASH_LENGTH
-#endif
+static_assert(TOX_FILE_ID_LENGTH == TOX_HASH_LENGTH, "TOX_FILE_ID_LENGTH is assumed to be equal to TOX_HASH_LENGTH");
 
-#if TOX_PUBLIC_KEY_SIZE != crypto_box_PUBLICKEYBYTES
-#error TOX_PUBLIC_KEY_SIZE is assumed to be equal to crypto_box_PUBLICKEYBYTES
-#endif
+static_assert(TOX_PUBLIC_KEY_SIZE == crypto_box_PUBLICKEYBYTES, "TOX_PUBLIC_KEY_SIZE is assumed to be equal to crypto_box_PUBLICKEYBYTES");
 
-#if TOX_SECRET_KEY_SIZE != crypto_box_SECRETKEYBYTES
-#error TOX_SECRET_KEY_SIZE is assumed to be equal to crypto_box_SECRETKEYBYTES
-#endif
+static_assert(TOX_SECRET_KEY_SIZE == crypto_box_SECRETKEYBYTES, "TOX_SECRET_KEY_SIZE is assumed to be equal to crypto_box_SECRETKEYBYTES");
 
-#if TOX_MAX_NAME_LENGTH != MAX_NAME_LENGTH
-#error TOX_MAX_NAME_LENGTH is assumed to be equal to MAX_NAME_LENGTH
-#endif
+static_assert(TOX_MAX_NAME_LENGTH == MAX_NAME_LENGTH, "TOX_MAX_NAME_LENGTH is assumed to be equal to MAX_NAME_LENGTH");
 
-#if TOX_MAX_STATUS_MESSAGE_LENGTH != MAX_STATUSMESSAGE_LENGTH
-#error TOX_MAX_STATUS_MESSAGE_LENGTH is assumed to be equal to MAX_STATUSMESSAGE_LENGTH
-#endif
+static_assert(TOX_MAX_STATUS_MESSAGE_LENGTH == MAX_STATUSMESSAGE_LENGTH, "TOX_MAX_STATUS_MESSAGE_LENGTH is assumed to be equal to MAX_STATUSMESSAGE_LENGTH");
 
 using namespace bitox;
 using namespace bitox::network;
@@ -103,8 +87,8 @@ void tox_options_default(struct Tox_Options *options)
 {
     if (options) {
         memset(options, 0, sizeof(struct Tox_Options));
-        options->ipv6_enabled = 1;
-        options->udp_enabled = 1;
+        options->ipv6_enabled = true;
+        options->udp_enabled = true;
         options->proxy_type = TOX_PROXY_TYPE_NONE;
     }
 }

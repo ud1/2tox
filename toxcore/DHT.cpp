@@ -45,6 +45,7 @@
 #include "LAN_discovery.hpp"
 #include "util.hpp"
 #include "protocol_impl.hpp"
+#include "event_dispatcher.hpp"
 
 /* The timeout after which a node is discarded completely. */
 #define KILL_NODE_TIMEOUT (BAD_NODE_TIMEOUT + PING_INTERVAL)
@@ -1280,7 +1281,7 @@ bool DHT::sendnodes_ipv6 (IPPort ip_port, const PublicKey &public_key, const Pub
     return sendpacket (net, ip_port, packet.begin(), packet.size());
 }
 
-void DHT::onGetNodesRequest (const IPPort &source, const PublicKey &sender_public_key, const GetNodesRequestData &data)
+void DHT::on_get_nodes_request (const IPPort &source, const PublicKey &sender_public_key, const GetNodesRequestData &data)
 {
     if (sender_public_key == self_public_key)
         return;
@@ -1312,7 +1313,7 @@ bool DHT::sent_getnode_to_node (const bitox::PublicKey &public_key, IPPort node_
 static int send_hardening_getnode_res (const DHT *dht, const NodeFormat *sendto, const PublicKey &queried_client_id,
                                        const uint8_t *nodes_data, uint16_t nodes_data_length);
 
-void DHT::onSendNodes (const IPPort &source, const PublicKey &sender_public_key, const SendNodesData &data)
+void DHT::on_send_nodes (const IPPort &source, const PublicKey &sender_public_key, const SendNodesData &data)
 {
     for (size_t i = 0; i < data.nodes.size(); ++i)
     {
@@ -1565,6 +1566,18 @@ void DHT::do_Close ()
 void DHT::getnodes (const IPPort *from_ipp, const bitox::PublicKey &from_id, const PublicKey &which_id)
 {
     getnodes (*from_ipp, from_id, which_id, nullptr);
+}
+
+int DHT::on_packet_LAN_discovery(const IPPort &source, const uint8_t *packet, uint16_t length)
+{
+    if (LAN_ip(source.ip) == -1)
+        return 1;
+
+    if (length != crypto_box_PUBLICKEYBYTES + 1)
+        return 1;
+
+    bootstrap(source, PublicKey(packet + 1));
+    return 0;
 }
 
 void DHT::bootstrap (IPPort ip_port, const bitox::PublicKey &public_key)
@@ -1877,7 +1890,7 @@ int DHT::send_NATping (const bitox::PublicKey &public_key, uint64_t ping_id, NAT
     return num;
 }
 
-void DHT::onNATPing (const IPPort &source, const PublicKey &sender_public_key, const NATPingCryptoData &data)
+void DHT::on_NAT_ping (const IPPort &source, const PublicKey &sender_public_key, const NATPingCryptoData &data)
 {
     DHT_Friend *friend_ = get_friend (sender_public_key);
 
@@ -2459,7 +2472,7 @@ void DHT::cryptopacket_registerhandler (uint8_t byte, cryptopacket_handler_callb
 }
 
 
-void DHT::rerouteIncomingPacket(const PublicKey &public_key, InputBuffer &packet)
+void DHT::reroute_incoming_packet(const PublicKey &public_key, InputBuffer &packet)
 {
     BufferDataRange buffer_data;
     route_packet (public_key, buffer_data.first, buffer_data.second - buffer_data.first);
@@ -2467,15 +2480,15 @@ void DHT::rerouteIncomingPacket(const PublicKey &public_key, InputBuffer &packet
 
 /*----------------------------------------------------------------------------------*/
 
-DHT::DHT (Networking_Core *net) :
-    dht_ping_array (DHT_PING_ARRAY_SIZE, PING_TIMEOUT)
+DHT::DHT (Networking_Core *net, EventDispatcher *event_dispatcher) :
+    dht_ping_array (DHT_PING_ARRAY_SIZE, PING_TIMEOUT), event_dispatcher(event_dispatcher)
 {
     /* init time */
     unix_time_update();
     assert (net && "Networking_Core must not be null");
 
     this->net = net;
-    this->ping = std::unique_ptr<PING> (new PING (this));
+    this->ping = std::unique_ptr<Ping> (new Ping (this, event_dispatcher));
 
     this->cryptopacket_registerhandler (CRYPTO_PACKET_HARDENING, &handle_hardening, this);
 
@@ -2500,7 +2513,7 @@ DHT::DHT (Networking_Core *net) :
     }
     
     net->set_dht(this);
-    subscribe(this);
+    event_dispatcher->set_dht(this);
 }
 
 void DHT::do_DHT ()
@@ -2540,6 +2553,7 @@ DHT::~DHT()
     kill_Assoc (assoc);
 #endif
     cryptopacket_registerhandler (CRYPTO_PACKET_HARDENING, NULL, NULL);
+    event_dispatcher->set_dht(nullptr);
 }
 
 /* new DHT format for load/save, more robust and forward compatible */
@@ -2783,9 +2797,4 @@ bool DHT::non_lan_connected() const
     }
 
     return false;
-}
-
-void DHT::on_data_received(const IPPort &ip_port, const uint8_t* data, uint16_t len)
-{
-    processIncomingPacket (*crypto_manager.get(), InputBuffer(data, len), ip_port, multicast_packet_listener);
 }

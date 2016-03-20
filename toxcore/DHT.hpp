@@ -29,7 +29,6 @@
 #include "ping_array.hpp"
 #include "protocol.hpp"
 #include "ping.hpp"
-#include "multicast_packet_listener.hpp"
 
 #include <sodium.h>
 #include <sodium/utils.h>
@@ -71,6 +70,11 @@
 
 /* return 0 on success, -1 on failure. */
 //int to_host_family (IP *ip);
+
+namespace bitox
+{
+    class EventDispatcher;
+}
 
 struct IPPTs
 {
@@ -231,13 +235,15 @@ struct Cryptopacket_Handles
     void *object;
 };
 
-struct DHT : public bitox::network::IncomingPacketListener
+class DHT
 {
-    explicit DHT (bitox::network::Networking_Core *net);
+public:
+    
+    explicit DHT (bitox::network::Networking_Core *net, bitox::EventDispatcher *event_dispatcher);
     virtual ~DHT();
     
-    void on_data_received(const bitox::network::IPPort &ip_port, const uint8_t* data, uint16_t len);
-
+    bitox::EventDispatcher *const event_dispatcher;
+    
     bitox::network::Networking_Core *net = nullptr;
 
     Client_data    close_clientlist[LCLIENT_LIST];
@@ -259,9 +265,8 @@ struct DHT : public bitox::network::IncomingPacketListener
     Shared_Keys shared_keys_recv;
     Shared_Keys shared_keys_sent;
     std::unique_ptr<bitox::CryptoManager> crypto_manager; // TODO currently using only one crypto_manager instead of two Shared_Keys
-    bitox::network::MulticastPacketListener multicast_packet_listener;
 
-    std::unique_ptr<PING> ping;
+    std::unique_ptr<bitox::Ping> ping;
     
     struct GetNodesData
     {
@@ -282,11 +287,8 @@ struct DHT : public bitox::network::IncomingPacketListener
     uint32_t friends_list;
     std::unique_ptr<DHTFriendLink> fake_friend_links[DHT_FAKE_FRIEND_NUMBER];
     
-    void subscribe (bitox::network::IncomingPacketListener *listener)
-    {
-        multicast_packet_listener.subscribe(listener);
-    }
-
+    int on_packet_LAN_discovery(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    
     /*
      * Copy shared_key to encrypt/decrypt DHT packet from public_key into shared_key
      * for packets that we receive.
@@ -438,12 +440,10 @@ struct DHT : public bitox::network::IncomingPacketListener
     int addto_lists (bitox::network::IPPort ip_port, const bitox::PublicKey &public_key);
     void do_hardening ();
 
-    virtual void onGetNodesRequest (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::GetNodesRequestData &data) override;
-    virtual void onSendNodes (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::SendNodesData &data) override;
-    
-    virtual void onNATPing (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::NATPingCryptoData &data) override;
-    
-    virtual void rerouteIncomingPacket(const bitox::PublicKey &public_key, bitox::InputBuffer &packet) override;
+    void on_get_nodes_request (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::GetNodesRequestData &data);
+    void on_send_nodes (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::SendNodesData &data);
+    void on_NAT_ping (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::NATPingCryptoData &data);
+    void reroute_incoming_packet(const bitox::PublicKey &public_key, bitox::InputBuffer &packet);
     
 //private:
     /**

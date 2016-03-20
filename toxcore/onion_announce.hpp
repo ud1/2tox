@@ -45,6 +45,11 @@
 #define ONION_DATA_REQUEST_MIN_SIZE (1 + crypto_box_PUBLICKEYBYTES + crypto_box_NONCEBYTES + crypto_box_PUBLICKEYBYTES + crypto_box_MACBYTES)
 #define MAX_DATA_REQUEST_SIZE (ONION_MAX_DATA_SIZE - ONION_DATA_REQUEST_MIN_SIZE)
 
+namespace bitox
+{
+class EventDispatcher;
+}
+
 struct Onion_Announce_Entry
 {
     bitox::PublicKey public_key;
@@ -54,15 +59,24 @@ struct Onion_Announce_Entry
     uint64_t time;
 };
 
-typedef struct {
+class Onion_Announce
+{
+public:
+    Onion_Announce(DHT *dht, bitox::EventDispatcher *event_dispatcher);
+    ~Onion_Announce();
+    
+    int on_packet_announce_request(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    int on_packet_data_request(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    
     DHT     *dht;
+    bitox::EventDispatcher *const event_dispatcher;
     bitox::network::Networking_Core *net;
     Onion_Announce_Entry entries[ONION_ANNOUNCE_MAX_ENTRIES];
     /* This is crypto_box_KEYBYTES long just so we can use new_symmetric_key() to fill it */
     uint8_t secret_bytes[crypto_box_BEFORENMBYTES];
 
     Shared_Keys shared_keys_recv;
-} Onion_Announce;
+};
 
 /* Create an onion announce request packet in packet of max_packet_length (recommended size ONION_ANNOUNCE_REQUEST_SIZE).
  *
@@ -130,11 +144,5 @@ int send_announce_request(bitox::network::Networking_Core *net, const Onion_Path
  */
 int send_data_request(bitox::network::Networking_Core *net, const Onion_Path *path, bitox::network::IPPort dest, const bitox::PublicKey &public_key,
                       const bitox::PublicKey &encrypt_public_key, const uint8_t *nonce, const uint8_t *data, uint16_t length);
-
-
-Onion_Announce *new_onion_announce(DHT *dht);
-
-void kill_onion_announce(Onion_Announce *onion_a);
-
 
 #endif

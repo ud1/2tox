@@ -85,6 +85,11 @@
 #define DEFAULT_PING_CONNECTION 1000
 #define DEFAULT_TCP_PING_CONNECTION 500
 
+namespace bitox
+{
+    class EventDispatcher;
+}
+
 typedef struct {
     uint64_t sent_time;
     uint16_t length;
@@ -440,15 +445,19 @@ struct New_Connection
     std::vector<uint8_t> cookie;
 };
 
-struct Net_Crypto
+class Net_Crypto
 {
+public:
     /* Create new instance of Net_Crypto.
     *  Sets all the global connection variables to their default values.
     */
-    Net_Crypto(DHT *dht, TCP_Proxy_Info *proxy_info);
+    Net_Crypto(DHT *dht, TCP_Proxy_Info *proxy_info, bitox::EventDispatcher *event_dispatcher);
 
     ~Net_Crypto();
 
+    int on_packet_cookie_request(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    int on_udp_packet(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
+    
     /* Accept a crypto connection.
     */
     std::shared_ptr<Crypto_Connection> accept_crypto_connection(New_Connection *n_c);
@@ -509,6 +518,7 @@ struct Net_Crypto
     /* Main loop. */
     void do_net_crypto();
 
+    bitox::EventDispatcher *const event_dispatcher;
     DHT *dht;
     TCP_Connections *tcp_c;
 

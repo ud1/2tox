@@ -242,7 +242,7 @@ static IP broadcast_ip(sa_family_t family_socket, sa_family_t family_broadcast)
 }
 
 /* Is IP a local ip or not. */
-_Bool Local_ip(IP ip)
+bool Local_ip(IP ip)
 {
     if (ip.address.is_loopback())
         return 1;

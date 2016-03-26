@@ -68,6 +68,13 @@ Nonce& Nonce::operator++()
     return *this;
 }
 
+SymmetricKey SymmetricKey::create_random()
+{
+    SymmetricKey result;
+    randombytes(result.data.data(), SHARED_KEY_LEN);
+    return result;
+}
+
 namespace network
 {
 static void write_ipv6_address(OutputBuffer &buffer, const boost::asio::ip::address &address)
@@ -96,7 +103,7 @@ static void read_ipv4_address(InputBuffer &buffer, boost::asio::ip::address &out
     out_address = boost::asio::ip::address(boost::asio::ip::address_v4(ip4_bytes));
 }
 
-static bool write_node_format (OutputBuffer &buffer, const dht::NodeFormat &node_format)
+bool write_node_format (OutputBuffer &buffer, const dht::NodeFormat &node_format)
 {
     bitox::impl::network::ToxFamily tox_family = bitox::impl::network::to_tox_family(node_format.ip_port.ip.family);
     

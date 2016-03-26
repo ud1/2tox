@@ -24,6 +24,7 @@
 #define ONION_ANNOUNCE_H
 
 #include "onion.hpp"
+#include "protocol.hpp"
 
 #define ONION_ANNOUNCE_MAX_ENTRIES 160
 #define ONION_ANNOUNCE_TIMEOUT 300
@@ -65,6 +66,7 @@ public:
     Onion_Announce(DHT *dht, bitox::EventDispatcher *event_dispatcher);
     ~Onion_Announce();
     
+    int on_announce_request (const bitox::network::IPPort &source, const bitox::PublicKey &sender_public_key, const bitox::AnnounceRequestData &data);
     int on_packet_announce_request(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
     int on_packet_data_request(const bitox::network::IPPort &source, const uint8_t *packet, uint16_t length);
     
@@ -73,7 +75,7 @@ public:
     bitox::network::Networking_Core *net;
     Onion_Announce_Entry entries[ONION_ANNOUNCE_MAX_ENTRIES];
     /* This is crypto_box_KEYBYTES long just so we can use new_symmetric_key() to fill it */
-    uint8_t secret_bytes[crypto_box_BEFORENMBYTES];
+    bitox::SymmetricKey secret_bytes = bitox::SymmetricKey::create_random();
 
     Shared_Keys shared_keys_recv;
 };
@@ -92,7 +94,7 @@ public:
  * return packet length on success.
  */
 int create_announce_request(uint8_t *packet, uint16_t max_packet_length, const bitox::PublicKey &dest_client_id,
-                            const bitox::PublicKey &public_key, const bitox::SecretKey &secret_key, const bitox::PublicKey &ping_id, const bitox::PublicKey &client_id,
+                            const bitox::PublicKey &public_key, const bitox::SecretKey &secret_key, const bitox::OnionPingId &ping_id, const bitox::PublicKey &client_id,
                             const bitox::PublicKey &data_public_key, uint64_t sendback_data);
 
 /* Create an onion data request packet in packet of max_packet_length (recommended size ONION_MAX_PACKET_SIZE).
@@ -123,7 +125,7 @@ int create_data_request(uint8_t *packet, uint16_t max_packet_length, const bitox
  * return 0 on success.
  */
 int send_announce_request(bitox::network::Networking_Core *net, const Onion_Path *path, bitox::dht::NodeFormat dest, const bitox::PublicKey &public_key,
-                          const bitox::SecretKey &secret_key, const bitox::PublicKey &ping_id, const bitox::PublicKey &client_id, const bitox::PublicKey &data_public_key,
+                          const bitox::SecretKey &secret_key, const bitox::OnionPingId &ping_id, const bitox::PublicKey &client_id, const bitox::PublicKey &data_public_key,
                           uint64_t sendback_data);
 
 /* Create and send an onion data request packet.

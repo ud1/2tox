@@ -656,7 +656,8 @@ int add_groupchat(Group_Chats *g_c, uint8_t type)
 
     g->status = GROUPCHAT_STATUS_CONNECTED;
     g->number_joined.reset();
-    new_symmetric_key(g->identifier + 1);
+    bitox::SymmetricKey sym_key = bitox::SymmetricKey::create_random();
+    memcpy(g->identifier + 1, sym_key.data.data(), sym_key.data.size());
     g->identifier[0] = type;
     g->peer_number = 0; /* Founder is peer 0. */
     g->real_pk = g_c->m->net_crypto->self_public_key;

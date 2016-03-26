@@ -28,7 +28,8 @@
 
 #define MAX_FRIEND_REQUEST_DATA_SIZE (ONION_CLIENT_MAX_DATA_SIZE - (1 + sizeof(uint32_t)))
 
-typedef struct {
+struct Friend_Requests
+{
     uint32_t nospam;
     void (*handle_friendrequest)(void *, const uint8_t *, const uint8_t *, size_t, void *);
     uint8_t handle_friendrequest_isset;
@@ -45,7 +46,7 @@ typedef struct {
 
     bitox::PublicKey received_requests[MAX_RECEIVED_STORED];
     uint16_t received_requests_index;
-} Friend_Requests;
+};
 
 /* Set and get the nospam variable used to prevent one type of friend request spam. */
 void set_nospam(Friend_Requests *fr, uint32_t num);

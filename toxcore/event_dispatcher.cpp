@@ -3,6 +3,7 @@
 #include "DHT.hpp"
 #include "onion.hpp"
 #include "onion_client.hpp"
+#include "friend_connection.hpp"
 
 namespace bitox
 {
@@ -125,6 +126,14 @@ void EventDispatcher::on_tcp_onion(const uint8_t *data, uint16_t length)
         }
     }
 }
+
+int EventDispatcher::on_net_crypto_new_connection(const New_Connection &new_connection)
+{
+    if (friend_connections)
+        friend_connections->on_net_crypto_new_connection(new_connection);
+}
+
+
     
 void EventDispatcher::on_ping_request (const IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data)
 {
@@ -152,7 +161,8 @@ void EventDispatcher::on_send_nodes (const IPPort &source, const PublicKey &send
 
 void EventDispatcher::on_announce_request (const IPPort &source, const PublicKey &sender_public_key, const AnnounceRequestData &data)
 {
-    
+    if (onion_announce)
+        onion_announce->on_announce_request(source, sender_public_key, data);
 }
 
 void EventDispatcher::on_NAT_ping (const IPPort &source, const PublicKey &sender_public_key, const NATPingCryptoData &data)

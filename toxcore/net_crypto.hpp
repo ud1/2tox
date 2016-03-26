@@ -460,7 +460,7 @@ public:
     
     /* Accept a crypto connection.
     */
-    std::shared_ptr<Crypto_Connection> accept_crypto_connection(New_Connection *n_c);
+    std::shared_ptr<Crypto_Connection> accept_crypto_connection(const New_Connection &n_c);
 
     /* Create a crypto connection.
     * If one to that real public key already exists, return it.
@@ -537,10 +537,7 @@ public:
     bitox::SecretKey self_secret_key;
 
     /* The secret key used for cookies */
-    bitox::SharedKey secret_symmetric_key;
-
-    int (*new_connection_callback)(void *object, New_Connection *n_c);
-    void *new_connection_callback_object;
+    bitox::SymmetricKey secret_symmetric_key = bitox::SymmetricKey::create_random();
 
     /* The current optimal sleep time */
     uint32_t current_sleep_time;
@@ -654,17 +651,6 @@ public:
     int tcp_handle_cookie_request(TCP_Connection_to *connection, const uint8_t *packet, uint16_t length);
 };
 
-
-/* Set function to be called when someone requests a new connection to us.
- *
- * The set function should return -1 on failure and 0 on success.
- *
- * n_c is only valid for the duration of the function call.
- */
-void new_connection_handler(Net_Crypto *c, int (*new_connection_callback)(void *object, New_Connection *n_c),
-                            void *object);
-
-
 /* Set function to be called when connection with crypt_connection_id goes connects/disconnects.
  *
  * The set function should return -1 on failure and 0 on success.
@@ -675,6 +661,6 @@ void new_connection_handler(Net_Crypto *c, int (*new_connection_callback)(void *
  * return -1 on failure.
  * return 0 on success.
  */
-int set_event_listener(const Net_Crypto *c, int crypt_connection_id, CryptoConnectionEventListener *listener);
+int set_event_listener(Net_Crypto *c, int crypt_connection_id, CryptoConnectionEventListener *listener);
 
 #endif

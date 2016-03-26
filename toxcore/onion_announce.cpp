@@ -56,7 +56,7 @@ using namespace bitox::dht;
  * return packet length on success.
  */
 int create_announce_request(uint8_t *packet, uint16_t max_packet_length, const PublicKey &dest_client_id,
-                            const PublicKey &public_key, const SecretKey &secret_key, const PublicKey &ping_id, const PublicKey &client_id,
+                            const PublicKey &public_key, const SecretKey &secret_key, const OnionPingId &ping_id, const PublicKey &client_id,
                             const PublicKey &data_public_key, uint64_t sendback_data)
 {
     if (max_packet_length < ONION_ANNOUNCE_REQUEST_SIZE)
@@ -138,7 +138,7 @@ int create_data_request(uint8_t *packet, uint16_t max_packet_length, const bitox
  * return 0 on success.
  */
 int send_announce_request(Networking_Core *net, const Onion_Path *path, NodeFormat dest, const PublicKey &public_key,
-                          const SecretKey &secret_key, const PublicKey &ping_id, const PublicKey &client_id, const PublicKey &data_public_key,
+                          const SecretKey &secret_key, const OnionPingId &ping_id, const PublicKey &client_id, const PublicKey &data_public_key,
                           uint64_t sendback_data)
 {
     uint8_t request[ONION_ANNOUNCE_REQUEST_SIZE];
@@ -201,7 +201,7 @@ static void generate_ping_id(const Onion_Announce *onion_a, uint64_t time, const
 {
     time /= PING_ID_TIMEOUT;
     uint8_t data[crypto_box_BEFORENMBYTES + sizeof(time) + crypto_box_PUBLICKEYBYTES + sizeof(ret_ip_port)];
-    memcpy(data, onion_a->secret_bytes, crypto_box_BEFORENMBYTES);
+    memcpy(data, onion_a->secret_bytes.data.data(), crypto_box_BEFORENMBYTES);
     memcpy(data + crypto_box_BEFORENMBYTES, &time, sizeof(time));
     memcpy(data + crypto_box_BEFORENMBYTES + sizeof(time), public_key.data.data(), crypto_box_PUBLICKEYBYTES);
     memcpy(data + crypto_box_BEFORENMBYTES + sizeof(time) + crypto_box_PUBLICKEYBYTES, &ret_ip_port, sizeof(ret_ip_port));
@@ -266,16 +266,17 @@ static int add_to_entries(Onion_Announce *onion_a, IPPort ret_ip_port, const Pub
 
     int pos = in_entries(onion_a, public_key);
 
-    unsigned int i;
-
-    if (pos == -1) {
-        for (i = 0; i < ONION_ANNOUNCE_MAX_ENTRIES; ++i) {
+    if (pos == -1)
+    {
+        for (size_t i = 0; i < ONION_ANNOUNCE_MAX_ENTRIES; ++i)
+        {
             if (is_timeout(onion_a->entries[i].time, ONION_ANNOUNCE_TIMEOUT))
                 pos = i;
         }
     }
 
-    if (pos == -1) {
+    if (pos == -1)
+    {
         if (id_closest(onion_a->dht->self_public_key, public_key, onion_a->entries[0].public_key) == 1)
             pos = 0;
     }
@@ -294,14 +295,90 @@ static int add_to_entries(Onion_Announce *onion_a, IPPort ret_ip_port, const Pub
     return in_entries(onion_a, public_key);
 }
 
+int Onion_Announce::on_announce_request (const IPPort &source, const PublicKey &sender_public_key, const AnnounceRequestData &data)
+{
+    /*OnionPingId ping_id1;
+    generate_ping_id(this, unix_time(), sender_public_key, source, ping_id1.data.data());
+
+    OnionPingId ping_id2;
+    generate_ping_id(this, unix_time() + PING_ID_TIMEOUT, sender_public_key, source, ping_id2.data.data());
+
+    int index = -1;
+
+    if (sodium_memcmp(ping_id1, data.ping_id.data.data(), ONION_PING_ID_SIZE) == 0
+            || sodium_memcmp(ping_id2, data.ping_id.data.data(), ONION_PING_ID_SIZE) == 0)
+    {
+        index = add_to_entries(this, source, sender_public_key, data.client_id,
+                               packet + (ANNOUNCE_REQUEST_SIZE_RECV - ONION_RETURN_3));
+    }
+    else
+    {
+        index = in_entries(this, data.client_id);
+    }
+
+    // Respond with a announce response packet
+    NodeFormat nodes_list[MAX_SENT_NODES];
+    unsigned int num_nodes = dht->get_close_nodes(data.client_id, nodes_list, 0,
+                             LAN_ip(source.ip) == 0, 1);
+    Nonce nonce = Nonce::create_random();
+
+    uint8_t pl[1 + ONION_PING_ID_SIZE + sizeof(nodes_list)];
+
+    if (index == -1) {
+        pl[0] = 0;
+        memcpy(pl + 1, ping_id2, ONION_PING_ID_SIZE);
+    } else {
+        if (entries[index].public_key == sender_public_key) {
+            if (entries[index].data_public_key != data.client_id) {
+                pl[0] = 0;
+                memcpy(pl + 1, ping_id2, ONION_PING_ID_SIZE);
+            } else {
+                pl[0] = 2;
+                memcpy(pl + 1, ping_id2, ONION_PING_ID_SIZE);
+            }
+        } else {
+            pl[0] = 1;
+            memcpy(pl + 1, entries[index].data_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
+        }
+    }
+
+    int nodes_length = 0;
+
+    if (num_nodes != 0) {
+        nodes_length = pack_nodes(pl + 1 + ONION_PING_ID_SIZE, sizeof(nodes_list), nodes_list, num_nodes);
+
+        if (nodes_length <= 0)
+            return 1;
+    }
+
+    uint8_t data[ONION_ANNOUNCE_RESPONSE_MAX_SIZE];
+    len = encrypt_data_symmetric(shared_key.data.data(), nonce.data.data(), pl, 1 + ONION_PING_ID_SIZE + nodes_length,
+                                 data + 1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH + crypto_box_NONCEBYTES);
+
+    if (len != 1 + ONION_PING_ID_SIZE + nodes_length + crypto_box_MACBYTES)
+        return 1;
+
+    data[0] = NET_PACKET_ANNOUNCE_RESPONSE;
+    memcpy(data + 1, plain + ONION_PING_ID_SIZE + crypto_box_PUBLICKEYBYTES + crypto_box_PUBLICKEYBYTES,
+           ONION_ANNOUNCE_SENDBACK_DATA_LENGTH);
+    memcpy(data + 1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH, nonce.data.data(), crypto_box_NONCEBYTES);
+
+    if (send_onion_response(net, source, data,
+                            1 + ONION_ANNOUNCE_SENDBACK_DATA_LENGTH + crypto_box_NONCEBYTES + len,
+                            packet + (ANNOUNCE_REQUEST_SIZE_RECV - ONION_RETURN_3)) == -1)
+        return 1;
+*/
+    return 0;
+}
+
 int Onion_Announce::on_packet_announce_request(const IPPort &source, const uint8_t *packet, uint16_t length)
 {
     if (length != ANNOUNCE_REQUEST_SIZE_RECV)
         return 1;
 
-    PublicKey packet_public_key = PublicKey(packet + 1 + crypto_box_NONCEBYTES);
+    PublicKey sender_public_key = PublicKey(packet + 1 + crypto_box_NONCEBYTES);
     SharedKey shared_key;
-    get_shared_key(&shared_keys_recv, shared_key, dht->self_secret_key, packet_public_key);
+    get_shared_key(&shared_keys_recv, shared_key, dht->self_secret_key, sender_public_key);
 
     uint8_t plain[ONION_PING_ID_SIZE + crypto_box_PUBLICKEYBYTES + crypto_box_PUBLICKEYBYTES +
                   ONION_ANNOUNCE_SENDBACK_DATA_LENGTH];
@@ -313,10 +390,10 @@ int Onion_Announce::on_packet_announce_request(const IPPort &source, const uint8
         return 1;
 
     uint8_t ping_id1[ONION_PING_ID_SIZE];
-    generate_ping_id(this, unix_time(), packet_public_key, source, ping_id1);
+    generate_ping_id(this, unix_time(), sender_public_key, source, ping_id1);
 
     uint8_t ping_id2[ONION_PING_ID_SIZE];
-    generate_ping_id(this, unix_time() + PING_ID_TIMEOUT, packet_public_key, source, ping_id2);
+    generate_ping_id(this, unix_time() + PING_ID_TIMEOUT, sender_public_key, source, ping_id2);
 
     int index = -1;
 
@@ -324,7 +401,7 @@ int Onion_Announce::on_packet_announce_request(const IPPort &source, const uint8
 
     if (sodium_memcmp(ping_id1, plain, ONION_PING_ID_SIZE) == 0
             || sodium_memcmp(ping_id2, plain, ONION_PING_ID_SIZE) == 0) {
-        index = add_to_entries(this, source, packet_public_key, data_public_key,
+        index = add_to_entries(this, source, sender_public_key, data_public_key,
                                packet + (ANNOUNCE_REQUEST_SIZE_RECV - ONION_RETURN_3));
     } else {
         index = in_entries(this, PublicKey(plain + ONION_PING_ID_SIZE));
@@ -342,7 +419,7 @@ int Onion_Announce::on_packet_announce_request(const IPPort &source, const uint8
         pl[0] = 0;
         memcpy(pl + 1, ping_id2, ONION_PING_ID_SIZE);
     } else {
-        if (entries[index].public_key == packet_public_key) {
+        if (entries[index].public_key == sender_public_key) {
             if (entries[index].data_public_key != data_public_key) {
                 pl[0] = 0;
                 memcpy(pl + 1, ping_id2, ONION_PING_ID_SIZE);
@@ -414,8 +491,6 @@ Onion_Announce::Onion_Announce(DHT *dht, bitox::EventDispatcher *event_dispatche
     assert(dht && "DHT must not be null");
 
     net = dht->net;
-    new_symmetric_key(secret_bytes);
-
     event_dispatcher->set_onion_announce(this);
 }
 

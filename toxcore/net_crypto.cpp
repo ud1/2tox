@@ -98,7 +98,7 @@ int Net_Crypto::create_cookie_request(uint8_t *packet, PublicKey &dht_public_key
  * return -1 on failure.
  * return 0 on success.
  */
-static int create_cookie(uint8_t *cookie, const uint8_t *bytes, const SharedKey &encryption_key)
+static int create_cookie(uint8_t *cookie, const uint8_t *bytes, const SymmetricKey &encryption_key)
 {
     uint8_t contents[COOKIE_CONTENTS_LENGTH];
     uint64_t temp_time = unix_time();
@@ -118,7 +118,7 @@ static int create_cookie(uint8_t *cookie, const uint8_t *bytes, const SharedKey 
  * return -1 on failure.
  * return 0 on success.
  */
-static int open_cookie(uint8_t *bytes, const uint8_t *cookie, const SharedKey &encryption_key)
+static int open_cookie(uint8_t *bytes, const uint8_t *cookie, const SymmetricKey &encryption_key)
 {
     uint8_t contents[COOKIE_CONTENTS_LENGTH];
     int len = decrypt_data_symmetric(encryption_key.data.data(), cookie, cookie + crypto_box_NONCEBYTES,
@@ -1424,20 +1424,6 @@ int Crypto_Connection::crypto_connection_add_source(IPPort source)
     return -1;
 }
 
-
-/* Set function to be called when someone requests a new connection to us.
- *
- * The set function should return -1 on failure and 0 on success.
- *
- * n_c is only valid for the duration of the function call.
- */
-void new_connection_handler(Net_Crypto *c, int (*new_connection_callback)(void *object, New_Connection *n_c),
-                            void *object)
-{
-    c->new_connection_callback = new_connection_callback;
-    c->new_connection_callback_object = object;
-}
-
 /* Handle a handshake packet by someone who wants to initiate a new connection with us.
  * This calls the callback set by new_connection_handler() if the handshake is ok.
  *
@@ -1482,8 +1468,10 @@ int Net_Crypto::handle_new_connection_handshake(IPPort source, const uint8_t *da
         }
     }
 
-    int ret = this->new_connection_callback(this->new_connection_callback_object, &n_c);
-    return ret;
+    if (event_dispatcher)
+        return event_dispatcher->on_net_crypto_new_connection(n_c);
+    
+    return -1;
 }
 
 /* Accept a crypto connection.
@@ -1491,43 +1479,43 @@ int Net_Crypto::handle_new_connection_handshake(IPPort source, const uint8_t *da
  * return -1 on failure.
  * return connection id on success.
  */
-std::shared_ptr<Crypto_Connection> Net_Crypto::accept_crypto_connection(New_Connection *n_c)
+std::shared_ptr<Crypto_Connection> Net_Crypto::accept_crypto_connection(const New_Connection &n_c)
 {
-    if (getcryptconnection_id(n_c->public_key) != -1)
+    if (getcryptconnection_id(n_c.public_key) != -1)
         return std::shared_ptr<Crypto_Connection>();
 
-    if (n_c->cookie.size() != COOKIE_LENGTH)
+    if (n_c.cookie.size() != COOKIE_LENGTH)
         return std::shared_ptr<Crypto_Connection>();
 
     std::shared_ptr<Crypto_Connection> crypt_connection = create_crypto_connection();
 
     {
         std::lock_guard<std::mutex> lock(this->tcp_mutex);
-        crypt_connection->tcp_connection = this->tcp_c->new_tcp_connection_to(n_c->dht_public_key, crypt_connection->id);
+        crypt_connection->tcp_connection = this->tcp_c->new_tcp_connection_to(n_c.dht_public_key, crypt_connection->id);
     }
 
     if (!crypt_connection->tcp_connection)
         return std::shared_ptr<Crypto_Connection>();
 
-    crypt_connection->public_key = n_c->public_key;
-    crypt_connection->recv_nonce = n_c->recv_nonce;
-    crypt_connection->peersessionpublic_key = n_c->peersessionpublic_key;
+    crypt_connection->public_key = n_c.public_key;
+    crypt_connection->recv_nonce = n_c.recv_nonce;
+    crypt_connection->peersessionpublic_key = n_c.peersessionpublic_key;
     random_nonce(crypt_connection->sent_nonce.data.data());
     crypto_box_keypair(crypt_connection->sessionpublic_key.data.data(), crypt_connection->sessionsecret_key.data.data());
     encrypt_precompute(crypt_connection->peersessionpublic_key, crypt_connection->sessionsecret_key, crypt_connection->shared_key.data.data());
     crypt_connection->status = CryptoConnectionStatus::CRYPTO_CONN_NOT_CONFIRMED;
 
-    if (crypt_connection->create_send_handshake(n_c->cookie.data(), n_c->dht_public_key) != 0) {
+    if (crypt_connection->create_send_handshake(n_c.cookie.data(), n_c.dht_public_key) != 0) {
         std::lock_guard<std::mutex> lock(this->tcp_mutex); // TODO ?
         return std::shared_ptr<Crypto_Connection>();
     }
 
-    crypt_connection->dht_public_key = n_c->dht_public_key;
+    crypt_connection->dht_public_key = n_c.dht_public_key;
     crypt_connection->packet_send_rate = CRYPTO_PACKET_MIN_RATE;
     crypt_connection->packet_send_rate_requested = CRYPTO_PACKET_MIN_RATE;
     crypt_connection->packets_left = CRYPTO_MIN_QUEUE_LENGTH;
     crypt_connection->rtt_time = DEFAULT_PING_CONNECTION;
-    crypt_connection->crypto_connection_add_source(n_c->source);
+    crypt_connection->crypto_connection_add_source(n_c.source);
     return crypt_connection;
 }
 
@@ -2302,8 +2290,6 @@ Net_Crypto::Net_Crypto(DHT *dht, TCP_Proxy_Info *proxy_info, bitox::EventDispatc
     this->dht = dht;
 
     new_keys();
-    new_symmetric_key(secret_symmetric_key.data.data());
-
     current_sleep_time = CRYPTO_SEND_PACKET_INTERVAL;
     event_dispatcher->set_net_crypto(this);
 }

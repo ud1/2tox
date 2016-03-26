@@ -57,6 +57,10 @@
 /* Interval between the sending of tcp relay information */
 #define SHARE_RELAYS_INTERVAL (5 * 60)
 
+namespace bitox
+{
+    class EventDispatcher;
+}
 
 enum class FriendConnectionStatus
 {
@@ -209,10 +213,14 @@ struct Friend_Conn : public std::enable_shared_from_this<Friend_Conn>, public Cr
 };
 
 
-struct Friend_Connections
+class Friend_Connections
 {
-    Friend_Connections(Onion_Client *onion_c);
+public:
+    
+    Friend_Connections(Onion_Client *onion_c, bitox::EventDispatcher *event_dispatcher);
     ~Friend_Connections();
+    
+    int on_net_crypto_new_connection(const New_Connection &n_c);
     
     /* Create a new friend connection.
     * If one to that real public key already exists, increase lock count and return it.
@@ -223,6 +231,7 @@ struct Friend_Connections
     std::shared_ptr<Friend_Conn> new_friend_connection(const bitox::PublicKey &real_public_key);
 
     Net_Crypto *net_crypto;
+    bitox::EventDispatcher *const event_dispatcher;
     DHT *dht;
     Onion_Client *onion_c;
 

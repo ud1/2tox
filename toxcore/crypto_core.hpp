@@ -62,8 +62,8 @@ bitox::SharedKey compute_shared_key(const bitox::PublicKey &public_key, const bi
 
 std::pair<bitox::PublicKey, bitox::SecretKey> generate_keys();
 
-bool encrypt_buffer (const bitox::BufferDataRange &data_to_encrypt, const bitox::SharedKey &shared_key, const bitox::Nonce &nonce, bitox::Buffer &out_encrypted_data);
-bool decrypt_buffer (const bitox::BufferDataRange &data_to_decrypt, const bitox::SharedKey &shared_key, const bitox::Nonce &nonce, bitox::Buffer &out_decrypted_data);
+bool encrypt_buffer (const bitox::BufferDataRange &data_to_encrypt, const bitox::SymmetricKey &shared_key, const bitox::Nonce &nonce, bitox::Buffer &out_encrypted_data);
+bool decrypt_buffer (const bitox::BufferDataRange &data_to_decrypt, const bitox::SymmetricKey &shared_key, const bitox::Nonce &nonce, bitox::Buffer &out_decrypted_data);
 
 /* Decrypts encrypted of length length to plain of length length - 16 using the
  * public key(32 bytes) of the sender, the secret key of the receiver and a 24 byte nonce.
@@ -94,9 +94,6 @@ void random_nonce(uint8_t* nonce);
 
 /*Gives a nonce guaranteed to be different from previous ones.*/
 void new_nonce(uint8_t* nonce);
-
-/* Fill a key crypto_box_KEYBYTES big with random bytes */
-void new_symmetric_key(uint8_t* key);
 
 #define MAX_CRYPTO_REQUEST_SIZE 1024
 

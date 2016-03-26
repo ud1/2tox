@@ -27,6 +27,9 @@
 
 #include "friend_connection.hpp"
 #include "util.hpp"
+#include "event_dispatcher.hpp"
+#include "buffer.hpp"
+#include "protocol_impl.hpp"
 
 using namespace bitox;
 using namespace bitox::network;
@@ -48,11 +51,9 @@ bool Friend_Conn::friend_add_tcp_relay(IPPort ip_port, const PublicKey &public_k
         }
     }
 
-    unsigned int i;
-
     uint16_t index = tcp_relay_counter % FRIEND_MAX_STORED_TCP_RELAYS;
 
-    for (i = 0; i < FRIEND_MAX_STORED_TCP_RELAYS; ++i) {
+    for (size_t i = 0; i < FRIEND_MAX_STORED_TCP_RELAYS; ++i) {
         if (tcp_relays[i].ip_port.ip.family != Family::FAMILY_NULL
                 && tcp_relays[i].public_key == public_key) {
             memset(&tcp_relays[i], 0, sizeof(NodeFormat));
@@ -92,10 +93,7 @@ unsigned int Friend_Conn::send_relays()
         return 0;
         
     NodeFormat nodes[MAX_SHARED_RELAYS];
-    uint8_t data[1024];
-    int n, length;
-
-    n = connections->net_crypto->copy_connected_tcp_relays(nodes, MAX_SHARED_RELAYS);
+    int n = connections->net_crypto->copy_connected_tcp_relays(nodes, MAX_SHARED_RELAYS);
 
     for (size_t i = 0; i < n; ++i)
     {
@@ -104,15 +102,16 @@ unsigned int Friend_Conn::send_relays()
         friend_add_tcp_relay(nodes[i].ip_port, nodes[i].public_key);
     }
 
-    length = pack_nodes(data + 1, sizeof(data) - 1, nodes, n);
-
-    if (length <= 0)
-        return 0;
-
-    data[0] = PACKET_ID_SHARE_RELAYS;
-    ++length;
+    OutputBuffer buffer;
+    buffer.write_byte(PACKET_ID_SHARE_RELAYS);
     
-    if (crypt_connection->write_cryptpacket(data, length, 0) != -1)
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (!write_node_format(buffer, nodes[i]))
+            return 0;
+    }
+    
+    if (crypt_connection->write_cryptpacket(buffer.begin(), buffer.size(), 0) != -1)
     {
         share_relays_lastsent = unix_time();
         return 1;
@@ -187,12 +186,8 @@ int Friend_Conn::on_status(uint8_t status)
     }
 
     if (call_cb) {
-        unsigned int i;
-
-        for (i = 0; i < MAX_FRIEND_CONNECTION_CALLBACKS; ++i) {
-            if (event_listener)
-                event_listener->on_status(status);
-        }
+        if (event_listener)
+            event_listener->on_status(status);
     }
 
     return 0;
@@ -275,34 +270,33 @@ int Friend_Conn::on_lossy_data(uint8_t *data, uint16_t length)
     return 0;
 }
 
-static int handle_new_connections(void *object, New_Connection *n_c)
+int Friend_Connections::on_net_crypto_new_connection(const New_Connection &n_c)
 {
-    Friend_Connections *fr_c = (Friend_Connections *) object;
-    auto it = fr_c->connections_map.find(n_c->public_key);
-    Friend_Conn *friend_con = (it == fr_c->connections_map.end() ? nullptr : it->second);
+    auto it = connections_map.find(n_c.public_key);
+    Friend_Conn *friend_con = (it == connections_map.end() ? nullptr : it->second);
 
     if (friend_con) {
 
         if (friend_con->crypt_connection)
             return -1;
 
-        friend_con->crypt_connection = fr_c->net_crypto->accept_crypto_connection(n_c);
+        friend_con->crypt_connection = net_crypto->accept_crypto_connection(n_c);
 
         if (!friend_con->crypt_connection) {
             return -1;
         }
 
-        set_event_listener(fr_c->net_crypto, friend_con->crypt_connection->id, friend_con);
+        set_event_listener(net_crypto, friend_con->crypt_connection->id, friend_con);
 
-        if (n_c->source.ip.family != Family::FAMILY_AF_INET && n_c->source.ip.family != Family::FAMILY_AF_INET6) {
+        if (n_c.source.ip.family != Family::FAMILY_AF_INET && n_c.source.ip.family != Family::FAMILY_AF_INET6) {
             friend_con->crypt_connection->set_direct_ip_port(friend_con->dht_ip_port, 0);
         } else {
-            friend_con->dht_ip_port = n_c->source;
+            friend_con->dht_ip_port = n_c.source;
             friend_con->dht_ip_port_lastrecv = unix_time();
         }
 
-        if (friend_con->dht_temp_pk != n_c->dht_public_key) {
-            friend_con->change_dht_pk(n_c->dht_public_key);
+        if (friend_con->dht_temp_pk != n_c.dht_public_key) {
+            friend_con->change_dht_pk(n_c.dht_public_key);
         }
 
         return 0;
@@ -432,7 +426,7 @@ int Friend_Conn::send_friend_request_packet(uint32_t nospam_num, const uint8_t *
 }
 
 /* Create new friend_connections instance. */
-Friend_Connections::Friend_Connections(Onion_Client *onion_c)
+Friend_Connections::Friend_Connections(Onion_Client *onion_c, bitox::EventDispatcher *event_dispatcher) : event_dispatcher(event_dispatcher)
 {
     assert(onion_c && "Onion client must not be null");
 
@@ -440,7 +434,7 @@ Friend_Connections::Friend_Connections(Onion_Client *onion_c)
     net_crypto = onion_c->c;
     this->onion_c = onion_c;
 
-    new_connection_handler(net_crypto, &handle_new_connections, this);
+    event_dispatcher->set_friend_connections(this);
 }
 
 /* Send a LAN discovery packet every LAN_DISCOVERY_INTERVAL seconds. */
@@ -506,4 +500,5 @@ Friend_Connections::~Friend_Connections()
     /*for (i = 0; i < fr_c->num_cons; ++i) { // TODO
         kill_friend_connection(fr_c, i);
     }*/
+    event_dispatcher->set_friend_connections(nullptr);
 }

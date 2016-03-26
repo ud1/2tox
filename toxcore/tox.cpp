@@ -1034,12 +1034,13 @@ uint32_t tox_file_send(Tox *tox, uint32_t friend_number, uint32_t kind, uint64_t
         return UINT32_MAX;
     }
 
-    uint8_t f_id[FILE_ID_LENGTH];
+    bitox::SymmetricKey f_id;
 
-    if (!file_id) {
+    if (!file_id)
+    {
+        f_id = bitox::SymmetricKey::create_random();
         /* Tox keys are 32 bytes like FILE_ID_LENGTH. */
-        new_symmetric_key(f_id);
-        file_id = f_id;
+        file_id = f_id.data.data();
     }
 
     Messenger *m = tox;

@@ -27,7 +27,7 @@
 #include "onion_client.hpp"
 #include "util.hpp"
 #include "LAN_discovery.hpp"
-#include "protocol.hpp"
+#include "protocol_impl.hpp"
 #include "event_dispatcher.hpp"
 
 /* defines for the array size and
@@ -38,6 +38,7 @@
 using namespace bitox;
 using namespace bitox::network;
 using namespace bitox::dht;
+using namespace bitox::impl;
 
 constexpr size_t MAX_PATH_NODES = 32;
 
@@ -376,7 +377,7 @@ bool Onion_Client::check_sendback(const uint8_t *sendback, PublicKey &ret_pubkey
 }
 
 int Onion_Client::client_send_announce_request(Onion_Friend *onion_friend, const IPPort &dest, const PublicKey &dest_pubkey,
-        const PublicKey &ping_id, uint32_t pathnum)
+        const OnionPingId &ping_id, uint32_t pathnum)
 {
     uint64_t sendback;
     Onion_Path path;
@@ -498,7 +499,7 @@ int Onion_Client::client_add_to_list(Onion_Friend *onion_friend, const PublicKey
     if (is_stored == 1) {
         list_nodes[index].data_public_key = pingid_or_key;
     } else {
-        list_nodes[index].ping_id = pingid_or_key;
+        list_nodes[index].ping_id = OnionPingId(pingid_or_key);
     }
 
     list_nodes[index].is_stored = is_stored;
@@ -572,7 +573,7 @@ int Onion_Client::client_ping_nodes(Onion_Friend *onion_friend, const NodeFormat
             }
 
             if (j == list_length && good_to_ping(last_pinged, last_pinged_index, nodes[i].public_key)) {
-                client_send_announce_request(onion_friend, nodes[i].ip_port, nodes[i].public_key, PublicKey(), ~0);
+                client_send_announce_request(onion_friend, nodes[i].ip_port, nodes[i].public_key, OnionPingId(), ~0);
             }
         }
     }
@@ -870,33 +871,35 @@ static int handle_dht_dhtpk(void *object, IPPort source, const bitox::PublicKey 
  */
 int Onion_Friend::send_dhtpk_announce(uint8_t onion_dht_both)
 {
-    uint8_t data[DHTPK_DATA_MAX_LENGTH];
-    data[0] = ONION_DATA_DHTPK;
+    OutputBuffer buffer;
+    buffer.write_byte(ONION_DATA_DHTPK);
+    
     uint64_t no_replay = unix_time();
     host_to_net((uint8_t *)&no_replay, sizeof(no_replay));
-    memcpy(data + 1, &no_replay, sizeof(no_replay));
-    memcpy(data + 1 + sizeof(uint64_t), client->dht->self_public_key.data.data(), crypto_box_PUBLICKEYBYTES);
+    buffer << const_uint64_adapter(no_replay) << client->dht->self_public_key;
+    
     NodeFormat nodes[MAX_SENT_NODES];
     uint16_t num_relays = client->c->copy_connected_tcp_relays(nodes, (MAX_SENT_NODES / 2));
     uint16_t num_nodes = client->dht->closelist_nodes(&nodes[num_relays], MAX_SENT_NODES - num_relays);
     num_nodes += num_relays;
     int nodes_len = 0;
 
-    if (num_nodes != 0) {
-        nodes_len = pack_nodes(data + DHTPK_DATA_MIN_LENGTH, DHTPK_DATA_MAX_LENGTH - DHTPK_DATA_MIN_LENGTH, nodes,
-                               num_nodes);
-
-        if (nodes_len <= 0)
-            return -1;
+    if (num_nodes != 0)
+    {
+        for (size_t i = 0; i < num_nodes; ++i)
+        {
+            if (!write_node_format(buffer, nodes[i]))
+                return -1;
+        }
     }
 
     int num1 = -1, num2 = -1;
 
     if (onion_dht_both != 1)
-        num1 = send_onion_data(data, DHTPK_DATA_MIN_LENGTH + nodes_len);
+        num1 = send_onion_data(buffer.begin(), buffer.size());
 
     if (onion_dht_both != 0)
-        num2 = send_dht_dhtpk(data, DHTPK_DATA_MIN_LENGTH + nodes_len);
+        num2 = send_dht_dhtpk(buffer.begin(), buffer.size());
 
     if (num1 == -1)
         return num2;
@@ -1074,7 +1077,7 @@ void Onion_Friend::do_friend()
             }
 
             if (is_timeout(list_nodes[i].last_pinged, interval)) {
-                if (client->client_send_announce_request(this, list_nodes[i].ip_port, list_nodes[i].public_key, PublicKey(), ~0) == 0) {
+                if (client->client_send_announce_request(this, list_nodes[i].ip_port, list_nodes[i].public_key, OnionPingId(), ~0) == 0) {
                     list_nodes[i].last_pinged = unix_time();
                 }
             }
@@ -1094,7 +1097,7 @@ void Onion_Friend::do_friend()
                 for (j = 0; j < n; ++j) {
                     unsigned int num = rand() % num_nodes;
                     client->client_send_announce_request(this, client->path_nodes[num].ip_port,
-                                                         client->path_nodes[num].public_key, PublicKey(), ~0);
+                                                         client->path_nodes[num].public_key, OnionPingId(), ~0);
                 }
 
                 ++run_count;
@@ -1173,7 +1176,7 @@ void Onion_Client::do_announce()
             if (!path_nodes->empty()) {
                 for (size_t i = 0; i < (MAX_ONION_CLIENTS_ANNOUNCE / 2); ++i) {
                     unsigned int num = rand() % path_nodes->size();
-                    client_send_announce_request(nullptr, (*path_nodes)[num].ip_port, (*path_nodes)[num].public_key, PublicKey(), ~0);
+                    client_send_announce_request(nullptr, (*path_nodes)[num].ip_port, (*path_nodes)[num].public_key, OnionPingId(), ~0);
                 }
             }
         }
@@ -1306,7 +1309,6 @@ Onion_Client::Onion_Client(Net_Crypto *c, bitox::EventDispatcher *event_dispatch
     this->dht = c->dht;
     this->net = c->dht->net;
     this->c = c;
-    new_symmetric_key(this->secret_symmetric_key);
     crypto_box_keypair(this->temp_public_key.data.data(), this->temp_secret_key.data.data());
     oniondata_registerhandler(ONION_DATA_DHTPK, &handle_dhtpk_announce, this);
     this->dht->cryptopacket_registerhandler(CRYPTO_PACKET_DHTPK, &handle_dht_dhtpk, this);

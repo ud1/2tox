@@ -10,6 +10,8 @@ class Onion_Client;
 class TCP_Connections;
 class Onion_Announce;
 class Net_Crypto;
+struct New_Connection;
+class Friend_Connections;
 
 namespace bitox
 {
@@ -23,6 +25,12 @@ public:
     
     void on_network_packet(const network::IPPort &ip_port, const uint8_t *data, uint16_t len);
     void on_tcp_onion(const uint8_t *data, uint16_t length);
+    
+    /* Set function to be called when someone requests a new connection to us
+     * return -1 on failure and 0 on success.
+     */
+    int on_net_crypto_new_connection(const New_Connection &new_connection);
+    
     
     void set_ping(Ping *ping)
     {
@@ -54,6 +62,11 @@ public:
         this->net_crypto = net_crypto;
     }
     
+    void set_friend_connections(Friend_Connections *friend_connections)
+    {
+        this->friend_connections = friend_connections;
+    }
+    
     /*void set_tcp_connections(TCP_Connections *tcp_connections)
     {
         this->tcp_connections = tcp_connections;
@@ -66,6 +79,7 @@ private:
     Onion_Client *onion_client = nullptr;
     Onion_Announce *onion_announce = nullptr;
     Net_Crypto *net_crypto = nullptr;
+    Friend_Connections *friend_connections = nullptr;
     //TCP_Connections *tcp_connections = nullptr;
     
     virtual void on_ping_request (const network::IPPort &source, const PublicKey &sender_public_key, const PingRequestData &data) override;

@@ -47,7 +47,7 @@ public:
     DHT &dht;
     bitox::EventDispatcher *const event_dispatcher;
     bitox::network::Networking_Core *net;
-    uint8_t secret_symmetric_key[crypto_box_BEFORENMBYTES];
+    bitox::SymmetricKey secret_symmetric_key = bitox::SymmetricKey::create_random();
     uint64_t timestamp;
 
     Shared_Keys shared_keys_1;

@@ -251,7 +251,7 @@ public:
     uint32_t       close_bootstrap_times = 0;
 
     /* Note: this key should not be/is not used to transmit any sensitive materials */
-    uint8_t      secret_symmetric_key[crypto_box_BEFORENMBYTES];
+    bitox::SymmetricKey secret_symmetric_key = bitox::SymmetricKey::create_random();
     /* DHT keypair */
     bitox::PublicKey self_public_key;
     bitox::SecretKey self_secret_key;

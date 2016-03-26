@@ -71,7 +71,7 @@ struct Onion_Node
 {
     bitox::PublicKey public_key;
     bitox::network::IPPort     ip_port;
-    bitox::PublicKey ping_id;
+    bitox::OnionPingId ping_id;
     bitox::PublicKey data_public_key;
     uint8_t     is_stored;
 
@@ -264,7 +264,7 @@ public:
     Onion_Client_Paths onion_paths_self;
     Onion_Client_Paths onion_paths_friends;
 
-    uint8_t secret_symmetric_key[crypto_box_BEFORENMBYTES];
+    bitox::SymmetricKey secret_symmetric_key = bitox::SymmetricKey::create_random();
     uint64_t last_run, first_run;
 
     bitox::PublicKey temp_public_key;
@@ -334,7 +334,7 @@ public:
                            uint8_t is_stored, const bitox::PublicKey &pingid_or_key, uint32_t path_num);
 
     int client_send_announce_request(Onion_Friend *onion_friend, const bitox::network::IPPort &dest, const bitox::PublicKey &dest_pubkey,
-                                     const bitox::PublicKey &ping_id, uint32_t pathnum);
+                                     const bitox::OnionPingId &ping_id, uint32_t pathnum);
 
     /* Function to send onion packet via TCP and UDP.
     *

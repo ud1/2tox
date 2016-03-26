@@ -48,7 +48,10 @@ uint64_t random_64b(void)
 
 int public_key_valid(const PublicKey &public_key)
 {
-    return 0;
+    if (public_key.data[31] >= 128) /* Last bit of key is always zero. */
+        return 0;
+    
+    return 1;
 }
 
 void encrypt_precompute(const PublicKey &public_key, const SecretKey &secret_key, uint8_t* precomputed_key)
@@ -95,7 +98,7 @@ std::pair<PublicKey, SecretKey> generate_keys()
     return std::make_pair(public_key, secret_key);
 }
 
-bool encrypt_buffer (const BufferDataRange &data_to_encrypt, const SharedKey &shared_key, const Nonce &nonce, Buffer &out_encrypted_data)
+bool encrypt_buffer (const BufferDataRange &data_to_encrypt, const SymmetricKey &shared_key, const Nonce &nonce, Buffer &out_encrypted_data)
 {
     assert ( (data_to_encrypt.second > data_to_encrypt.first) && "Data range to encrypt must not be empty or negative");
 
@@ -105,7 +108,7 @@ bool encrypt_buffer (const BufferDataRange &data_to_encrypt, const SharedKey &sh
     return encrypt_data_symmetric (shared_key.data.data(), nonce.data.data(), data_to_encrypt.first, length, out_encrypted_data.data()) > 0;
 }
 
-bool decrypt_buffer (const BufferDataRange &data_to_decrypt, const SharedKey &shared_key, const Nonce &nonce, Buffer &out_decrypted_data)
+bool decrypt_buffer (const BufferDataRange &data_to_decrypt, const SymmetricKey &shared_key, const Nonce &nonce, Buffer &out_decrypted_data)
 {
     assert ( (data_to_decrypt.second > data_to_decrypt.first + MAC_BYTES_LEN) && "Data range to decrypt must not be empty or negative");
     
@@ -187,11 +190,6 @@ void random_nonce(uint8_t* nonce)
 void new_nonce(uint8_t* nonce)
 {
     random_nonce(nonce);
-}
-
-void new_symmetric_key(uint8_t* key)
-{
-    randombytes(key, crypto_box_BEFORENMBYTES);
 }
 
 template<class PointerT>

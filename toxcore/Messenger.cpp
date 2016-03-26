@@ -1623,7 +1623,7 @@ Messenger::Messenger(Messenger_Options *options)
     onion = std::unique_ptr<Onion>(new Onion(*dht, event_dispatcher.get()));
     onion_a = std::unique_ptr<Onion_Announce>(new Onion_Announce(dht.get(), event_dispatcher.get()));
     onion_c = std::unique_ptr<Onion_Client>(new Onion_Client(net_crypto.get(), event_dispatcher.get()));
-    fr_c = std::unique_ptr<Friend_Connections>(new Friend_Connections(onion_c.get()));
+    fr_c = std::unique_ptr<Friend_Connections>(new Friend_Connections(onion_c.get(), event_dispatcher.get()));
 
     if (options->tcp_server_port) {
         tcp_server = std::unique_ptr<TCP_Server>(new TCP_Server(options->ipv6enabled, 1, &options->tcp_server_port, dht->self_secret_key, onion.get()));

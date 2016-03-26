@@ -124,14 +124,19 @@ struct SecretKey
     std::array<uint8_t, SECRET_KEY_LEN> data = {};
 };
 
-struct SharedKey
+struct SymmetricKey
 {
+    static SymmetricKey create_random();
     std::array<uint8_t, SHARED_KEY_LEN> data = {};
 };
 
+struct SharedKey : SymmetricKey {};
 
 struct OnionPingId
 {
+    OnionPingId() {}
+    explicit OnionPingId(const PublicKey &o) : data(o.data) {}
+    
     std::array<uint8_t, ONION_PING_ID_LEN> data = {};
 };
 
@@ -264,6 +269,10 @@ namespace dht
     };
 }
 
+namespace network
+{
+    bool write_node_format (OutputBuffer &buffer, const bitox::dht::NodeFormat &node_format);
+}
 
 // ------------------------- Packets --------------------------------
 struct PingRequestData
